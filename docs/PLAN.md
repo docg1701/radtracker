@@ -6,6 +6,23 @@
 
 ---
 
+## Sprint Tracking
+
+Cada sprint passa por **execução** (desenvolvimento) e em seguida por uma ou mais rodadas de **revisão** (review) até que os critérios de Definition of Done sejam atingidos. A sprint seguinte só inicia após aprovação da sprint atual.
+
+| Sprint | Status | Execução | Revisão #1 | Revisão #2 | Revisão #3 | DoD | Notas |
+|--------|--------|----------|------------|------------|------------|-----|-------|
+| **S1** — Foundation & Data Entry | ⬜ Pendente | — | — | — | — | ☐ | `app.py`, `db.py`, sidebar funcional |
+| **S2** — "Hoje" Tab | ⬜ Pendente | — | — | — | — | ☐ | KPI cards, donut chart, empty state |
+| **S3** — "Mês Atual" Tab | ⬜ Pendente | — | — | — | — | ☐ | Progress gauge, daily trend, alerts |
+| **S4** — "Análise & Insights" Tab | ⬜ Pendente | — | — | — | — | ☐ | Rule insights, MA7/MA30, WoW, mix evolution |
+| **S5** — LLM & Settings | ⬜ Pendente | — | — | — | — | ☐ | Ollama Cloud, theme toggle, config tab |
+| **S6** — Testing & Release | ⬜ Pendente | — | — | — | — | ☐ | ≥80% coverage, README, git tag v1.0.0 |
+
+**Legenda**: ⬜ Pendente · 🔄 Em execução · 🔁 Em revisão · ✅ Concluído · ❌ Bloqueado
+
+---
+
 ## Goal
 
 Deliver a local, offline-first Streamlit dashboard that lets a teleradiologist (Galvani) log daily exam counts (RM/TC/RX), see real-time earnings projections, and receive actionable insights — all from a single `streamlit run app.py` command.
@@ -683,3 +700,22 @@ One blank line between groups.
 **First useful artifact**: End of Phase 2 — today's KPI cards and modality breakdown.
 **Fully featured**: End of Phase 5 — LLM insights, configurable prices/goals, dark mode.
 **Production-ready**: End of Phase 6 — tested, documented, tagged.
+
+---
+
+## Source Documents Reference
+
+These four documents formed the basis for this implementation plan. Consult them when decisions about design, behavior, or implementation details arise.
+
+| Document | Role | Content | Consult when… |
+|---|---|---|---|
+| [**BRIEF.md**](./BRIEF.md) | Project charter & requirements | Problem statement, user goals, functional/non-functional requirements, business rules (prices, productivity rates, monthly goal), stack decisions, UX flow, definition of done | You need the *why*: user context, constraints, workflow. Start here for any question about what the system should do. |
+| [**DESIGN_SPEC.md**](./DESIGN_SPEC.md) | Visual & interaction design authority | Color palette (24 tokens), typography hierarchy mapped to Streamlit elements, component specs (KPI cards, progress bar, insight card, sidebar, charts, empty state), spacing system, tone of voice with Portuguese examples, `config.toml` themes, state handling | You need the *how it looks and feels*: chart colors, metric card layout, insight text tone, spacing between components. The definitive source for any UI decision. |
+| [**RESEARCH.md**](./RESEARCH.md) | Technical feasibility & API reference | Streamlit API patterns (tabs, sidebar, `st.metric`, `st.connection`, caching), Plotly chart code examples, Pandas time-series operations, SQLite schema with UPSERT, Ollama Cloud API integration code, dependency versions | You need the *how to build it*: exact function signatures, SQL queries, prompt templates, pip package versions. Code snippets here are the implementation starting point. |
+| [**DESIGN.md**](./DESIGN.md) | External design reference (Cal.com) | Cal.com's design system analyzed: color tokens, typography (Cal Sans + Inter), spacing rhythm (4px base), border radius scale, elevation levels, component library, responsive breakpoints, do's and don'ts | You need *inspiration or pattern justification*: why we use light-gray cards, why 8px border radius on buttons, why generous whitespace. Not normative — DESIGN_SPEC.md is the authority adapted from this. |
+
+**Reading order for new contributors**:
+1. BRIEF.md — understand the user and the problem
+2. RESEARCH.md — see the tech stack and code patterns
+3. DESIGN_SPEC.md — learn the visual language and component specs
+4. DESIGN.md — optional; understand the design philosophy origins
