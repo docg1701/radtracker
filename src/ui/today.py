@@ -18,6 +18,7 @@ from src.calculations import (
 from src.charts import build_modality_donut, build_daily_sparkline
 from src.chart_colors import CHART_COLORS
 from src.db import load_month, load_prices, load_goal
+from src.formatting import fmt_brl
 
 
 def render_today_tab(conn: Any) -> None:
@@ -37,8 +38,8 @@ def render_today_tab(conn: Any) -> None:
     # Compute daily stats
     stats = compute_daily_stats(conn, today_str, prices)
 
-    # Empty state: no data for today AND all counts are zero
-    if stats["exam_count_today"] == 0:
+    # Empty state: no data exists for today
+    if not stats["has_data"]:
         _render_empty_state()
         return
 
@@ -49,7 +50,7 @@ def render_today_tab(conn: Any) -> None:
     donut = build_modality_donut(
         stats["rm_count"], stats["tc_count"], stats["rx_count"]
     )
-    st.plotly_chart(donut, use_container_width=True)
+    st.plotly_chart(donut, width="stretch")
 
     # ── Sparkline (7-day trend) ──
     _render_sparkline(conn, prices, year_month)
@@ -99,7 +100,7 @@ def _render_kpi_row(
 
         st.metric(
             label="💰 Faturamento hoje",
-            value=_fmt_brl(earnings),
+            value=fmt_brl(earnings),
             delta=delta_str,
             delta_color=delta_color,
         )
@@ -136,7 +137,7 @@ def _render_kpi_row(
         st.metric(
             label="🎯 Meta mensal",
             value=f"{pct:.0f}%",
-            delta=f"{_fmt_brl(mtd)} / {_fmt_brl(monthly_goal)}",
+            delta=f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}",
             delta_color="off",
         )
 
@@ -166,9 +167,9 @@ def _render_sparkline(
     all_days = add_earnings_column(all_days, prices)
     all_days = all_days.sort_values("date").tail(7)
 
-    if len(all_days) >= 2:
+    if len(all_days) >= 1:
         spark = build_daily_sparkline(all_days)
-        st.plotly_chart(spark, use_container_width=True)
+        st.plotly_chart(spark, width="stretch")
 
 
 def _build_pill_indicators(rm: int, tc: int, rx: int) -> str:
@@ -193,24 +194,4 @@ def _build_pill_indicators(rm: int, tc: int, rx: int) -> str:
     )
 
 
-# TODO: extract to src/formatting.py in Sprint 6
-def _fmt_brl(value: float) -> str:
-    """
-    Format a float as Brazilian Real currency.
 
-    Example:
-        >>> _fmt_brl(1250.0)
-        'R$ 1.250,00'
-        >>> _fmt_brl(0.0)
-        'R$ 0,00'
-    """
-    if value < 0:
-        return f"\u2212{_fmt_brl(-value)}"
-    # int(value*100 + 0.5) gives correct half-up rounding.
-    # Built-in round() uses banker's rounding (round(0.5)==0), which
-    # would under-round half-centavos when non-standard prices are in use.
-    cents = int(value * 100 + 0.5)
-    integer_part = cents // 100
-    decimal_part = cents % 100
-    int_str = f"{integer_part:,}".replace(",", ".")
-    return f"R$ {int_str},{decimal_part:02d}"

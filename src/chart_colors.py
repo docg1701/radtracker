@@ -5,16 +5,23 @@ Every chart module imports from here — no inline hex values anywhere else.
 Colors are colorblind-safe and semantically named.
 """
 
+
+def hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a 3- or 6-digit hex color to an rgba string."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 CHART_COLORS = {
     # Modality colors — used in bar, pie, stacked charts
     "rm": "#2563EB",      # Blue-600
     "tc": "#D97706",      # Amber-600
     "rx": "#0891B2",      # Cyan-600
-
-    # Semantic — used in progress gauge, delta indicators
-    "success": "#16A34A",  # Green-600
-    "warning": "#CA8A04",  # Yellow-600
-    "danger": "#DC2626",   # Red-600
 
     # Chart accent
     "primary": "#0D9488",  # Teal-600 — main line/bar color

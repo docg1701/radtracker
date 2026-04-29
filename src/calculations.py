@@ -176,6 +176,7 @@ def compute_daily_stats(
           - estimated_time_range: str — "~08:00 – HH:MM"
           - yesterday_earnings: float | None — yesterday's earnings (None if no data)
           - delta_pct: float | None — % change vs yesterday (None if no basis)
+          - has_data: bool — whether a row exists for date_str
 
     If no data exists for the given date_str, returns a dict with all
     counts and earnings set to zero, hours set to 0.0, and delta_pct=None.
@@ -193,6 +194,7 @@ def compute_daily_stats(
             "estimated_time_range": format_time_range(0.0),
             "yesterday_earnings": None,
             "delta_pct": None,
+            "has_data": False,
         }
 
     rm = int(today_data["rm_count"])
@@ -227,6 +229,7 @@ def compute_daily_stats(
         "estimated_time_range": time_range,
         "yesterday_earnings": yesterday_earnings,
         "delta_pct": delta_pct,
+        "has_data": True,
     }
 
 
@@ -264,7 +267,7 @@ def compute_monthly_stats(
 
     Returns dict with keys:
         mtd_earnings, pct_goal, days_worked, total_work_days,
-        remaining_work_days, working_days_left, daily_avg,
+        remaining_work_days, daily_avg,
         daily_target_needed, projection_month_end
     """
     month_df = load_month(conn, year_month)
@@ -318,8 +321,159 @@ def compute_monthly_stats(
         "days_worked": days_worked,
         "total_work_days": total_work_days,
         "remaining_work_days": remaining_work_days,
-        "working_days_left": remaining_work_days,  # alias
         "daily_avg": daily_avg,
         "daily_target_needed": daily_target_needed,
         "projection_month_end": projection_month_end,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Historical stats (multi-month) — Sprint 4
+# ---------------------------------------------------------------------------
+
+def compute_historical_stats(
+    conn: Any, year_month: str, goal: float, prices: dict[str, float]
+) -> dict[str, Any]:
+    """
+    Load all months, compute MA7/MA30, WoW, MoM, modality mix, and
+    consecutive-below-target. Returns dict with df, wow_change_pct,
+    mom_change_pct, weekly_totals_last_4 (list of dicts),
+    modality_mix_current ({"rm": pct, ...}), modality_mix_historical
+    (month→mix), consecutive_below_target, current_month_stats.
+    """
+    months_df = conn.query(
+        "SELECT DISTINCT substr(date, 1, 7) AS ym FROM daily_production ORDER BY ym",
+        ttl=0,
+    )
+    if months_df.empty:
+        return _empty_historical_stats(conn, year_month, goal, prices)
+
+    all_months: list[str] = months_df["ym"].tolist()
+    month_frames: list[pd.DataFrame] = []
+    for ym in all_months:
+        mdf = load_month(conn, ym)
+        if mdf.empty:
+            continue
+        mdf = add_earnings_column(mdf, prices)
+        month_frames.append(mdf)
+
+    if not month_frames:
+        return _empty_historical_stats(conn, year_month, goal, prices)
+
+    df = pd.concat(month_frames, ignore_index=True)
+    df = df.sort_values("date").reset_index(drop=True)
+    df["date_dt"] = pd.to_datetime(df["date"])
+
+    df["ma7"] = df["earnings"].rolling(window=7, min_periods=1).mean()
+    df["ma30"] = df["earnings"].rolling(window=30, min_periods=1).mean()
+
+    df["week"] = df["date_dt"].dt.isocalendar().week
+    df["iso_year"] = df["date_dt"].dt.isocalendar().year
+
+    weekly_agg = (
+        df.groupby(["iso_year", "week"], sort=False)
+        .agg(
+            total_earnings=("earnings", "sum"),
+            rm_count=("rm_count", "sum"),
+            tc_count=("tc_count", "sum"),
+            rx_count=("rx_count", "sum"),
+            first_date=("date_dt", "min"),
+        )
+        .reset_index()
+        .sort_values("first_date")
+    )
+
+    weekly_agg["week_label"] = weekly_agg["first_date"].apply(
+        lambda dt: f"Semana {dt.isocalendar().week} — {dt.strftime('%d/%m')}"
+        if pd.notna(dt) else "—"
+    )
+    weekly_totals_last_4: list[dict[str, Any]] = [
+        {"week_label": str(r["week_label"]),
+         "total_earnings": float(r["total_earnings"]),
+         "rm_count": int(r["rm_count"]),
+         "tc_count": int(r["tc_count"]),
+         "rx_count": int(r["rx_count"])}
+        for _, r in weekly_agg.tail(4).iterrows()
+    ]
+
+    wow_change_pct: float | None = None
+    if len(weekly_agg) >= 2:
+        last, prev = weekly_agg.iloc[-1], weekly_agg.iloc[-2]
+        if prev["total_earnings"] > 0:
+            wow_change_pct = float((last["total_earnings"] - prev["total_earnings"]) / prev["total_earnings"] * 100)
+
+    monthly = (
+        df.groupby(df["date"].str[:7])
+        .agg(total_earnings=("earnings", "sum"))
+        .reset_index()
+    )
+    monthly.columns = ["ym", "total_earnings"]
+    monthly = monthly.sort_values("ym")
+
+    mom_change_pct: float | None = None
+    monthly_idx = monthly.set_index("ym")
+    if year_month in monthly_idx.index:
+        pos = monthly_idx.index.get_loc(year_month)
+        if isinstance(pos, int) and pos > 0:
+            prev_ym = monthly_idx.index[pos - 1]  # type: ignore[assignment]
+            prev_total = float(monthly_idx.loc[prev_ym, "total_earnings"])
+            curr_total = float(monthly_idx.loc[year_month, "total_earnings"])
+            if prev_total > 0:
+                mom_change_pct = float((curr_total - prev_total) / prev_total * 100)
+
+    def _modality_mix(sdf: pd.DataFrame) -> dict[str, float]:
+        """Revenue-share percentages for RM, TC, RX."""
+        rev = {m: float(sdf[f"{m}_count"].sum()) * prices[m] for m in ("rm", "tc", "rx")}
+        total = sum(rev.values())
+        if total == 0.0:
+            return {"rm": 0.0, "tc": 0.0, "rx": 0.0}
+        return {m: round(rev[m] / total * 100, 1) for m in ("rm", "tc", "rx")}
+
+    current_month_df = df[df["date"].str[:7] == year_month]
+    modality_mix_current = _modality_mix(current_month_df)
+
+    modality_mix_historical: dict[str, dict[str, float]] = {}
+    for ym in all_months:
+        ym_df = df[df["date"].str[:7] == ym]
+        modality_mix_historical[ym] = _modality_mix(ym_df)
+
+    current_stats = compute_monthly_stats(conn, year_month, goal, prices)
+    total_work_days = current_stats["total_work_days"]
+    daily_target = compute_daily_target(goal, total_work_days)
+
+    curr_sorted = current_month_df.sort_values("date", ascending=False)
+    consecutive_below_target = 0
+    for _, row in curr_sorted.iterrows():
+        if float(row["earnings"]) < daily_target:
+            consecutive_below_target += 1
+        else:
+            break
+
+    return {
+        "df": df,
+        "wow_change_pct": wow_change_pct, "mom_change_pct": mom_change_pct,
+        "weekly_totals_last_4": weekly_totals_last_4,
+        "modality_mix_current": modality_mix_current,
+        "modality_mix_historical": modality_mix_historical,
+        "consecutive_below_target": consecutive_below_target,
+        "current_month_stats": current_stats,
+    }
+
+
+def _empty_historical_stats(
+    conn: Any, year_month: str, goal: float, prices: dict[str, float]
+) -> dict[str, Any]:
+    """Minimal stats dict when no historical data exists."""
+    current_stats = compute_monthly_stats(conn, year_month, goal, prices)
+    return {
+        "df": pd.DataFrame(columns=[
+            "date", "rm_count", "tc_count", "rx_count",
+            "earnings", "date_dt", "ma7", "ma30", "week", "iso_year",
+        ]),
+        "wow_change_pct": None, "mom_change_pct": None,
+        "weekly_totals_last_4": [],
+        "modality_mix_current": {"rm": 0.0, "tc": 0.0, "rx": 0.0},
+        "modality_mix_historical": {},
+        "consecutive_below_target": 0,
+        "current_month_stats": current_stats,
     }

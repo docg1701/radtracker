@@ -20,6 +20,7 @@ from src.charts import (
     build_progress_gauge,
 )
 from src.db import load_month, load_prices, load_goal
+from src.formatting import fmt_brl
 
 
 def render_month_tab(conn: Any) -> None:
@@ -54,7 +55,7 @@ def render_month_tab(conn: Any) -> None:
 
     # ── Progress Gauge ──
     gauge = build_progress_gauge(stats["pct_goal"])
-    st.plotly_chart(gauge, use_container_width=True)
+    st.plotly_chart(gauge, width="stretch")
 
     # ── Charts Row (2-column) ──
     month_df = load_month(conn, year_month)
@@ -67,12 +68,12 @@ def render_month_tab(conn: Any) -> None:
         line_chart = build_monthly_earnings_chart(
             earnings_df, daily_target, year_month
         )
-        st.plotly_chart(line_chart, use_container_width=True)
+        st.plotly_chart(line_chart, width="stretch")
 
     with col_right:
         st.subheader("🍩 Receita por Modalidade")
         donut = build_monthly_modality_donut(month_df, prices)
-        st.plotly_chart(donut, use_container_width=True)
+        st.plotly_chart(donut, width="stretch")
 
     # ── Rhythm Alert ──
     _render_rhythm_alert(stats, goal)
@@ -93,8 +94,8 @@ def _render_kpi_row(
     with k1:
         st.metric(
             label="💰 Faturamento MTD",
-            value=_fmt_brl(stats["mtd_earnings"]),
-            delta=f"{_fmt_brl(stats['projection_month_end'])} projetado",
+            value=fmt_brl(stats["mtd_earnings"]),
+            delta=f"{fmt_brl(stats['projection_month_end'])} projetado",
             delta_color="off",
         )
 
@@ -102,7 +103,7 @@ def _render_kpi_row(
         st.metric(
             label="🎯 % da Meta",
             value=f"{stats['pct_goal']:.0f}%",
-            delta=f"{_fmt_brl(stats['mtd_earnings'])} / {_fmt_brl(goal)}",
+            delta=f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}",
             delta_color="off",
         )
 
@@ -115,8 +116,8 @@ def _render_kpi_row(
         )
 
     with k4:
-        daily_avg_str = _fmt_brl(stats["daily_avg"])
-        target_str = _fmt_brl(daily_target)
+        daily_avg_str = fmt_brl(stats["daily_avg"])
+        target_str = fmt_brl(daily_target)
         st.metric(
             label="📊 Média Diária",
             value=daily_avg_str,
@@ -129,6 +130,12 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     """Show a warning if behind pace to meet the monthly goal."""
     total = stats["total_work_days"]
     if total == 0:
+        return
+
+    if stats["mtd_earnings"] >= goal:
+        return
+
+    if stats["remaining_work_days"] == 0:
         return
 
     days_worked = stats["days_worked"]
@@ -145,31 +152,11 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     st.warning(
         f"⚠️ **Atenção ao ritmo**\n\n"
         f"Galvani, você está atrás do ritmo para bater a meta "
-        f"de {_fmt_brl(goal)}.\n\n"
-        f"Faltam {_fmt_brl(missing)} em {remaining} dias úteis — "
-        f"você precisa de **{_fmt_brl(needed)}/dia** daqui pra frente.\n\n"
-        f"Sua média atual: {_fmt_brl(stats['daily_avg'])}/dia."
+        f"de {fmt_brl(goal)}.\n\n"
+        f"Faltam {fmt_brl(missing)} em {remaining} dias úteis — "
+        f"você precisa de **{fmt_brl(needed)}/dia** daqui pra frente.\n\n"
+        f"Sua média atual: {fmt_brl(stats['daily_avg'])}/dia."
     )
 
 
-# TODO: extract to src/formatting.py in Sprint 6
-def _fmt_brl(value: float) -> str:
-    """
-    Format a float as Brazilian Real currency.
 
-    Example:
-        >>> _fmt_brl(1250.0)
-        'R$ 1.250,00'
-        >>> _fmt_brl(0.0)
-        'R$ 0,00'
-    """
-    if value < 0:
-        return f"\u2212{_fmt_brl(-value)}"
-    # int(value*100 + 0.5) gives correct half-up rounding.
-    # Built-in round() uses banker's rounding (round(0.5)==0), which
-    # would under-round half-centavos when non-standard prices are in use.
-    cents = int(value * 100 + 0.5)
-    integer_part = cents // 100
-    decimal_part = cents % 100
-    int_str = f"{integer_part:,}".replace(",", ".")
-    return f"R$ {int_str},{decimal_part:02d}"

@@ -11,7 +11,8 @@ from datetime import date
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.chart_colors import CHART_COLORS
+from src.chart_colors import CHART_COLORS, hex_to_rgba
+from src.formatting import MONTHS_PT
 
 
 # ---------------------------------------------------------------------------
@@ -93,10 +94,7 @@ def build_daily_sparkline(df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return go.Figure()
 
-    # Derive fill color from primary hex with 10% opacity (computed once)
-    primary_hex = CHART_COLORS["primary"].lstrip("#")
-    r, g, b = int(primary_hex[0:2], 16), int(primary_hex[2:4], 16), int(primary_hex[4:6], 16)
-    fill_rgba = f"rgba({r}, {g}, {b}, 0.1)"
+    fill_rgba = hex_to_rgba(CHART_COLORS["primary"], 0.1)
 
     # Build display labels (DD/MM)
     labels = []
@@ -239,14 +237,6 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
 # Monthly earnings line chart
 # ---------------------------------------------------------------------------
 
-# Portuguese month-name mapping used by monthly charts
-_MONTHS_PT: dict[int, str] = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
-}
-
-
 def build_monthly_earnings_chart(
     df: pd.DataFrame, daily_target: float, year_month: str
 ) -> go.Figure:
@@ -327,7 +317,7 @@ def build_monthly_earnings_chart(
             font=dict(size=11, color=CHART_COLORS["neutral"]),
         )
 
-    month_name = _MONTHS_PT.get(month, str(month))
+    month_name = MONTHS_PT.get(month, str(month))
 
     fig.update_layout(
         title=dict(
@@ -396,7 +386,7 @@ def build_monthly_modality_donut(
         first_date = str(df["date"].iloc[0])
         if len(first_date) >= 7:
             m = int(first_date[5:7])
-            month_name = _MONTHS_PT.get(m, "Mês")
+            month_name = MONTHS_PT.get(m, "Mês")
 
     fig.update_layout(
         title=dict(
@@ -417,3 +407,4 @@ def build_monthly_modality_donut(
     )
 
     return fig
+
