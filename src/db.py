@@ -4,6 +4,7 @@ Database module — SQLite schema, connection, and CRUD operations.
 Uses Streamlit's st.connection for managed SQLite access.
 """
 
+import os
 from datetime import date
 from typing import Any
 
@@ -53,6 +54,7 @@ def init_db(conn: Any) -> None:
         updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     """
+    os.makedirs("data", exist_ok=True)
     with conn.connect() as db_conn:
         db_conn.execute(sa.text(create_daily))
         db_conn.execute(sa.text(create_prices))
@@ -114,8 +116,10 @@ def save_prices(conn: Any, rm_price: float, tc_price: float, rx_price: float) ->
     today_str = date.today().isoformat()
     with conn.connect() as db_conn:
         db_conn.execute(
-            sa.text("INSERT INTO exam_prices (rm_price, tc_price, rx_price, effective_from) "
-            "VALUES (:rm, :tc, :rx, :eff)"),
+            sa.text("""
+                INSERT INTO exam_prices (rm_price, tc_price, rx_price, effective_from)
+                VALUES (:rm, :tc, :rx, :eff)
+            """),
             {"rm": rm_price, "tc": tc_price, "rx": rx_price, "eff": today_str},
         )
         db_conn.commit()

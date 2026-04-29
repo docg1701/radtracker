@@ -6,13 +6,14 @@ and the save button. Handles UPSERT via db.upsert_daily().
 """
 
 from datetime import date
+from typing import Any
 
 import streamlit as st
 
 from src.db import load_daily, upsert_daily
 
 
-def render_sidebar(conn) -> None:
+def render_sidebar(conn: Any) -> None:
     """
     Render the complete sidebar: header, date picker, modality inputs, save button.
 
@@ -61,5 +62,5 @@ def render_sidebar(conn) -> None:
             st.rerun()
 
         # Footer
-        st.sidebar.divider()
-        st.sidebar.caption("radtracker v1.0 · local")
+        st.divider()
+        st.caption("radtracker v1.0 · local")
