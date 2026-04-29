@@ -5,10 +5,11 @@ Renders the app title, greeting, date picker, 3 modality inputs,
 and the save button. Handles UPSERT via db.upsert_daily().
 """
 
-import streamlit as st
 from datetime import date
 
-from src.db import upsert_daily, load_daily
+import streamlit as st
+
+from src.db import load_daily, upsert_daily
 
 
 def render_sidebar(conn) -> None:
@@ -43,11 +44,11 @@ def render_sidebar(conn) -> None:
         # Modality inputs (3 columns)
         cols = st.columns(3)
         with cols[0]:
-            rm = st.number_input("RM", min_value=0, step=1, value=default_rm, key="sb_rm")
+            rm = st.number_input("RM", min_value=0, step=1, value=default_rm, key=f"rm_{date_str}")
         with cols[1]:
-            tc = st.number_input("TC", min_value=0, step=1, value=default_tc, key="sb_tc")
+            tc = st.number_input("TC", min_value=0, step=1, value=default_tc, key=f"tc_{date_str}")
         with cols[2]:
-            rx = st.number_input("RX", min_value=0, step=1, value=default_rx, key="sb_rx")
+            rx = st.number_input("RX", min_value=0, step=1, value=default_rx, key=f"rx_{date_str}")
 
         # Save button
         if st.button("💾 Salvar produção", type="primary", use_container_width=True):
