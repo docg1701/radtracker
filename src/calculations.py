@@ -11,12 +11,13 @@ Business rules (from BRIEF.md):
   - Monthly goal default: R$45,000
 """
 
-from datetime import datetime, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 
-from src.db import load_daily
+from src.db import load_daily, load_month
 
 # Productivity midpoints (exams/hour) — used for hour estimation
 PRODUCTIVITY: dict[str, float] = {
@@ -233,3 +234,92 @@ def _yesterday_str(date_str: str) -> str:
     """Return ISO string for the day before date_str."""
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     return (dt - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+# ---------------------------------------------------------------------------
+# Monthly stats and targets
+# ---------------------------------------------------------------------------
+
+def compute_daily_target(monthly_goal: float, total_working_days: int) -> float:
+    """
+    Calculate the daily earnings target needed to meet the monthly goal.
+
+    Example:
+        >>> compute_daily_target(45000.0, 26)
+        1730.7692307692307
+    """
+    if total_working_days <= 0:
+        return 0.0
+    return monthly_goal / total_working_days
+
+
+def compute_monthly_stats(
+    conn: Any, year_month: str, goal: float, prices: dict[str, float]
+) -> dict[str, Any]:
+    """
+    Compute aggregate statistics for a given year-month.
+
+    Uses Mon–Sat as working days (Sunday excluded).
+    For past months, remaining_work_days and daily_target_needed are zero.
+
+    Returns dict with keys:
+        mtd_earnings, pct_goal, days_worked, total_work_days,
+        remaining_work_days, working_days_left, daily_avg,
+        daily_target_needed, projection_month_end
+    """
+    month_df = load_month(conn, year_month)
+    mtd_earnings = compute_mtd_earnings(month_df, prices)
+    pct_goal = (mtd_earnings / goal * 100.0) if goal > 0 else 0.0
+    days_worked = len(month_df)
+
+    # Parse year-month
+    year, month = int(year_month[:4]), int(year_month[5:7])
+    last_day = calendar.monthrange(year, month)[1]
+    month_start = f"{year_month}-01"
+    month_end = f"{year_month}-{last_day:02d}"
+
+    # Total Mon–Sat days in the month
+    working_dates = pd.bdate_range(
+        start=month_start,
+        end=month_end,
+        freq="C",
+        weekmask="Mon Tue Wed Thu Fri Sat",
+    )
+    total_work_days = len(working_dates)
+
+    # Remaining working days (current month only)
+    today = date.today()
+    current_ym = today.isoformat()[:7]
+    if year_month == current_ym:
+        remaining_dates = pd.bdate_range(
+            start=today,
+            end=month_end,
+            freq="C",
+            weekmask="Mon Tue Wed Thu Fri Sat",
+        )
+        remaining_work_days = len(remaining_dates)
+    else:
+        remaining_work_days = 0
+
+    daily_avg = mtd_earnings / days_worked if days_worked > 0 else 0.0
+
+    remaining_needed = max(0.0, goal - mtd_earnings)
+    daily_target_needed = (
+        remaining_needed / remaining_work_days
+        if remaining_work_days > 0
+        else 0.0
+    )
+
+    projection_month_end = mtd_earnings + (daily_avg * remaining_work_days)
+
+    return {
+        "mtd_earnings": mtd_earnings,
+        "pct_goal": pct_goal,
+        "days_worked": days_worked,
+        "total_work_days": total_work_days,
+        "remaining_work_days": remaining_work_days,
+        "working_days_left": remaining_work_days,  # alias
+        "daily_avg": daily_avg,
+        "daily_target_needed": daily_target_needed,
+        "projection_month_end": projection_month_end,
+    }

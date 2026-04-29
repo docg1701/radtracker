@@ -13,6 +13,7 @@ import streamlit as st
 from src.db import get_connection, init_db
 from src.ui.sidebar import render_sidebar
 from src.ui.today import render_today_tab
+from src.ui.month import render_month_tab
 
 # Page config — MUST be first Streamlit command
 st.set_page_config(
@@ -28,7 +29,7 @@ init_db(conn)
 # Sidebar
 render_sidebar(conn)
 
-# Tabs (1 implemented, 3 placeholders)
+# Tabs (2 implemented, 2 placeholders)
 tab_hoje, tab_mes, tab_analise, tab_config = st.tabs([
     "📊 Hoje",
     "📅 Mês Atual",
@@ -40,8 +41,7 @@ with tab_hoje:
     render_today_tab(conn)
 
 with tab_mes:
-    st.header("📅 Mês Atual")
-    st.info("Em breve — visão mensal (Sprint 3)")
+    render_month_tab(conn)
 
 with tab_analise:
     st.header("📈 Análise")

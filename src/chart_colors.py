@@ -26,4 +26,7 @@ CHART_COLORS = {
     "progress_warning": "#CA8A04",  # 25-50%
     "progress_on_track": "#0D9488", # 50-75%
     "progress_achieved": "#16A34A", # 75-100%
+
+    # Chart background / grid
+    "track": "#E2E8F0",  # Slate-200 — progress gauge background, gridlines
 }
