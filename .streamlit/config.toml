@@ -1,0 +1,16 @@
+# .streamlit/config.toml — radtracker theme configuration
+# Light theme is the default. Dark theme activates via Streamlit Settings menu.
+
+[theme]
+base = "light"
+primaryColor = "#0D9488"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
