@@ -151,3 +151,24 @@ def save_goal(conn: Any, year_month: str, goal: float) -> None:
             {"ym": year_month, "goal": goal},
         )
         db_conn.commit()
+
+
+def load_settings(conn: Any, year_month: str) -> dict:
+    """Return current prices and monthly goal as a convenience dict.
+
+    Calls load_prices() and load_goal() internally.
+    Use this in UI modules that need both at once.
+
+    Args:
+        conn: Streamlit SQL connection.
+        year_month: e.g. "2026-04".
+
+    Returns:
+        dict with keys:
+          - prices: {"rm": float, "tc": float, "rx": float}
+          - monthly_goal: float
+    """
+    return {
+        "prices": load_prices(conn),
+        "monthly_goal": load_goal(conn, year_month),
+    }
