@@ -12,7 +12,7 @@ Cada sprint passa por **execução** (desenvolvimento) e em seguida por uma ou m
 
 | Sprint | Status | Execução | Revisão #1 | Revisão #2 | Revisão #3 | DoD | Notas |
 |--------|--------|----------|------------|------------|------------|-----|-------|
-| **S1** — Foundation & Data Entry | ⬜ Pendente | — | — | — | — | ☐ | `app.py`, `db.py`, sidebar funcional |
+| **S1** — Foundation & Data Entry | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | 12 files, 3 tables, UPSERT, app starts clean |
 | **S2** — "Hoje" Tab | ⬜ Pendente | — | — | — | — | ☐ | KPI cards, donut chart, empty state |
 | **S3** — "Mês Atual" Tab | ⬜ Pendente | — | — | — | — | ☐ | Progress gauge, daily trend, alerts |
 | **S4** — "Análise & Insights" Tab | ⬜ Pendente | — | — | — | — | ☐ | Rule insights, MA7/MA30, WoW, mix evolution |
