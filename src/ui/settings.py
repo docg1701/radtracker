@@ -145,8 +145,9 @@ def _execute_delete() -> None:
 def _delete_all_data() -> None:
     """Delete all rows from all 3 tables within a single transaction."""
     import sqlite3
+    from contextlib import closing
 
-    with sqlite3.connect("data/telerrad.db") as raw:
+    with closing(sqlite3.connect("data/telerrad.db")) as raw:
         raw.execute("DELETE FROM daily_production")
         raw.execute("DELETE FROM exam_prices")
         raw.execute("DELETE FROM monthly_goals")

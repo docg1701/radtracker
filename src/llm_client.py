@@ -7,7 +7,7 @@ and returns Portuguese markdown insight text.
 Usage:
     try:
         llm = LLMClient(api_key)
-        insight = llm.generate(stats)
+        insight = llm.generate(stats, prices)
     except LLMUnavailableError:
         insight = generate_rule_insights(stats)  # fallback
 """
