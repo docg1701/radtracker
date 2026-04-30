@@ -17,6 +17,7 @@ from src.charts_analysis import (
     build_modality_mix_evolution,
     build_moving_averages_chart,
     build_wow_comparison_chart,
+    build_ytd_earnings_chart,
 )
 from src.insights_rules import generate_rule_insights
 from src.llm_client import LLMClient, LLMUnavailableError
@@ -103,6 +104,11 @@ def render_analysis_tab(conn: Any) -> None:
         st.plotly_chart(mix_chart, width="stretch")
     else:
         st.info("Dados insuficientes para evolução do mix.")
+
+    # ── Full-width: Year-to-Date Earnings ──
+    st.subheader("📊 Faturamento por Mês")
+    ytd_chart = build_ytd_earnings_chart(df, year_month, goal, prices)
+    st.plotly_chart(ytd_chart, width="stretch")
 
 
 # ---------------------------------------------------------------------------
