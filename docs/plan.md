@@ -9,43 +9,29 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 
 *Priority: P0 — critical. These fix bugs and localization issues with minimal risk. Each is independent.*
 
-### Task 0.1 — Translate date picker placeholder
-- **File:** `src/ui/sidebar.py` (line ~47)
-- **Change:** Add `help="Selecione uma data"` or use `label` parameter. The native `st.date_input` placeholder cannot be translated via parameter — instead, use `st.date_input("📅 Selecione uma data", ...)` to make the label itself the Portuguese instruction.
-- **Acceptance:** Date picker no longer shows "Select a date." in English.
+### Task 0.1 — Translate date picker label
+- **File:** `src/ui/sidebar.py` (line ~37)
+- **Change:** The current label is `"📅 Data"`. Since `st.date_input` has no native `placeholder` parameter (only `label`), rename to `"Data"` (the Portuguese word itself is sufficient — the user sees a calendar widget on click, so no extra instruction is needed). The emoji and any English `"Select a date."` tooltip go away.
+- **Acceptance:** Date picker shows `"Data"` as label; no English text visible.
+- **Note:** Merged with Task 2.1 — implement only once.
 - **Ref:** analise-visual.md §2.4 (placeholder em inglês)
 
 ### Task 0.2 — Fix RX spinbutton step in Config tab
-- **File:** `src/ui/settings.py` (line ~82)
-- **Change:** Replace `step=0.01` (already correct) — verify current value. If the issue is that `+`/`-` goes by 1.0, ensure `step=0.01` is set on the `st.number_input` for RX. Actually, re-read: the current code already has `step=0.01`. The real issue per analise-visual.md §2.5 is decimal sensitivity. The fix: set `step=0.50` for RX to make increments meaningful (R$0.50 instead of R$0.01).
+- **File:** `src/ui/settings.py` (line ~66, inside `_render_settings_form`)
+- **Change:** The current `st.number_input` for RX uses `step=0.01`, which makes the `+`/`-` buttons change by R$0.01 — too fine for a monetary value. Change to `step=0.50` so increments are meaningful (R$0.50 at a time).
 - **Acceptance:** RX +/- buttons change by R$0.50 increments.
 - **Ref:** analise-visual.md §2.5
 
 ### Task 0.3 — Hide Deploy button and Streamlit Cloud branding
-- **File:** `.streamlit/config.toml`
-- **Change:** Add `[browser]` section if not present, include:
-  ```toml
-  [browser]
-  gatherUsageStats = false
-  ```
-  And add to `app.py` (within `st.set_page_config` or right after):
-  ```python
-  st.set_page_config(
-      page_title="radtracker",
-      page_icon=":material/monitor_heart:",  # or keep medical icon
-      layout="wide",
-      initial_sidebar_state="auto",
-  )
-  ```
-  The Deploy button is part of Streamlit Cloud — it appears when the app is detected as deployable. To suppress it, ensure `.streamlit/config.toml` has `[server] headless = true` (already present). If still visible, add `[server] enableStaticServing = false`. The hamburger menu can be hidden with the theme — ensure it doesn't obscure the Deploy button.
-- **Note:** Streamlit deliberately shows Deploy on cloud. If running locally, it shouldn't appear. If on Streamlit Cloud, it's expected. Mark this as **verified fixed** if local; **won't fix** if on cloud.
-- **Acceptance:** No Deploy button visible on local runs.
+- **File:** `.streamlit/config.toml` (verification only)
+- **Status:** Already complete. The current `config.toml` already contains `[browser] gatherUsageStats = false` and `[server] headless = true`. No additional changes can hide the Deploy button on Streamlit Cloud (it is a platform feature).
+- **Acceptance:** Verify existing config is in place; accept Deploy button on Cloud as expected.
 - **Ref:** analise-visual.md §2.2
 
-### Task 0.4 — Remove st.divider() from sidebar
-- **File:** `src/ui/sidebar.py` (line ~71)
-- **Change:** Replace `st.divider()` with `st.space("small")` or simply remove it — Streamlit's default spacing between the button and caption is sufficient.
-- **Acceptance:** Sidebar footer looks cleaner without heavy divider line.
+### Task 0.4 — Remove all st.divider() calls
+- **Files:** `src/ui/sidebar.py` (line ~58), `src/ui/settings.py` (line ~43)
+- **Change:** Remove both `st.divider()` calls. The sidebar's divider separates the save button from the version caption — default spacing is enough. The settings divider separates the form from the danger zone — the section headers already provide enough visual separation.
+- **Acceptance:** No heavy divider lines anywhere in the app.
 - **Ref:** improving-streamlit-design skill ("Dividers look heavy")
 
 ---
@@ -144,11 +130,12 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 ### Task 2.1 — Restructure sidebar (cleaner, professional)
 - **File:** `src/ui/sidebar.py`
 - **Change:**
-  1. Replace `st.title("📊 radtracker")` with clean `st.logo()` for branding (if a logo exists) or keep minimal.
+  1. Replace `st.title("📊 radtracker")` with a clean `st.markdown("**radtracker**")` (no logo asset exists in the repo, so `st.logo()` is not applicable without creating one first).
   2. Replace `st.markdown("Olá, **Galvani** 👋")` with `st.caption("Olá, Galvani")` — cleaner, less shouty.
-  3. Update `st.date_input("📅 Data", ...)` → `st.date_input("Data", ...)` using Material icon via `label` parameter or omit icon in label. Actually: date_input doesn't support icon parameter natively, so use clean label: `st.date_input("Data", ...)`.
+  3. Rename `st.date_input("📅 Data", ...)` → `st.date_input("Data", ...)` — the label itself is the Portuguese instruction. Date input doesn't support a native `icon` parameter.
   4. Replace `st.button("💾 Salvar produção", ...)` → `st.button("Salvar produção", icon=":material/save:", ...)` using native `icon` param.
-  5. Add a loading spinner simulation on save: use `st.session_state` flag to show spinner while saving.
+  5. Add a loading spinner on save (see Task 3.3 for full implementation).
+- **Note:** The emoji removals in this task overlap with the global Phase 3 Task 3.1. This task handles the sidebar specifically; Task 3.1 will sweep the remaining files.
 - **Acceptance:** Sidebar is minimal, professional, no emojis, all Material icons.
 - **Ref:** improving-streamlit-design skill (icons over emojis), using-streamlit-layouts skill (sidebar content guidelines)
 
@@ -176,24 +163,28 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 - **Acceptance:** All 4 KPI cards have equal height regardless of content length.
 - **Ref:** streamlit_pro_tips.md Dica 5
 
-### Task 2.4 — Add vertical_alignment to center content in tall cards
+### Task 2.4 — Center KPI content vertically inside bordered cards
 - **File:** `src/ui/today.py`, `src/ui/month.py`
-- **Change:** Add `vertical_alignment="center"` to KPI containers when card height exceeds content.
-- **Acceptance:** Content is vertically centered in metric cards.
-- **Ref:** streamlit_pro_tips.md Dica 6
+- **Change:** Use `col.container(border=True, height="stretch", vertical_alignment="center")` when wrapping each `st.metric`. The `vertical_alignment` parameter IS valid on the container returned by a column object per `streamlit_pro_tips.md` Dica 6 and the documented API.
+  ```python
+  k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
+  with k1.container(border=True, height="stretch", vertical_alignment="center"):
+      st.metric(label="Faturamento hoje", ...)
+  ```
+- **Acceptance:** Content is vertically centered in all KPI metric cards.
+- **Ref:** streamlit_pro_tips.md Dica 5–6
 
-### Task 2.5 — Make donut chart compact (side-by-side with KPIs or reduced)
-- **File:** `src/ui/today.py` (line ~66)
-- **Change:** Reduce donut chart height. Instead of full `width="stretch"`, wrap it in a container with limited height. Option: show donut in a 2-column layout with the sparkline:
+### Task 2.5 — Make donut chart compact (side-by-side with sparkline)
+- **Files:** `src/ui/today.py` (~line 66), `src/charts.py` (`build_modality_donut`)
+- **Change:** Restructure the "Hoje" tab so the donut and sparkline share a 2-column row, with the donut in the left column and the sparkline in the right. This requires moving the sparkline data computation (`add_earnings_column`, loading) earlier in `render_today_tab` so both charts can render together. Also applies Task 4.2 (280 px height reduction) to the donut factory.
   ```python
   col_left, col_right = st.columns(2)
   with col_left:
-      st.plotly_chart(donut, width="stretch")
+      st.plotly_chart(donut, use_container_width=True)
   with col_right:
-      st.plotly_chart(sparkline, width="stretch")
+      st.plotly_chart(sparkline, use_container_width=True)
   ```
-  Alternatively, reduce donut to 300px height via chart config.
-- **Acceptance:** Donut doesn't dominate the "Hoje" tab; KPIs are the primary visual element.
+- **Acceptance:** Donut no longer dominates the tab; it shares equal space with the sparkline below the KPI row.
 - **Ref:** analise-visual.md §2.1
 
 ### Task 2.6 — Improve sidebar responsiveness
@@ -251,34 +242,47 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 
 ### Task 3.3 — Improve Save button feedback with loading state
 - **File:** `src/ui/sidebar.py`
-- **Change:** Use `on_click` callback pattern to show spinner/loading state:
-  1. Add `st.session_state.saving = True` in the callback
-  2. Show spinner wrapper around the save logic
-  3. Set `saving = False` on completion
-  This requires restructuring the button to use `st.form` or `on_click` + `st.fragment` for partial rerun.
-  **Better approach:** Wrap the entire sidebar form in `st.form()` so Streamlit handles the submit lifecycle natively.
+- **Change:** Wrap the save action in a lightweight loading indicator using session state and a spinner, **without converting the sidebar to a full `st.form`**. Use the native `icon` parameter for the Material icon (not Markdown in the label).
+  > ⚠️ **BLOCKER WARNING:** `st.form` suppresses widget-driven reruns. Inside a form, changing the date picker would **not** update the default values of the modality inputs (`rm`, `tc`, `rx`) below it, because `load_daily(conn, date_str)` is computed at render time and forms only rerun on submit. This causes data to be saved for the wrong date. Keep the date picker and modality inputs outside any form.
+
+  Correct approach: keep the imperative save button and use a spinner wrapper:
   ```python
-  with st.sidebar:
-      with st.form("daily_entry"):
-          # ... inputs ...
-          submitted = st.form_submit_button("Salvar produção", icon=":material/save:", use_container_width=True)
-          if submitted:
-              # save logic
-              st.toast(...)
-              st.rerun()
+  if st.button("Salvar produção", icon=":material/save:", type="primary", use_container_width=True):
+      with st.spinner("Salvando..."):
+          upsert_daily(conn, date_str, rm, tc, rx)
+      st.session_state.pop("historical_cache", None)
+      formatted = selected_date.strftime("%d/%m")
+      action = "atualizada" if existing else "salva"
+      st.toast(f"Produção de {formatted} {action}!", icon=":material/check_circle:")
+      st.rerun()
   ```
-- **Acceptance:** Button shows loading state during save; native form boundary prevents premature reruns.
+  If needed, you can also gate double-clicks with `st.session_state` flags, but `st.spinner` already gives adequate feedback.
+- **Acceptance:** Button click shows a spinner while saving; date-dependent pre-fill continues to work correctly.
 - **Ref:** analise-visual.md §2.6, streamlit_pro_tips.md Dica 9
 
 ### Task 3.4 — Add skeleton loading states for historical data
 - **File:** `src/ui/analysis.py`
-- **Change:** While `compute_historical_stats` runs (it shows a spinner), also render skeleton placeholders for the charts section using `streamlit_extras.skeleton`:
+- **Change:** Render skeleton placeholders **before** running the expensive computation, then replace them with actual charts once data loads:
   ```python
   from streamlit_extras.skeleton import skeleton
-  skeleton()
+
+  # Step 1: Show skeleton placeholders while computing
+  sk1, sk2 = st.columns(2)
+  with sk1:
+      skeleton(height=280)
+  with sk2:
+      skeleton(height=280)
+  skeleton(height=280)  # full-width placeholder
+
+  # Step 2: Compute data
+  with st.spinner("Analisando dados históricos..."):
+      stats = compute_historical_stats(...)
+
+  # Step 3: Clear skeletons (rerun or empty replacement)
+  ... render actual charts ...
   ```
-  This gives a polished loading experience instead of a blank spinner.
-- **Acceptance:** Loading state shows animated skeleton cards.
+  `skeleton()` requires a `height` parameter per the `streamlit_extras_guide.md`.
+- **Acceptance:** Loading state shows animated skeleton cards before charts render.
 - **Ref:** streamlit_extras_guide.md §5.1 (skeleton)
 
 ### Task 3.5 — Improve AI interaction UX
@@ -294,11 +298,14 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 ### Task 3.6 — Improve empty states across tabs
 - **File:** `src/ui/today.py`, `src/ui/month.py`, `src/ui/analysis.py`
 - **Change:**
-  1. Today empty state: Already good — keep the illustration card. Replace emoji 📋 with `:material/content_paste:` at large size.
+  1. Today empty state: Remove the `unsafe_allow_html=True` + inline CSS `<div style="text-align:center;font-size:64px;">📋</div>`. Replace with `st.container(horizontal_alignment="center")` containing `st.markdown(":material/content_paste:", text_alignment="center")`. Note: the container's `horizontal_alignment` centers the container block, while `text_alignment` on the markdown centers the icon text within it — both are needed. The icon will render at default markdown size (~16 px) since the 64 px CSS is removed.
   2. Month empty state: Replace `st.info(...)` with a proper empty-state card matching the Today pattern (centered, bordered container, guidance text).
   3. Analysis empty state: Replace `st.info(...)` with a proper empty-state card.
-- **Acceptance:** All empty states are consistent bordered cards with Material icons.
-- **Ref:** streamlit_pro_tips.md Dica 14, improving-streamlit-design skill
+  3. Fix existing Title Case labels:
+     - `st.subheader("⚠️ Zona de Perigo")` → `"Zona de perigo"` (in `src/ui/settings.py`)
+     - `st.subheader("Meta Mensal")` → `"Meta mensal"` (in `src/ui/settings.py`)
+- **Acceptance:** All empty states are consistent bordered cards with Material icons and zero custom CSS/unsafe HTML. No `st.info()` for non-critical messages.
+- **Ref:** streamlit_pro_tips.md Dica 14, improving-streamlit-design skill, creating-streamlit-themes skill ("No custom CSS unless explicitly requested")
 
 ### Task 3.7 — Use st.badge for status indicators where applicable
 - **File:** `src/ui/today.py` (in KPI row)
@@ -363,7 +370,7 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 - **Ref:** analise-visual.md §1 (consistency)
 
 ### Task 4.5 — Add dark mode chart color adaptation
-- **File:** Potentially `src/chart_colors.py` or chart functions
+- **File:** `src/chart_colors.py` or chart functions
 - **Change:** Use `st.context.theme.base` to detect dark mode and swap colors:
   ```python
   if st.context.theme.base == "dark":
@@ -374,6 +381,24 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
   This ensures charts remain readable on dark background.
 - **Acceptance:** Charts are legible in both light and dark themes.
 - **Ref:** creating-streamlit-themes skill on st.context
+
+### Task 4.6 — Fix hardcoded annotation colors for dark mode legibility
+- **File:** `src/charts.py` (`build_progress_gauge`, ~line 147)
+- **Change:** The annotation text in the progress gauge hardcodes `font=dict(size=16, color="#0F172A")` — near-black. On the dark theme (`backgroundColor: #101010`), this is unreadable. Replace with a theme-aware value:
+  ```python
+  text_color = "#E5E7EB" if st.context.theme.base == "dark" else "#0F172A"
+  ```
+  Apply the same branching to any other chart annotation, `add_hline` label, or `add_vline` that hardcodes a text/line color incompatible with dark backgrounds.
+- **Acceptance:** Progress gauge percentage and vertical marker are readable in both themes.
+- **Ref:** creating-streamlit-themes skill ("Detecting current theme"); second-round reviewer finding #6
+
+### Task 4.7 — Remove dead code and data assumptions
+- **Files:** `src/ui/month.py`, `src/charts_analysis.py`
+- **Change:**
+  1. Remove unused function `_safe()` in `src/ui/month.py` (lines 94–95). It is never called.
+  2. Replace hardcoded year `"Faturamento por Mês — 2026"` in `build_ytd_earnings_chart` (near line ~190 of `src/charts_analysis.py`) with the actual year from `year_month[:4]`.
+- **Acceptance:** No dead code; chart titles show the correct year.
+- **Ref:** KISS principle; second-round reviewer finding #8
 
 ---
 
@@ -399,8 +424,9 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
   ```python
   from streamlit_extras.star_rating import star_rating
   stars = min(5, int(pct_goal / 20))
-  star_rating(stars=stars, max_stars=5, key="monthly_rating")
+  star_rating(stars)
   ```
+  Note: the guide documents `star_rating(value)` with a single positional argument, not `stars=`/`max_stars=`/`key=` kwargs. Verify the actual signature before implementing.
 - **Acceptance:** Visual 5-star rating reflects monthly performance.
 - **Ref:** streamlit_extras_guide.md §5.2
 
@@ -414,17 +440,8 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 - **Acceptance:** Raw data is accessible but hidden by default.
 - **Ref:** streamlit_extras_guide.md §5.2
 
-### Task 5.4 — Add floating button for quick data entry on mobile
-- **File:** `app.py`
-- **Change:** On mobile viewports, add a floating "+" button that opens a dialog for quick data entry:
-  ```python
-  from streamlit_extras.floating_button import floating_button
-  if floating_button("+", icon=":material/add:"):
-      show_quick_entry_dialog()
-  ```
-  Or more practically, just ensure the sidebar is accessible and collapsible.
-- **Acceptance:** Easy data entry access on mobile.
-- **Ref:** streamlit_extras_guide.md §5.2
+### Task 5.4 — (REMOVED — replaced by Task 2.6)
+- **Rationale:** Detecting mobile viewports in Streamlit requires custom JavaScript or CSS, which violates the skill's theming rules. The sidebar auto-collapse from Task 2.6 (`initial_sidebar_state="auto"`) already provides adequate mobile access. Drop this task.
 
 ### Task 5.5 — Local persistence for preferences
 - **File:** New utility module (optional)
@@ -437,8 +454,8 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 - **Acceptance:** User returns to the same tab they left on.
 - **Ref:** streamlit_extras_guide.md §5.5
 
-### Task 5.6 — Add app version badge to footer
-- **File:** `app.py` or new footer component
+### Task 5.6 — Add app version footer (optional)
+- **File:** `app.py`
 - **Change:** After the tabs, add a subtle footer:
   ```python
   st.space("large")
@@ -446,12 +463,12 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
       _, col_center, _ = st.columns([1, 2, 1])
       with col_center:
           st.caption(
-              "radtracker v1.1 · Feito com :material/favorite: para radiologistas · "
-              "[Sugerir melhoria](https://github.com/user/radtracker/issues)"
+              "radtracker v1.1 · Feito com :material/favorite: para radiologistas"
           )
   ```
-- **Acceptance:** Subtle footer at the bottom of every page.
-- **Ref:** DESIGN.md footer pattern, improving-streamlit-design skill (caption over info)
+  This is purely decorative — Cal.com uses a dark footer to close long marketing pages, but a dashboard doesn't need this pattern. Marked optional.
+- **Acceptance:** Subtle footer at the bottom (if implemented).
+- **Ref:** DESIGN.md footer pattern
 
 ---
 
@@ -461,14 +478,16 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 |------|-------|---------|
 | `app.py` | 0, 2, 3, 5 | `page_icon` → Material icon, `st.set_page_config` updates, footer |
 | `.streamlit/config.toml` | 0, 1, 4 | Full theme overhaul, dark mode, fonts, colors, hide deploy |
-| `src/ui/sidebar.py` | 0, 2, 3 | Translate label, remove divider, Material icons, `st.form` pattern |
-| `src/ui/today.py` | 2, 3, 4 | Bordered KPI containers, stretch heights, donut resize, Material icons |
+| `src/ui/sidebar.py` | 0, 2, 3 | Translate label, remove divider, Material icons, save spinner |
+| `src/ui/today.py` | 2, 3, 4 | Bordered KPI containers, stretch heights, donut resize, Material icons, remove unsafe_allow_html |
 | `src/ui/month.py` | 2, 3, 5 | Card containers, empty state card, star rating, celebration |
 | `src/ui/analysis.py` | 3, 5 | AI UX improvements, Material icons, skeleton loading |
-| `src/ui/settings.py` | 0 | RX step fix, Material icons |
+| `src/ui/settings.py` | 0 | RX step fix, remove st.divider(), Material icons |
 | `src/chart_colors.py` | 4 | Progress gauge gradient (teal monochrome) |
 | `src/charts.py` | 4 | Donut height reduction, tooltip Portuguese check |
 | `src/charts_analysis.py` | 4 | Dark mode adaptation, tooltip Portuguese check |
+| `requirements.txt` | 3, 5 | Add `streamlit-extras>=1.5.0` |
+
 
 ## New Files
 
@@ -496,15 +515,21 @@ Phase 5 (UX enhancements — can be done anytime after Phase 1)
 
 1. **Cal Sans substitute fidelity** — Manrope at 600 weight is the best free geometric display font, but it doesn't perfectly match Cal Sans's condensed, precise character. Risk: Medium. Mitigation: Accept Manrope; it's close enough for a non-Cal.com product.
 
-2. **Dark mode chart legibility** — Plotly charts with `rgba(0,0,0,0)` backgrounds inherit the page background but text annotations may need explicit color adjustment. Risk: Medium. Mitigation: Use `st.context.theme.base` to branch chart styling.
+2. **Dark mode chart legibility** — Plotly charts with `rgba(0,0,0,0)` backgrounds inherit the page background but text annotations may need explicit color adjustment. Risk: Medium. Mitigation: Use `st.context.theme.base` to branch chart styling, and replace hardcoded annotation colors (e.g., `#0F172A` in `build_progress_gauge`) with theme-aware values.
 
-3. **st.form migration in sidebar** — Converting the sidebar to a form changes the interaction model (all inputs reset on submit unless managed). Risk: Low. Mitigation: form is the idiomatic pattern and actually improves UX.
+3. **st.form migration in sidebar — BLOCKER** — Wrapping the sidebar in `st.form` breaks date-dependent pre-fill because widgets inside a form do not trigger reruns on value changes. If the user picks a new date, the modality inputs (`rm`, `tc`, `rx`) below it will retain stale defaults until submit, causing data to be saved to the wrong date. Risk: High. Mitigation: Do **not** wrap the date picker + modality inputs in a form. Keep the current imperative save button and use `st.spinner()` for loading feedback.
 
-4. **streamlit-extras volatility** — As noted in the guide, extras can be deprecated when core absorbs features. Risk: Low (for polish extras). Mitigation: Only adopt extras from Group B ("gain from core") or Group C ("polish"): `skeleton`, `let_it_rain`, `star_rating`, `stoggle`. Avoid Group A (deprecated).
+4. **streamlit-extras not in dependencies** — Tasks 3.4, 5.1–5.5 all import `streamlit-extras`, but `requirements.txt` does not list it. Risk: Medium. Mitigation: Add `streamlit-extras>=1.5.0` to `requirements.txt` before implementing Phase 3/5.
 
-5. **Deploy button on Streamlit Cloud** — If the user deploys to Streamlit Cloud, the Deploy button is a platform feature and cannot be hidden. Risk: Low. Mitigation: Document this as expected; it's only an issue on local runs.
+5. **streamlit-extras volatility** — As noted in the guide, extras can be deprecated when core absorbs features. Risk: Low (for polish extras). Mitigation: Only adopt extras from Group B ("gain from core") or Group C ("polish"): `skeleton`, `let_it_rain`, `star_rating`, `stoggle`. Avoid Group A (deprecated).
 
-6. **Config.toml font loading delay** — Google Fonts load via CDN; first cold load may show fallback fonts briefly. Risk: Low. Mitigation: The fallback stack (`Inter` → sans-serif) is acceptable for the split second before fonts load.
+6. **Deploy button on Streamlit Cloud** — If the user deploys to Streamlit Cloud, the Deploy button is a platform feature and cannot be hidden. Risk: Low. Mitigation: Document this as expected; it's only an issue on local runs. The current config already has the relevant flags.
+
+7. **Config.toml font loading delay** — Google Fonts load via CDN; first cold load may show fallback fonts briefly. Risk: Low. Mitigation: The fallback stack (`Inter` → sans-serif) is acceptable for the split second before fonts load.
+
+8. **Missing source document for verification** — `analise-visual.md` is cited as a source in 10+ tasks but is not present in the repo. Risk: Low (only affects review confidence). Mitigation: Regenerate or locate the file before implementation if exact section references matter.
+
+9. **Test regressions from chart color changes** — Task 4.1 preserves existing key names (`progress_danger`, `progress_warning`, etc.) and only changes hex values. The existing test in `tests/test_chart_colors.py` only asserts key existence and that values start with `#` — it will not break. Risk: None after verification.
 
 ## Priority Summary
 
@@ -512,8 +537,8 @@ Phase 5 (UX enhancements — can be done anytime after Phase 1)
 |----------|-------|-------|
 | P0 (critical) | 4 | 0.1–0.4: Bug fixes and localization |
 | P1 (high) | 13 | 1.1–1.4, 2.1–2.6, 3.1–3.3: Theme, layout, icons |
-| P2 (medium) | 7 | 3.4–3.7, 4.1–4.5: Polish, charts |
-| P3 (nice-to-have) | 5 | 5.1–5.6: Extras, celebrations |
+| P2 (medium) | 11 | 3.4–3.7, 4.1–4.7: Polish, charts, dead-code cleanup |
+| P3 (nice-to-have) | 4 | 5.1–5.6 (with 5.4 removed): Extras, celebrations |
 
 ---
 
@@ -524,7 +549,7 @@ Per official Streamlit skills:
 - ❌ No deprecated streamlit-extras: `add_vertical_space`, `app_logo`, `colored_header`, `row`, `stylable_container`, `tags`
 - ❌ No `st.cache_resource` for data (use `st.cache_data`)
 - ❌ No more than 4 columns in a single row
-- ❌ No `st.divider()` (use natural spacing or `st.space()`)
+- ❌ No `st.divider()` — remove all occurrences (use natural spacing or `st.space()`)
 - ❌ No emojis as functional icons (use Material icons); emojis only for celebrations
 - ❌ No Title Case labels (use sentence casing)
 - ❌ No `st.info()` for simple metadata (use `st.caption()`)
