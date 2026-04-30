@@ -14,7 +14,7 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 | **2** | Layout & responsiveness | 2.1–2.6 (6) | ⬜ Pending | — | — |
 | **3** | Visual polish & configurability | 3.1–3.11 (11) | ⬜ Pending | — | — |
 | **4** | Chart & data refinements | 4.1–4.7 (7) | ⬜ Pending | — | — |
-| **5** | UX enhancements | 5.1–5.6 (4) | ⬜ Pending | — | — |
+| **5** | UX enhancements | 5.1–5.5 (3) | ⬜ Pending | — | — |
 
 **Workflow por phase:** `worker (1×) → reviewer (1+×) → ✅ Done`
 
@@ -65,7 +65,7 @@ Phase 5 (UX enhancements — can be done anytime after Phase 1)
 | P0 (critical) | 4 | 0.1–0.4: Bug fixes and localization |
 | P1 (high) | 13 | 1.1–1.4, 2.1–2.6, 3.1–3.3: Theme, layout, icons |
 | P2 (medium) | 15 | 3.4–3.11, 4.1–4.7: Polish, configurability, charts, docs, dead-code |
-| P3 (nice-to-have) | 4 | 5.1–5.6 (with 5.4 removed): Extras, celebrations |
+| P3 (nice-to-have) | 3 | 5.1–5.5: Extras, celebrations |
 
 ## Quick Reference: What NOT to Do
 
@@ -194,7 +194,7 @@ Per official Streamlit skills:
   chartCategoricalColors = ["#60A5FA", "#F59E0B", "#22D3EE", "#2DD4BF", "#F8F9FA", "#9CA3AF", "#6B7280"]
   ```
   Users can now toggle via ☰ → Settings → Theme → Dark.
-- **Acceptance:** Toggle works; dark theme uses dark surface (#101010, matching Cal.com footer).
+- **Acceptance:** Toggle works; dark theme uses dark surface (#101010).
 - **Ref:** creating-streamlit-themes section on light/dark modes
 
 ---
@@ -573,29 +573,13 @@ Per official Streamlit skills:
 - **Acceptance:** User returns to the same tab they left on.
 - **Ref:** streamlit_extras_guide.md §5.5
 
-### Task 5.6 — Add app version footer (optional)
-- **File:** `app.py`
-- **Change:** After the tabs, add a subtle footer:
-  ```python
-  st.space("large")
-  with st.container():
-      _, col_center, _ = st.columns([1, 2, 1])
-      with col_center:
-          st.caption(
-              "radtracker v1.1 · Feito com :material/favorite: para radiologistas"
-          )
-  ```
-  This is purely decorative — Cal.com uses a dark footer to close long marketing pages, but a dashboard doesn't need this pattern. Marked optional.
-- **Acceptance:** Subtle footer at the bottom (if implemented).
-- **Ref:** DESIGN.md footer pattern
-
 ---
 
 ## Files to Modify
 
 | File | Phase | Changes |
 |------|-------|---------|
-| `app.py` | 0, 2, 3, 5 | `page_icon` → Material icon, `st.set_page_config` updates, footer, remove dotenv |
+| `app.py` | 0, 2, 3 | `page_icon` → Material icon, `st.set_page_config` updates, remove dotenv |
 | `.streamlit/config.toml` | 0, 1, 4 | Full theme overhaul, dark mode, fonts, colors, hide deploy |
 | `src/ui/sidebar.py` | 0, 2, 3 | Translate label, remove divider, Material icons, save spinner, use user_name from session_state |
 | `src/ui/today.py` | 2, 3, 4 | Bordered KPI containers, stretch heights, donut resize, Material icons, remove unsafe_allow_html |
@@ -616,5 +600,5 @@ Per official Streamlit skills:
 
 | File | Phase | Purpose |
 |------|-------|---------|
-| None strictly required | — | All changes fit within existing file structure. Optional: `src/ui/footer.py` if footer becomes reusable. |
+| None strictly required | — | All changes fit within existing file structure. |
 
