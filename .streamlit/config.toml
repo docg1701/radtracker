@@ -4,15 +4,51 @@
 
 [theme]
 base = "light"
-primaryColor = "#0D9488"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F1F5F9"
-textColor = "#0F172A"
-font = "sans serif"
+primaryColor = "#111111"          # near-black CTA (Cal.com signature)
+backgroundColor = "#FFFFFF"       # white canvas
+secondaryBackgroundColor = "#F8F9FA"  # surface-soft
+textColor = "#0F172A"             # ink color
+linkColor = "#3B82F6"             # brand accent (sparing use)
+borderColor = "#E5E7EB"           # hairline
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"                # buttons, inputs (rounded.md)
+buttonRadius = "8px"
 
-# Dark mode: Streamlit auto-inverts light-theme colors when the user selects
-# ☰ → Settings → Theme → Dark. All charts use transparent backgrounds
-# (rgba(0,0,0,0)) so they inherit the theme correctly.
+# Semantic colors
+redColor = "#EF4444"
+greenColor = "#10B981"
+blueColor = "#3B82F6"
+orangeColor = "#F59E0B"
+violetColor = "#8B5CF6"
+grayColor = "#6B7280"
+
+# Chart categorical colors (modality colors)
+chartCategoricalColors = ["#2563EB", "#D97706", "#0891B2", "#0D9488", "#111111", "#6B7280", "#94A3B8"]
+
+# Dataframe styling
+dataframeBorderColor = "#E5E7EB"
+dataframeHeaderBackgroundColor = "#F8F9FA"
+
+# Body: Inter (matches Cal.com's body type)
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+# Headings: Manrope (geometric, close to Cal Sans substitute)
+headingFont = "Manrope:https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [600, 600, 600, 500, 500, 500]
+linkUnderline = false
+
+[theme.dark]
+primaryColor = "#F8F9FA"
+backgroundColor = "#101010"
+secondaryBackgroundColor = "#1A1A1A"
+textColor = "#E5E7EB"
+borderColor = "#2A2A2A"
+linkColor = "#60A5FA"
+baseRadius = "8px"
+buttonRadius = "8px"
 
 [browser]
 gatherUsageStats = false
