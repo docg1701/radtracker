@@ -15,10 +15,10 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     Generate Portuguese-language insights from historical statistics.
 
     Uses 4 tone levels based on pct_goal:
-        ≥75%  → success   (🟢 celebratory)
-        50-75% → on-track (🟡 encouraging)
-        25-50% → warning  (🟠 concerned, actionable)
-        <25%   → danger   (🔴 urgent)
+        >=75%  -> success
+        50-75% -> on-track
+        25-50% -> warning
+        <25%   -> danger
 
     Also checks WoW trend, modality mix shifts, and consecutive below-target days.
     Addresses the user as "Galvani".
@@ -36,8 +36,8 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     if current is None:
         return (
             "Ainda não há dados suficientes para gerar insights. "
-            "Registre sua produção diária na aba **📊 Hoje** e volte aqui "
-            "quando tiver pelo menos alguns dias de trabalho."
+            "Registre sua produção diária na aba **:material/today: Hoje** "
+            "e volte aqui quando tiver pelo menos alguns dias de trabalho."
         )
 
     pct = current["pct_goal"]
@@ -60,7 +60,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     # ── Main tone-based opening ──
     if tone == "success":
         lines.append(
-            f"🟢 **Excelente, Galvani!** Você já alcançou **{pct:.0f}%** "
+            f"**Excelente, Galvani!** Você já alcançou **{pct:.0f}%** "
             f"da meta mensal com **{fmt_brl(mtd)}** faturados em "
             f"**{days_worked}** de {total_days} dias úteis. "
             f"O ritmo está forte — continue assim!"
@@ -68,7 +68,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     elif tone == "on_track":
         remaining = max(0.0, current.get("daily_target_needed", 0))
         lines.append(
-            f"🟡 **No caminho certo, Galvani.** Você está com **{pct:.0f}%** "
+            f"**No caminho certo, Galvani.** Você está com **{pct:.0f}%** "
             f"da meta ({fmt_brl(mtd)} em {days_worked} dias). "
             f"Para fechar o mês, precisa de cerca de **{fmt_brl(remaining)}/dia** "
             f"nos próximos {current['remaining_calendar_days']} dias."
@@ -76,7 +76,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     elif tone == "warning":
         missing = max(0.0, current.get("daily_target_needed", 0))
         lines.append(
-            f"🟠 **Atenção, Galvani.** Você está em **{pct:.0f}%** da meta "
+            f"**Atenção, Galvani.** Você está em **{pct:.0f}%** da meta "
             f"({fmt_brl(mtd)} em {days_worked} dias). "
             f"O gap está em **{fmt_brl(missing)}/dia** — "
             f"vale revisar o volume de exames nos próximos "
@@ -84,7 +84,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
         )
     else:
         lines.append(
-            f"🔴 **Alerta, Galvani.** Apenas **{pct:.0f}%** da meta foi atingido "
+            f"**Alerta, Galvani.** Apenas **{pct:.0f}%** da meta foi atingido "
             f"({fmt_brl(mtd)} em {days_worked} dias). "
             f"Considere rever a meta mensal ou buscar fontes adicionais "
             f"de exames para os próximos {current['remaining_calendar_days']} dias."
@@ -93,7 +93,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     # ── WoW trend ──
     wow = stats.get("wow_change_pct")
     if wow is not None:
-        direction = "📈" if wow > 0 else "📉" if wow < 0 else "➡️"
+        direction = "(alta)" if wow > 0 else "(queda)" if wow < 0 else "(estável)"
         lines.append(
             f"\n{direction} **Semana a semana:** "
             f"{'crescimento' if wow > 0 else 'queda' if wow < 0 else 'estável'}"
@@ -103,7 +103,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     # ── MoM trend ──
     mom = stats.get("mom_change_pct")
     if mom is not None:
-        direction = "📈" if mom > 0 else "📉" if mom < 0 else "➡️"
+        direction = "(alta)" if mom > 0 else "(queda)" if mom < 0 else "(estável)"
         lines.append(
             f"\n{direction} **Mês a mês:** "
             f"{'crescimento' if mom > 0 else 'queda' if mom < 0 else 'estável'}"
@@ -138,7 +138,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
                     )
             if shifts:
                 lines.append(
-                    "\n🔍 **Mudança no mix de modalidades:** "
+                    "\n**Mudança no mix de modalidades:** "
                     + "; ".join(shifts)
                     + "."
                 )
@@ -147,7 +147,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     below = stats.get("consecutive_below_target", 0)
     if below >= 3:
         lines.append(
-            f"\n⚠️ Você está há **{below} dias consecutivos** "
+            f"\n:material/warning: Você está há **{below} dias consecutivos** "
             f"abaixo da meta diária. Pode ser um bom momento para "
             f"revisar a carga de trabalho ou ajustar a meta."
         )
@@ -155,14 +155,14 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     # ── Actionable suggestions ──
     if tone in ("warning", "danger"):
         lines.append(
-            "\n💡 **Sugestão:** Avalie se há possibilidade de aumentar "
+            "\n**Sugestão:** Avalie se há possibilidade de aumentar "
             "o volume de exames de **RM** (maior remuneração) ou revisar "
             "a meta para refletir melhor a demanda atual."
         )
 
     if tone == "success":
         lines.append(
-            "\n💡 **Sugestão:** O momento é de consolidar o bom ritmo. "
+            "\n**Sugestão:** O momento é de consolidar o bom ritmo. "
             "Considere documentar o que está funcionando bem este mês "
             "para replicar nos próximos."
         )

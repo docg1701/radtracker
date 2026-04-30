@@ -7,11 +7,11 @@ Renders the "Análise & Insights" tab per Sprint 7 plan:
   - AI result in a separate expander
 """
 
-import os
 from datetime import date
 from typing import Any
 
 import streamlit as st
+from streamlit_extras.skeleton import skeleton
 
 from src.calculations import compute_historical_stats
 from src.charts_analysis import (
@@ -50,22 +50,29 @@ def render_analysis_tab(conn: Any) -> None:
     # Invalidate LLM cache when historical data changes
     if cached is None or cached.get("key") != cache_key:
         st.session_state.pop("llm_insight_text", None)
+
+        # Skeleton placeholders before expensive computation
+        sk1, sk2 = st.columns(2)
+        with sk1:
+            skeleton(height=280)
+        with sk2:
+            skeleton(height=280)
+        skeleton(height=280)
+
         with st.spinner("Analisando dados históricos..."):
             stats = compute_historical_stats(conn, year_month, goal, prices)
         st.session_state.historical_cache = {"key": cache_key, "stats": stats}
+        st.rerun()
     else:
         stats = cached["stats"]
 
     df = stats.get("df")
     if df is None or len(df) == 0:
-        st.info(
-            "Registre pelo menos **1 dia** de produção para ver "
-            "análises históricas. Comece pela aba **📊 Hoje**."
-        )
+        _render_empty_state()
         return
 
     # ── Bloco 1: Insights por regras (expandido por padrão) ──
-    with st.expander("💡 Insights", expanded=True):
+    with st.expander(":material/lightbulb: Insights", expanded=True):
         rule_text = generate_rule_insights(stats)
         _render_insight_body(rule_text, source="rules")
 
@@ -76,7 +83,7 @@ def render_analysis_tab(conn: Any) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader("📈 Médias Móveis")
+        st.subheader(":material/trending_up: Médias móveis")
         current_month_df = df[df["date"].str[:7] == year_month]
         if current_month_df.empty:
             st.info("Nenhum dado no mês atual para médias móveis.")
@@ -85,7 +92,7 @@ def render_analysis_tab(conn: Any) -> None:
             st.plotly_chart(ma_chart, width="stretch")
 
     with col_right:
-        st.subheader("📊 Comparação Semanal")
+        st.subheader(":material/analytics: Comparação semanal")
         weekly = stats.get("weekly_totals_last_4", [])
         if len(weekly) >= 2:
             wow_chart = build_wow_comparison_chart(weekly[-2:], prices)
@@ -98,7 +105,7 @@ def render_analysis_tab(conn: Any) -> None:
             st.plotly_chart(wow_chart, width="stretch")
 
     # ── Full-width: Modality Mix Evolution ──
-    st.subheader("Evolução do Mix de Modalidades")
+    st.subheader(":material/pie_chart: Evolução do mix de modalidades")
     mix_history = stats.get("modality_mix_historical", {})
     if mix_history:
         mix_chart = build_modality_mix_evolution(mix_history)
@@ -107,9 +114,27 @@ def render_analysis_tab(conn: Any) -> None:
         st.info("Dados insuficientes para evolução do mix.")
 
     # ── Full-width: Year-to-Date Earnings ──
-    st.subheader("📊 Faturamento por Mês")
+    st.subheader(":material/bar_chart: Faturamento por mês")
     ytd_chart = build_ytd_earnings_chart(df, year_month, goal, prices)
     st.plotly_chart(ytd_chart, width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Empty state
+# ---------------------------------------------------------------------------
+
+def _render_empty_state() -> None:
+    """Render empty-state card when no historical data exists."""
+    _, col2, _ = st.columns([1, 2, 1])
+    with col2:
+        with st.container(border=True):
+            st.markdown(":material/bar_chart:", text_alignment="center")
+            st.subheader("Nenhum dado histórico")
+            st.markdown(
+                "Registre pelo menos **1 dia** de produção "
+                "na aba **:material/today: Hoje**."
+            )
+            st.caption("As análises históricas aparecerão aqui.")
 
 
 # ---------------------------------------------------------------------------
@@ -123,42 +148,69 @@ def _render_ai_section(stats: dict[str, Any]) -> None:
     Fragment: clicks in this section only rerun this function,
     not the entire page. Session state persists the result across tabs.
     """
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = st.session_state.get("api_key", "")
 
-    # ── Button (disabled if no key) ──
+    # ── No API key configured ──
+    if not api_key:
+        st.caption(
+            "Configure sua chave API na aba "
+            ":material/settings: **Config** para ativar a análise com IA."
+        )
+        st.caption("[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)")
+        st.button(
+            ":material/psychology: Perguntar à IA",
+            type="secondary", disabled=True,
+        )
+        return
+
+    # ── Button ──
+    st.caption(
+        "Exemplos: 'Qual dia foi mais produtivo?', "
+        "'Minha média é consistente?'"
+    )
     st.button(
-        "🧠 Perguntar à IA",
+        ":material/psychology: Perguntar à IA",
         type="secondary",
-        disabled=not bool(api_key),
         on_click=lambda: st.session_state.update(llm_insight_pending=True),
-        help="API key não configurada" if not api_key else None,
     )
 
-    # ── Guard: no double calls ──
+    # ── Guard: show in-flight status ──
     if st.session_state.get("llm_insight_in_flight"):
-        st.info("⏳ Aguarde — a análise está sendo gerada...")
+        with st.status("Gerando análise com IA...", expanded=True):
+            st.write("Conectando ao OpenRouter...")
+            st.write("Aguardando resposta do modelo...")
+        if st.button("Cancelar", type="secondary"):
+            st.session_state.llm_insight_cancelled = True
+            st.rerun()
+        if st.session_state.get("llm_insight_cancelled"):
+            st.session_state.pop("llm_insight_cancelled", None)
+            st.session_state.pop("llm_insight_in_flight", None)
+            st.session_state.pop("llm_insight_pending", None)
+            st.info("Análise cancelada.")
+            return
         return
 
     if not st.session_state.get("llm_insight_pending"):
         # Show cached result if available
         llm_text = st.session_state.get("llm_insight_text")
         if llm_text:
-            with st.expander("🤖 Análise da IA", expanded=True):
+            with st.expander(":material/smart_toy: Análise da IA", expanded=True):
                 _render_insight_body(llm_text, source="llm")
         return
 
     # ── Execute LLM call ──
     st.session_state.llm_insight_in_flight = True
     try:
-        with st.spinner("🧠 Gerando análise com IA..."):
-            llm = LLMClient(api_key)
+        with st.spinner(":material/psychology: Gerando análise com IA..."):
+            system_prompt = st.session_state.get("llm_prompt")
+            llm = LLMClient(api_key, prompt=system_prompt)
             llm_text = llm.generate(stats, st.session_state.prices)
         if not llm_text:
             llm_text = "(A IA retornou uma resposta vazia.)"
         st.session_state.llm_insight_text = llm_text
         st.session_state.pop("llm_insight_pending", None)
-        st.toast("✅ Análise concluída!")
-        with st.expander("🤖 Análise da IA", expanded=True):
+        st.toast(":material/check_circle: Análise concluída!")
+        with st.expander(":material/smart_toy: Análise da IA", expanded=True):
             _render_insight_body(llm_text, source="llm")
     except (LLMUnavailableError, Exception):
         st.error("Não foi possível gerar a análise. Verifique sua conexão ou chave de API.")
@@ -180,11 +232,11 @@ def _render_insight_body(text: str, source: str = "rules") -> None:
     """
     if source == "llm":
         caption = (
-            "🤖 Gerado por GPT-OSS 120B (OpenRouter) · "
+            ":material/smart_toy: Gerado por GPT-OSS 120B (OpenRouter) · "
             "Análise automática baseada nos seus dados"
         )
     else:
-        caption = "📊 Análise automática baseada nos seus dados"
+        caption = ":material/bar_chart: Análise automática baseada nos seus dados"
 
     st.markdown(md_escape(text))
     st.caption(caption)

@@ -54,11 +54,19 @@ def init_db(conn: Any) -> None:
         updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     """
+    create_settings = """
+    CREATE TABLE IF NOT EXISTS user_settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    """
     os.makedirs("data", exist_ok=True)
     with conn.connect() as db_conn:
         db_conn.execute(sa.text(create_daily))
         db_conn.execute(sa.text(create_prices))
         db_conn.execute(sa.text(create_goals))
+        db_conn.execute(sa.text(create_settings))
         db_conn.commit()
 
 
@@ -153,6 +161,34 @@ def save_goal(conn: Any, year_month: str, goal: float) -> None:
                 updated_at = datetime('now','localtime')
             """),
             {"ym": year_month, "goal": goal},
+        )
+        db_conn.commit()
+
+
+def load_setting(conn: Any, key: str, default: str = "") -> str:
+    """Return a user setting value by key, falling back to default."""
+    df = conn.query(
+        "SELECT value FROM user_settings WHERE key = :key",
+        params={"key": key},
+        ttl=0,
+    )
+    if df.empty:
+        return default
+    return str(df.iloc[0]["value"])
+
+
+def save_setting(conn: Any, key: str, value: str) -> None:
+    """UPSERT a user setting key/value pair."""
+    with conn.connect() as db_conn:
+        db_conn.execute(
+            sa.text("""
+            INSERT INTO user_settings (key, value, updated_at)
+            VALUES (:key, :value, datetime('now','localtime'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now','localtime')
+            """),
+            {"key": key, "value": value},
         )
         db_conn.commit()
 

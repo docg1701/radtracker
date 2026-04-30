@@ -25,7 +25,8 @@ def render_sidebar(conn: Any) -> None:
     with st.sidebar:
         # Header
         st.markdown("**radtracker**")
-        st.caption("Olá, Galvani")
+        user_name = st.session_state.get("user_name", "Galvani")
+        st.caption(f"Olá, {user_name}")
 
         # Date picker
         selected_date = st.date_input(
@@ -54,9 +55,10 @@ def render_sidebar(conn: Any) -> None:
         # Save button
         if st.button(
             "Salvar produção", icon=":material/save:",
-            type="primary", use_container_width=True,
+            type="primary", width="stretch",
         ):
-            upsert_daily(conn, date_str, rm, tc, rx)
+            with st.spinner("Salvando..."):
+                upsert_daily(conn, date_str, rm, tc, rx)
             st.session_state.pop("historical_cache", None)
             formatted = selected_date.strftime("%d/%m")
             if existing:

@@ -39,22 +39,18 @@ def _make_stats(pct_goal: float, mtd: float = 22500.0, days_worked: int = 13,
 class TestTones:
     def test_success_tone_pct_80(self):
         text = generate_rule_insights(_make_stats(pct_goal=80.0))
-        assert "🟢" in text
         assert "Excelente" in text
 
     def test_on_track_tone_pct_60(self):
         text = generate_rule_insights(_make_stats(pct_goal=60.0))
-        assert "🟡" in text
         assert "No caminho certo" in text
 
     def test_warning_tone_pct_40(self):
         text = generate_rule_insights(_make_stats(pct_goal=40.0))
-        assert "🟠" in text
         assert "Atenção" in text
 
     def test_danger_tone_pct_10(self):
         text = generate_rule_insights(_make_stats(pct_goal=10.0))
-        assert "🔴" in text
         assert "Alerta" in text
 
 
@@ -87,12 +83,12 @@ class TestSuggestions:
 class TestWowTrend:
     def test_wow_trend_up(self):
         text = generate_rule_insights(_make_stats(pct_goal=60.0, wow=10.5))
-        assert "📈" in text
+        assert "(alta)" in text
         assert "crescimento" in text
 
     def test_wow_trend_down(self):
         text = generate_rule_insights(_make_stats(pct_goal=60.0, wow=-5.0))
-        assert "📉" in text
+        assert "(queda)" in text
         assert "queda" in text
 
     def test_wow_trend_none(self):
@@ -103,7 +99,7 @@ class TestWowTrend:
 class TestMomTrend:
     def test_mom_trend_up(self):
         text = generate_rule_insights(_make_stats(pct_goal=60.0, mom=15.0))
-        assert "📈" in text
+        assert "(alta)" in text
         assert "crescimento" in text
         assert "Mês a mês" in text
 
@@ -115,7 +111,7 @@ class TestMomTrend:
 class TestConsecutive:
     def test_consecutive_below_trigger(self):
         text = generate_rule_insights(_make_stats(pct_goal=50.0, consecutive=4))
-        assert "⚠️" in text
+        assert ":material/warning:" in text
         assert "dias consecutivos" in text
 
     def test_consecutive_below_no_trigger(self):
@@ -136,7 +132,6 @@ class TestModalityMix:
             },
         )
         text = generate_rule_insights(stats)
-        assert "🔍" in text
         assert "Mudança no mix" in text
 
     def test_modality_mix_no_shift(self):
@@ -159,4 +154,4 @@ class TestEmptyStats:
         stats = {"current_month_stats": None}
         text = generate_rule_insights(stats)
         assert "dados suficientes" in text
-        assert "📊 Hoje" in text
+        assert ":material/today: Hoje" in text

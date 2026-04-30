@@ -197,10 +197,11 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
 class LLMClient:
     """Stateless wrapper for OpenRouter free tier (GPT-OSS 120B)."""
 
-    def __init__(self, api_key: str | None) -> None:
+    def __init__(self, api_key: str | None, prompt: str | None = None) -> None:
         if not api_key:
             raise LLMUnavailableError("API key não configurada")
         self._api_key = api_key
+        self._prompt = prompt or SYSTEM_PROMPT
 
     def generate(self, stats: dict[str, Any], prices: dict[str, float]) -> str:
         """Call GPT-OSS 120B via OpenRouter and return Portuguese insight.
@@ -220,7 +221,7 @@ class LLMClient:
         payload = {
             "model": _MODEL,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self._prompt},
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": 800,

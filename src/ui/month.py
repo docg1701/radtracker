@@ -46,10 +46,16 @@ def render_month_tab(conn: Any) -> None:
 
     # Empty state: no data recorded this month
     if stats["days_worked"] == 0:
-        st.info(
-            "Nenhum dado registrado neste mês. "
-            "Comece registrando sua produção na aba **📊 Hoje**."
-        )
+        _, col2, _ = st.columns([1, 2, 1])
+        with col2:
+            with st.container(border=True):
+                st.markdown(":material/calendar_month:", text_alignment="center")
+                st.subheader("Nenhum dado este mês")
+                st.markdown(
+                    "Comece registrando sua produção "
+                    "na aba **:material/today: Hoje**."
+                )
+                st.caption("Os dados mensais aparecerão aqui.")
         return
 
     # ── KPI Row ──
@@ -66,7 +72,7 @@ def render_month_tab(conn: Any) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader("📈 Faturamento Diário")
+        st.subheader(":material/trending_up: Faturamento diário")
         line_chart = build_monthly_earnings_chart(
             earnings_df, daily_target, year_month
         )
@@ -95,7 +101,7 @@ def _render_kpi_row(
 
     with k1:
         st.metric(
-            label="💰 Faturamento MTD",
+            label=":material/payments: Faturamento MTD",
             value=fmt_brl(stats["mtd_earnings"]),
             delta=md_escape(f"{fmt_brl(stats['projection_month_end'])} projetado"),
             delta_color="off",
@@ -103,7 +109,7 @@ def _render_kpi_row(
 
     with k2:
         st.metric(
-            label="🎯 % da Meta",
+            label=":material/target: % da meta",
             value=f"{stats['pct_goal']:.0f}%",
             delta=md_escape(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
             delta_color="off",
@@ -111,7 +117,7 @@ def _render_kpi_row(
 
     with k3:
         st.metric(
-            label="📅 Dias trabalhados",
+            label=":material/calendar_month: Dias trabalhados",
             value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
             delta=f"{stats['remaining_calendar_days']} restantes",
             delta_color="off",
@@ -121,7 +127,7 @@ def _render_kpi_row(
         daily_avg_str = fmt_brl(stats["daily_avg"])
         target_str = md_escape(fmt_brl(daily_target))
         st.metric(
-            label="📊 Média Diária",
+            label=":material/trending_up: Média diária",
             value=daily_avg_str,
             delta=f"Alvo: {target_str}/dia",
             delta_color="off",
@@ -152,8 +158,9 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     needed = stats["daily_target_needed"]
 
     st.warning(
-        "⚠️ **Atenção ao ritmo**\n\n"
-        f"Galvani, você está atrás do ritmo para bater a meta "
+        ":material/warning: **Atenção ao ritmo**\n\n"
+        f"{st.session_state.get('user_name', 'Galvani')}, "
+        f"você está atrás do ritmo para bater a meta "
         f"de {md_escape(fmt_brl(goal))}.\n\n"
         f"Faltam {md_escape(fmt_brl(missing))} em {remaining} dias — "
         f"você precisa de **{md_escape(fmt_brl(needed))}/dia** daqui pra frente.\n\n"

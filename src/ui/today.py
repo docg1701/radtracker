@@ -55,10 +55,10 @@ def render_today_tab(conn: Any) -> None:
         donut = build_modality_donut(
             stats["rm_count"], stats["tc_count"], stats["rx_count"]
         )
-        st.plotly_chart(donut, use_container_width=True)
+        st.plotly_chart(donut, width="stretch")
     with col_right:
         if spark is not None:
-            st.plotly_chart(spark, use_container_width=True)
+            st.plotly_chart(spark, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -66,15 +66,11 @@ def render_today_tab(conn: Any) -> None:
 # ---------------------------------------------------------------------------
 
 def _render_empty_state() -> None:
-    """Render the friendly empty-state card per DESIGN_SPEC §4.6."""
-    st.markdown("<br>", unsafe_allow_html=True)
+    """Render the friendly empty-state card."""
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         with st.container(border=True):
-            st.markdown(
-                '<div style="text-align:center;font-size:64px;">📋</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(":material/content_paste:", text_alignment="center")
             st.subheader("Nenhum registro ainda")
             st.markdown(
                 "Comece registrando sua produção de hoje "
@@ -105,7 +101,7 @@ def _render_kpi_row(
                 delta_color = "off"
 
             st.metric(
-                label="💰 Faturamento hoje",
+                label=":material/payments: Faturamento hoje",
                 value=fmt_brl(earnings),
                 delta=delta_str,
                 delta_color=delta_color,
@@ -119,7 +115,7 @@ def _render_kpi_row(
                 stats["rm_count"], stats["tc_count"], stats["rx_count"]
             )
             st.metric(
-                label="📋 Exames hoje",
+                label=":material/content_paste: Exames hoje",
                 value=str(total),
                 delta=pills,
                 delta_color="off",
@@ -131,7 +127,7 @@ def _render_kpi_row(
             hours = stats["estimated_hours"]
             time_range = stats["estimated_time_range"]
             st.metric(
-                label="⏱️ Horas estimadas",
+                label=":material/timer: Horas estimadas",
                 value=f"{hours:.1f}h",
                 delta=time_range,
                 delta_color="off",
@@ -143,11 +139,17 @@ def _render_kpi_row(
             month_df = load_month(conn, year_month)
             mtd = compute_mtd_earnings(month_df, prices)
             pct = (mtd / monthly_goal * 100) if monthly_goal > 0 else 0.0
+            badge_color: Literal["green", "orange"] = "green" if pct >= 50 else "orange"
             st.metric(
-                label="🎯 Meta mensal",
+                label=":material/target: Meta mensal",
                 value=f"{pct:.0f}%",
                 delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}"),
                 delta_color="off",
+            )
+            st.badge(
+                "No ritmo" if pct >= 50 else "Atenção",
+                icon=":material/target:",
+                color=badge_color,
             )
 
 
