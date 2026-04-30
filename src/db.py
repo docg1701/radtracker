@@ -108,7 +108,11 @@ def load_prices(conn: Any) -> dict[str, float]:
     if df.empty:
         return dict(DEFAULT_PRICES)
     row = df.iloc[0]
-    return {"rm": float(row["rm_price"]), "tc": float(row["tc_price"]), "rx": float(row["rx_price"])}
+    return {
+        "rm": float(row["rm_price"]),
+        "tc": float(row["tc_price"]),
+        "rx": float(row["rx_price"]),
+    }
 
 
 def save_prices(conn: Any, rm_price: float, tc_price: float, rx_price: float) -> None:

@@ -12,12 +12,12 @@ from typing import Any
 import streamlit as st
 
 from src.calculations import compute_historical_stats
+from src.chart_colors import CHART_COLORS
 from src.charts_analysis import (
-    build_moving_averages_chart,
     build_modality_mix_evolution,
+    build_moving_averages_chart,
     build_wow_comparison_chart,
 )
-from src.chart_colors import CHART_COLORS
 from src.insights_rules import generate_rule_insights
 from src.llm_client import LLMClient, LLMUnavailableError
 from src.ui.settings import ensure_settings
@@ -109,7 +109,10 @@ def _render_insight_card(text: str, source: str = "rules") -> None:
     """
     teal = CHART_COLORS["primary"]
     if source == "llm":
-        caption = "🤖 Gerado por GPT-OSS 120B (OpenRouter) · Análise automática baseada nos seus dados"
+        caption = (
+            "🤖 Gerado por GPT-OSS 120B (OpenRouter) · "
+            "Análise automática baseada nos seus dados"
+        )
     else:
         caption = "📊 Análise automática baseada nos seus dados"
 

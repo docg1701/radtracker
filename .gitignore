@@ -6,6 +6,10 @@
 data/*.db
 data/app.log
 
+# Coverage
+.coverage
+htmlcov/
+
 # Python
 __pycache__/
 *.pyc
@@ -22,3 +26,7 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build artifacts
+dist/
+*.egg-info/

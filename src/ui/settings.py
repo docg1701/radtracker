@@ -12,7 +12,7 @@ from typing import Any
 import sqlalchemy as sa
 import streamlit as st
 
-from src.db import DEFAULT_PRICES, DEFAULT_GOAL, load_prices, load_goal, save_prices, save_goal
+from src.db import DEFAULT_GOAL, DEFAULT_PRICES, load_goal, load_prices, save_goal, save_prices
 
 
 def ensure_settings(conn: Any) -> None:

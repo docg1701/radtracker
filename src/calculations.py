@@ -68,7 +68,8 @@ def estimate_hours(rm: int, tc: int, rx: int) -> float:
 
 def format_time_range(hours: float) -> str:
     """
-    Return a human-readable time range string assuming work starts at WORK_START_HOUR:WORK_START_MINUTE.
+    Return a human-readable time range string assuming work starts
+    at WORK_START_HOUR:WORK_START_MINUTE.
 
     Example:
         >>> format_time_range(5.2)
@@ -400,7 +401,10 @@ def compute_historical_stats(
     if len(weekly_agg) >= 2:
         last, prev = weekly_agg.iloc[-1], weekly_agg.iloc[-2]
         if prev["total_earnings"] > 0:
-            wow_change_pct = float((last["total_earnings"] - prev["total_earnings"]) / prev["total_earnings"] * 100)
+            wow_change_pct = float(
+                (last["total_earnings"] - prev["total_earnings"])
+                / prev["total_earnings"] * 100
+            )
 
     monthly = (
         df.groupby(df["date"].str[:7])

@@ -5,18 +5,18 @@ Renders the "Hoje" tab per DESIGN_SPEC §4.1, §4.1a, §4.5, §4.6.
 """
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 import streamlit as st
 
 from src.calculations import (
+    add_earnings_column,
     compute_daily_stats,
     compute_mtd_earnings,
-    add_earnings_column,
 )
-from src.charts import build_modality_donut, build_daily_sparkline
 from src.chart_colors import CHART_COLORS
+from src.charts import build_daily_sparkline, build_modality_donut
 from src.db import load_month
 from src.formatting import fmt_brl
 from src.ui.settings import ensure_settings
@@ -95,7 +95,7 @@ def _render_kpi_row(
         earnings = stats["earnings_today"]
         if stats["delta_pct"] is not None:
             delta_str = f"{stats['delta_pct']:+.1f}% vs ontem"
-            delta_color = "normal"  # green for positive, red for negative
+            delta_color: Literal["normal", "off"] = "normal"
         else:
             delta_str = "— sem dados de ontem"
             delta_color = "off"

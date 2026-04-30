@@ -14,7 +14,6 @@ import plotly.graph_objects as go
 from src.chart_colors import CHART_COLORS, hex_to_rgba
 from src.formatting import MONTHS_PT
 
-
 # ---------------------------------------------------------------------------
 # Modality donut chart
 # ---------------------------------------------------------------------------

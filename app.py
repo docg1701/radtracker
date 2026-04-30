@@ -15,11 +15,11 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.db import get_connection, init_db
+from src.ui.analysis import render_analysis_tab
+from src.ui.month import render_month_tab
+from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
 from src.ui.today import render_today_tab
-from src.ui.month import render_month_tab
-from src.ui.analysis import render_analysis_tab
-from src.ui.settings import render_settings_tab
 
 # Page config — MUST be first Streamlit command
 st.set_page_config(
