@@ -4,6 +4,7 @@ Analysis tab — insight card, moving averages, WoW comparison, modality mix.
 Renders the "Análise & Insights" tab per Sprint 4 plan.
 """
 
+import os
 import re
 from datetime import date
 from typing import Any
@@ -17,8 +18,9 @@ from src.charts_analysis import (
     build_wow_comparison_chart,
 )
 from src.chart_colors import CHART_COLORS
-from src.db import load_prices, load_goal
 from src.insights_rules import generate_rule_insights
+from src.llm_client import LLMClient, LLMUnavailableError
+from src.ui.settings import ensure_settings
 
 
 def render_analysis_tab(conn: Any) -> None:
@@ -31,8 +33,9 @@ def render_analysis_tab(conn: Any) -> None:
     today = date.today()
     year_month = today.isoformat()[:7]
 
-    prices = load_prices(conn)
-    goal = load_goal(conn, year_month)
+    ensure_settings(conn)
+    prices = st.session_state.prices
+    goal = st.session_state.goal
 
     with st.spinner("Analisando dados históricos..."):
         stats = compute_historical_stats(conn, year_month, goal, prices)
@@ -45,9 +48,18 @@ def render_analysis_tab(conn: Any) -> None:
         )
         return
 
-    # ── Insight card ──
-    insight_text = generate_rule_insights(stats)
-    _render_insight_card(insight_text)
+    # ── Insight card (LLM with rule fallback) ──
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    try:
+        with st.spinner("🧠 Gerando insights com IA..."):
+            llm = LLMClient(api_key)
+            insight_text = llm.generate(stats)
+        _render_insight_card(insight_text, source="llm")
+    except LLMUnavailableError:
+        insight_text = generate_rule_insights(stats)
+        st.info("🤖 IA indisponível — exibindo análise baseada em regras.")
+        _render_insight_card(insight_text, source="rules")
 
     # ── Two-column: Moving Averages + WoW Comparison ──
     col_left, col_right = st.columns(2)
@@ -88,9 +100,19 @@ def render_analysis_tab(conn: Any) -> None:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _render_insight_card(text: str) -> None:
-    """Render a bordered container with teal left accent and insight text."""
+def _render_insight_card(text: str, source: str = "rules") -> None:
+    """Render a bordered container with teal left accent and insight text.
+
+    Args:
+        text: Insight markdown (Portuguese).
+        source: "llm" → GPT-OSS caption, "rules" → automatic analysis caption.
+    """
     teal = CHART_COLORS["primary"]
+    if source == "llm":
+        caption = "🤖 Gerado por GPT-OSS 120B (OpenRouter) · Análise automática baseada nos seus dados"
+    else:
+        caption = "📊 Análise automática baseada nos seus dados"
+
     # Convert insight markdown to basic HTML (only **bold** and line breaks)
     html_body = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     html_body = html_body.replace("\n", "<br>")
@@ -100,7 +122,7 @@ def _render_insight_card(text: str) -> None:
             <h3 style="margin-top:0;">💡 Insights</h3>
             {html_body}
             <p style="color:{CHART_COLORS['muted']};font-size:0.8rem;margin-top:12px;">
-            📊 Análise automática baseada nos seus dados</p>
+            {caption}</p>
             </div>""",
             unsafe_allow_html=True,
         )

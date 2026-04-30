@@ -17,8 +17,9 @@ from src.calculations import (
 )
 from src.charts import build_modality_donut, build_daily_sparkline
 from src.chart_colors import CHART_COLORS
-from src.db import load_month, load_prices, load_goal
+from src.db import load_month
 from src.formatting import fmt_brl
+from src.ui.settings import ensure_settings
 
 
 def render_today_tab(conn: Any) -> None:
@@ -31,9 +32,10 @@ def render_today_tab(conn: Any) -> None:
     today_str = today.isoformat()
     year_month = today_str[:7]  # "2026-04"
 
-    # Load settings
-    prices = load_prices(conn)
-    monthly_goal = load_goal(conn, year_month)
+    # Load settings from session state (cached from DB on boot)
+    ensure_settings(conn)
+    prices = st.session_state.prices
+    monthly_goal = st.session_state.goal
 
     # Compute daily stats
     stats = compute_daily_stats(conn, today_str, prices)

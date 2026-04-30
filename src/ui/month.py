@@ -19,8 +19,9 @@ from src.charts import (
     build_monthly_modality_donut,
     build_progress_gauge,
 )
-from src.db import load_month, load_prices, load_goal
+from src.db import load_month
 from src.formatting import fmt_brl
+from src.ui.settings import ensure_settings
 
 
 def render_month_tab(conn: Any) -> None:
@@ -36,8 +37,9 @@ def render_month_tab(conn: Any) -> None:
     today = date.today()
     year_month = today.isoformat()[:7]
 
-    prices = load_prices(conn)
-    goal = load_goal(conn, year_month)
+    ensure_settings(conn)
+    prices = st.session_state.prices
+    goal = st.session_state.goal
 
     stats = compute_monthly_stats(conn, year_month, goal, prices)
     daily_target = compute_daily_target(goal, stats["total_work_days"])
