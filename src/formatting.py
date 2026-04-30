@@ -18,6 +18,19 @@ MONTHS_PT: dict[int, str] = {
 }
 
 
+def md_escape(text: str) -> str:
+    """Escape $ for Streamlit markdown (prevents LaTeX math-mode corruption).
+
+    Use this on any string containing R$ that will be rendered via
+    st.markdown, st.expander, st.warning, st.info, or st.metric delta.
+
+    Example:
+        >>> md_escape(fmt_brl(1250.0))
+        'R\\$ 1.250,00'
+    """
+    return text.replace("$", "\\$")
+
+
 def fmt_brl(value: float) -> str:
     """
     Format a float as Brazilian Real currency.

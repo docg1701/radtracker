@@ -20,7 +20,7 @@ from src.charts import (
     build_progress_gauge,
 )
 from src.db import load_month
-from src.formatting import fmt_brl
+from src.formatting import fmt_brl, md_escape
 from src.ui.settings import ensure_settings
 
 
@@ -86,8 +86,7 @@ def render_month_tab(conn: Any) -> None:
 # ---------------------------------------------------------------------------
 
 def _safe(text: str) -> str:
-    """Escape $ signs for Streamlit markdown (prevents LaTeX math-mode corruption)."""
-    return text.replace("$", "\\$")
+    return text
 
 
 def _render_kpi_row(
@@ -102,7 +101,7 @@ def _render_kpi_row(
         st.metric(
             label="💰 Faturamento MTD",
             value=fmt_brl(stats["mtd_earnings"]),
-            delta=_safe(f"{fmt_brl(stats['projection_month_end'])} projetado"),
+            delta=md_escape(f"{fmt_brl(stats['projection_month_end'])} projetado"),
             delta_color="off",
         )
 
@@ -110,7 +109,7 @@ def _render_kpi_row(
         st.metric(
             label="🎯 % da Meta",
             value=f"{stats['pct_goal']:.0f}%",
-            delta=_safe(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
+            delta=md_escape(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
             delta_color="off",
         )
 
@@ -124,7 +123,7 @@ def _render_kpi_row(
 
     with k4:
         daily_avg_str = fmt_brl(stats["daily_avg"])
-        target_str = _safe(fmt_brl(daily_target))
+        target_str = md_escape(fmt_brl(daily_target))
         st.metric(
             label="📊 Média Diária",
             value=daily_avg_str,
@@ -159,10 +158,10 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     st.warning(
         "⚠️ **Atenção ao ritmo**\n\n"
         f"Galvani, você está atrás do ritmo para bater a meta "
-        f"de {_safe(fmt_brl(goal))}.\n\n"
-        f"Faltam {_safe(fmt_brl(missing))} em {remaining} dias — "
-        f"você precisa de **{_safe(fmt_brl(needed))}/dia** daqui pra frente.\n\n"
-        f"Sua média atual: {_safe(fmt_brl(stats['daily_avg']))}/dia."
+        f"de {md_escape(fmt_brl(goal))}.\n\n"
+        f"Faltam {md_escape(fmt_brl(missing))} em {remaining} dias — "
+        f"você precisa de **{md_escape(fmt_brl(needed))}/dia** daqui pra frente.\n\n"
+        f"Sua média atual: {md_escape(fmt_brl(stats['daily_avg']))}/dia."
     )
 
 

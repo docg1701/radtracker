@@ -29,24 +29,24 @@ def ensure_settings(conn: Any) -> None:
 
 
 def render_settings_tab(conn: Any) -> None:
-    """Render the complete Settings tab: prices, monthly goal, danger zone.
-
-    Layout:
-      - 3 number_inputs for RM/TC/RX prices (format="%.2f", prefix in label)
-      - 1 number_input for monthly goal
-      - Save button → persists to DB + updates st.session_state
-      - Danger zone with double-confirmation delete
-    """
+    """Render the complete Settings tab: prices, monthly goal, danger zone."""
     today = date.today()
     year_month = today.isoformat()[:7]
 
     ensure_settings(conn)
+    st.header("⚙️ Configurações")
+
+    _render_settings_form(conn, year_month)
+    st.divider()
+    _render_danger_zone(conn)
+
+
+@st.fragment
+def _render_settings_form(conn: Any, year_month: str) -> None:
+    """Fragment: isolated rerun — save doesn't freeze the whole page."""
     prices = st.session_state.prices
     current_goal = st.session_state.goal
 
-    st.header("⚙️ Configurações")
-
-    # ── Preços dos Exames ──
     st.subheader("Preços dos Exames")
     st.caption("Valores em reais (R$) por exame. Alterações entram em vigor imediatamente.")
 
@@ -54,41 +54,44 @@ def render_settings_tab(conn: Any) -> None:
     with col_rm:
         rm = st.number_input(
             "RM (R$)", min_value=0.01, step=0.01,
-            format="%.2f", value=prices["rm"],
+            format="%.2f", value=prices["rm"], key="cfg_rm",
         )
     with col_tc:
         tc = st.number_input(
             "TC (R$)", min_value=0.01, step=0.01,
-            format="%.2f", value=prices["tc"],
+            format="%.2f", value=prices["tc"], key="cfg_tc",
         )
     with col_rx:
         rx = st.number_input(
             "RX (R$)", min_value=0.01, step=0.01,
-            format="%.2f", value=prices["rx"],
+            format="%.2f", value=prices["rx"], key="cfg_rx",
         )
 
-    # ── Meta Mensal ──
     st.subheader("Meta Mensal")
     goal = st.number_input(
         "Meta mensal (R$)", min_value=0.0, step=100.0,
-        value=current_goal,
+        value=current_goal, key="cfg_goal",
     )
 
-    # ── Botão Salvar ──
-    if st.button("💾 Salvar configurações", type="primary"):
-        if rm <= 0 or tc <= 0 or rx <= 0:
-            st.error("Os preços devem ser maiores que zero.")
-        else:
-            save_prices(conn, rm, tc, rx)
-            save_goal(conn, year_month, goal)
-            st.session_state.pop("historical_cache", None)
-            st.session_state.prices = {"rm": rm, "tc": tc, "rx": rx}
-            st.session_state.goal = goal
-            st.toast("✅ Configurações salvas!")
+    st.button(
+        "💾 Salvar configurações", type="primary",
+        on_click=lambda: _save_settings(conn, year_month, rm, tc, rx, goal),
+    )
 
-    # ── Zona de Perigo ──
-    st.divider()
-    _render_danger_zone(conn)
+
+def _save_settings(
+    conn: Any, year_month: str, rm: float, tc: float, rx: float, goal: float
+) -> None:
+    """Persist settings to DB + session_state, then show toast."""
+    if rm <= 0 or tc <= 0 or rx <= 0:
+        st.error("Os preços devem ser maiores que zero.")
+        return
+    save_prices(conn, rm, tc, rx)
+    save_goal(conn, year_month, goal)
+    st.session_state.pop("historical_cache", None)
+    st.session_state.prices = {"rm": rm, "tc": tc, "rx": rx}
+    st.session_state.goal = goal
+    st.toast("✅ Configurações salvas! Recarregue para aplicar.")
 
 
 @st.fragment

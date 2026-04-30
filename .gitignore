@@ -31,3 +31,6 @@ Thumbs.db
 dist/
 *.egg-info/
 temp/
+plan.md
+docs/streamlit_extras_guide.md
+docs/streamlit_pro_tips.md

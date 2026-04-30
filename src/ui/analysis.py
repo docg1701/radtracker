@@ -1,24 +1,26 @@
 """
 Analysis tab — insight card, moving averages, WoW comparison, modality mix.
 
-Renders the "Análise & Insights" tab per Sprint 4 plan.
+Renders the "Análise & Insights" tab per Sprint 7 plan:
+  - Rules-based insights in expander (default expanded, no auto-LLM)
+  - "Ask AI" button with in-flight guard and session_state persistence
+  - AI result in a separate expander
 """
 
 import os
-import re
 from datetime import date
 from typing import Any
 
 import streamlit as st
 
 from src.calculations import compute_historical_stats
-from src.chart_colors import CHART_COLORS
 from src.charts_analysis import (
     build_modality_mix_evolution,
     build_moving_averages_chart,
     build_wow_comparison_chart,
     build_ytd_earnings_chart,
 )
+from src.formatting import md_escape
 from src.insights_rules import generate_rule_insights
 from src.llm_client import LLMClient, LLMUnavailableError
 from src.ui.settings import ensure_settings
@@ -28,8 +30,10 @@ def render_analysis_tab(conn: Any) -> None:
     """
     Render the complete "Análise & Insights" tab.
 
-    Loads all historical data, computes stats, generates rules-based
-    insights, and renders 3 charts.
+    Loads all historical data, computes stats, and renders:
+    - Rules-based insights (collapsible, expanded by default)
+    - "Ask AI" button + AI result (collapsible, separate)
+    - 4 charts (MA, WoW, mix evolution, YTD earnings)
     """
     today = date.today()
     year_month = today.isoformat()[:7]
@@ -43,7 +47,9 @@ def render_analysis_tab(conn: Any) -> None:
     cache_key = f"{year_month}:{goal}:{json.dumps(prices, sort_keys=True)}"
     cached = st.session_state.get("historical_cache")
 
+    # Invalidate LLM cache when historical data changes
     if cached is None or cached.get("key") != cache_key:
+        st.session_state.pop("llm_insight_text", None)
         with st.spinner("Analisando dados históricos..."):
             stats = compute_historical_stats(conn, year_month, goal, prices)
         st.session_state.historical_cache = {"key": cache_key, "stats": stats}
@@ -58,18 +64,13 @@ def render_analysis_tab(conn: Any) -> None:
         )
         return
 
-    # ── Insight card (LLM with rule fallback) ──
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    # ── Bloco 1: Insights por regras (expandido por padrão) ──
+    with st.expander("💡 Insights", expanded=True):
+        rule_text = generate_rule_insights(stats)
+        _render_insight_body(rule_text, source="rules")
 
-    try:
-        with st.spinner("🧠 Gerando insights com IA..."):
-            llm = LLMClient(api_key)
-            insight_text = llm.generate(stats)
-        _render_insight_card(insight_text, source="llm")
-    except LLMUnavailableError:
-        insight_text = generate_rule_insights(stats)
-        st.info("🤖 IA indisponível — exibindo análise baseada em regras.")
-        _render_insight_card(insight_text, source="rules")
+    # ── Bloco 2: IA (botão explícito, resultado colapsável) ──
+    _render_ai_section(stats)
 
     # ── Two-column: Moving Averages + WoW Comparison ──
     col_left, col_right = st.columns(2)
@@ -112,17 +113,71 @@ def render_analysis_tab(conn: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Private helpers
+# IA section (fragment-protected)
 # ---------------------------------------------------------------------------
 
-def _render_insight_card(text: str, source: str = "rules") -> None:
-    """Render a bordered container with teal left accent and insight text.
+@st.fragment
+def _render_ai_section(stats: dict[str, Any]) -> None:
+    """Render the AI button + optional result expander.
+
+    Fragment: clicks in this section only rerun this function,
+    not the entire page. Session state persists the result across tabs.
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    # ── Button (disabled if no key) ──
+    st.button(
+        "🧠 Perguntar à IA",
+        type="secondary",
+        disabled=not bool(api_key),
+        on_click=lambda: st.session_state.update(llm_insight_pending=True),
+        help="API key não configurada" if not api_key else None,
+    )
+
+    # ── Guard: no double calls ──
+    if st.session_state.get("llm_insight_in_flight"):
+        st.info("⏳ Aguarde — a análise está sendo gerada...")
+        return
+
+    if not st.session_state.get("llm_insight_pending"):
+        # Show cached result if available
+        llm_text = st.session_state.get("llm_insight_text")
+        if llm_text:
+            with st.expander("🤖 Análise da IA", expanded=True):
+                _render_insight_body(llm_text, source="llm")
+        return
+
+    # ── Execute LLM call ──
+    st.session_state.llm_insight_in_flight = True
+    try:
+        with st.spinner("🧠 Gerando análise com IA..."):
+            llm = LLMClient(api_key)
+            llm_text = llm.generate(stats)
+        if not llm_text:
+            llm_text = "(A IA retornou uma resposta vazia.)"
+        st.session_state.llm_insight_text = llm_text
+        st.session_state.pop("llm_insight_pending", None)
+        st.toast("✅ Análise concluída!")
+        with st.expander("🤖 Análise da IA", expanded=True):
+            _render_insight_body(llm_text, source="llm")
+    except (LLMUnavailableError, Exception):
+        st.error("Não foi possível gerar a análise. Verifique sua conexão ou chave de API.")
+        st.session_state.pop("llm_insight_pending", None)
+    finally:
+        st.session_state.llm_insight_in_flight = False
+
+
+# ---------------------------------------------------------------------------
+# Insight body renderer
+# ---------------------------------------------------------------------------
+
+def _render_insight_body(text: str, source: str = "rules") -> None:
+    """Render insight markdown with a source caption.
 
     Args:
-        text: Insight markdown (Portuguese).
-        source: "llm" → GPT-OSS caption, "rules" → automatic analysis caption.
+        text: Markdown text (Portuguese). Streamlit renders **bold** natively.
+        source: "llm" → GPT-OSS caption, "rules" → rules-based caption.
     """
-    teal = CHART_COLORS["primary"]
     if source == "llm":
         caption = (
             "🤖 Gerado por GPT-OSS 120B (OpenRouter) · "
@@ -131,19 +186,5 @@ def _render_insight_card(text: str, source: str = "rules") -> None:
     else:
         caption = "📊 Análise automática baseada nos seus dados"
 
-    # Convert insight markdown to basic HTML (only **bold** and line breaks)
-    html_body = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    html_body = html_body.replace("\n", "<br>")
-    with st.container(border=True):
-        st.markdown(
-            f"""<div style="border-left:4px solid {teal};padding-left:16px;">
-            <h3 style="margin-top:0;">💡 Insights</h3>
-            {html_body}
-            <p style="color:{CHART_COLORS['muted']};font-size:0.8rem;margin-top:12px;">
-            {caption}</p>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-
-
-
+    st.markdown(md_escape(text))
+    st.caption(caption)

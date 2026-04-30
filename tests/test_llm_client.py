@@ -93,19 +93,46 @@ class TestBuildPrompt:
 
 
 def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
+    import pandas as pd
+    # Build a minimal DataFrame with enough data for _enrich_stats
+    dates = [f"2026-04-{d:02d}" for d in range(1, 14)]
+    df = pd.DataFrame({
+        "date": dates,
+        "rm_count": [2, 3, 1, 0, 4, 2, 3, 1, 5, 2, 3, 4, 2],
+        "tc_count": [1, 0, 2, 1, 0, 3, 2, 1, 0, 2, 1, 3, 2],
+        "rx_count": [50, 60, 40, 30, 70, 50, 60, 40, 80, 50, 60, 70, 50],
+        "earnings": [
+            295.0, 315.0, 195.0, 135.0, 385.0, 325.0,
+            305.0, 175.0, 455.0, 295.0, 315.0, 425.0, 295.0,
+        ],
+        "ma7": [
+            295.0, 305.0, 270.0, 235.0, 265.0, 270.0,
+            265.0, 240.0, 258.0, 260.0, 270.0, 285.0, 290.0,
+        ],
+        "ma30": [
+            295.0, 305.0, 270.0, 235.0, 265.0, 270.0,
+            265.0, 240.0, 258.0, 260.0, 270.0, 285.0, 290.0,
+        ],
+    })
     return {
+        "df": df,
         "current_month_stats": {
             "mtd_earnings": 22500.0,
             "pct_goal": 50.0,
             "days_worked": 13,
-            "total_work_days": 26,
+            "total_calendar_days": 30,
             "daily_avg": 1730.77,
             "daily_target_needed": 1730.77,
             "projection_month_end": 45000.0,
-            "remaining_work_days": 13,
+            "remaining_calendar_days": 17,
         },
         "wow_change_pct": wow,
         "mom_change_pct": mom,
         "modality_mix_current": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
+        "modality_mix_historical": {
+            "2026-01": {"rm": 55.0, "tc": 30.0, "rx": 15.0},
+            "2026-02": {"rm": 58.0, "tc": 28.0, "rx": 14.0},
+            "2026-03": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
+        },
         "consecutive_below_target": 0,
     }
