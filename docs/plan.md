@@ -317,6 +317,49 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 - **Acceptance:** Status is communicated via colored badges.
 - **Ref:** improving-streamlit-design skill ("Badges for status")
 
+### Task 3.8 — Configurable user name
+- **Files:** `src/db.py`, `src/ui/settings.py`, `src/ui/sidebar.py`, `src/ui/month.py`
+- **Change:** Replace the hardcoded name `"Galvani"` with a user-configurable value stored in the database.
+  1. **DB:** Add a `user_settings` table (key/value pairs) in `init_db()` with default `user_name = "Galvani"`. Add `load_setting(conn, key, default)` and `save_setting(conn, key, value)` functions.
+  2. **Config tab:** Add `st.text_input("Seu nome", value=..., key="cfg_name")` to the settings form, saved alongside prices and goal.
+  3. **Sidebar greeting:** Load `user_name` via `ensure_settings()` into `st.session_state`. Replace hardcoded `"Galvani"` with the session variable (already covered by Task 2.1).
+  4. **Rhythm alert:** Replace hardcoded `"Galvani, você está atrás..."` in `src/ui/month.py` (near line ~155 in `_render_rhythm_alert`) with `f"{st.session_state.user_name}, você está atrás..."`.
+- **Acceptance:** User can set their name in Config; greeting and alerts use it.
+- **Ref:** analise-visual.md §3 (personalização)
+
+### Task 3.9 — Movable API key from .env to Config tab
+- **Files:** `src/ui/settings.py`, `src/db.py`, `src/llm_client.py`, `src/ui/analysis.py`, `app.py`
+- **Change:** Eliminate the `.env` file requirement. Store the OpenRouter API key in the DB and expose it via `session_state`.
+  1. **DB:** Extend `user_settings` table (from Task 3.8) with `api_key` entry, default empty string.
+  2. **Config tab:** Add `st.text_input("Chave API OpenRouter", type="password", value=..., key="cfg_apikey")` to the settings form.
+  3. **LLMClient:** Already accepts `api_key` as a constructor parameter — no change needed to the class signature. Just pass `st.session_state.api_key` at instantiation time in the analysis tab.
+  4. **Analysis tab:** Replace `api_key = os.environ.get("OPENROUTER_API_KEY")` (~line 120) with `api_key = st.session_state.get("api_key", "")`.
+  5. **app.py:** Remove `from dotenv import load_dotenv` and `load_dotenv()` — the `.env` file is no longer needed.
+  6. **Empty state:** When the key is empty, show `st.caption("Configure sua chave API na aba ⚙️ Config para ativar a análise com IA.")` and disable the button.
+- **Acceptance:** No `.env` file needed; API key configured entirely within the UI.
+- **Ref:** analise-visual.md §3.6 (empty state para IA); KISS principle
+
+### Task 3.10 — Editable AI prompt
+- **Files:** `src/ui/settings.py`, `src/db.py`, `src/llm_client.py`
+- **Dependency:** Task 3.8 must be done first — the default prompt text currently hardcodes `"chamado Galvani"` and should use the configurable user name.
+- **Change:** Let the user customize the system prompt sent to the LLM.
+  1. **DB:** Extend `user_settings` table with `llm_prompt` entry, defaulting to the current `SYSTEM_PROMPT` text from `src/llm_client.py` (but parameterized with the user name from Task 3.8).
+  2. **Config tab:** Add `st.text_area("Prompt da IA", value=..., height=200, key="cfg_prompt")` to the settings form, with `st.caption("Use {stats} como placeholder para os dados.")`.
+  3. **LLMClient:** Accept the prompt as an optional constructor parameter (`prompt: str | None = None`). If not provided, fall back to reading `st.session_state.llm_prompt`.
+- **Acceptance:** User can edit the AI prompt; changes take effect on the next analysis.
+- **Ref:** analise-visual.md §3.6 (flexibilidade da IA)
+
+### Task 3.11 — Update repository documentation
+- **Files:** `README.md`, `.env.example` (remove)
+- **Change:** The migration of API key from `.env` to the Config tab (Task 3.9) makes `.env.example` obsolete and invalidates the current installation instructions.
+  1. **Remove** `.env.example` from the repository.
+  2. **README.md — Instalação:** Remove the `cp .env.example .env` step. Installation is now just `pip install -r requirements.txt`.
+  3. **README.md — IA (OpenRouter):** Replace the `.env`-based instructions with: "Configure sua chave API na aba ⚙️ **Config** > Chave API OpenRouter. A chave é salva localmente no banco SQLite."
+  4. **README.md — Estrutura:** Remove `.env.example` from the project tree diagram.
+  5. **README.md — Funcionalidades:** Update to mention user name configurability and editable AI prompt.
+- **Acceptance:** README accurately reflects the Config-tab-only setup; no `.env` references remain anywhere in the repo.
+- **Ref:** KISS principle; analise-visual.md §3 (usabilidade)
+
 ---
 
 ## Phase 4: Chart & Data Refinements
@@ -476,17 +519,21 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 
 | File | Phase | Changes |
 |------|-------|---------|
-| `app.py` | 0, 2, 3, 5 | `page_icon` → Material icon, `st.set_page_config` updates, footer |
+| `app.py` | 0, 2, 3, 5 | `page_icon` → Material icon, `st.set_page_config` updates, footer, remove dotenv |
 | `.streamlit/config.toml` | 0, 1, 4 | Full theme overhaul, dark mode, fonts, colors, hide deploy |
-| `src/ui/sidebar.py` | 0, 2, 3 | Translate label, remove divider, Material icons, save spinner |
+| `src/ui/sidebar.py` | 0, 2, 3 | Translate label, remove divider, Material icons, save spinner, use user_name from session_state |
 | `src/ui/today.py` | 2, 3, 4 | Bordered KPI containers, stretch heights, donut resize, Material icons, remove unsafe_allow_html |
-| `src/ui/month.py` | 2, 3, 5 | Card containers, empty state card, star rating, celebration |
-| `src/ui/analysis.py` | 3, 5 | AI UX improvements, Material icons, skeleton loading |
-| `src/ui/settings.py` | 0 | RX step fix, remove st.divider(), Material icons |
+| `src/ui/month.py` | 2, 3, 5 | Card containers, empty state card, star rating, celebration, user name in rhythm alert |
+| `src/ui/analysis.py` | 3, 5 | AI UX improvements, Material icons, skeleton loading, use session_state API key |
+| `src/ui/settings.py` | 0, 3 | RX step fix, remove st.divider(), Material icons, user name / API key / prompt fields |
+| `src/db.py` | 3 | Add `user_settings` table + load/save for name, API key, prompt |
+| `src/llm_client.py` | 3 | Accept prompt + API key from parameters instead of hardcoded string / os.environ |
 | `src/chart_colors.py` | 4 | Progress gauge gradient (teal monochrome) |
 | `src/charts.py` | 4 | Donut height reduction, tooltip Portuguese check |
 | `src/charts_analysis.py` | 4 | Dark mode adaptation, tooltip Portuguese check |
 | `requirements.txt` | 3, 5 | Add `streamlit-extras>=1.5.0` |
+| `README.md` | 3 | Replace .env-based setup with Config tab instructions |
+| `.env.example` | 3 | Remove — API key now configured in UI |
 
 
 ## New Files
@@ -531,13 +578,15 @@ Phase 5 (UX enhancements — can be done anytime after Phase 1)
 
 9. **Test regressions from chart color changes** — Task 4.1 preserves existing key names (`progress_danger`, `progress_warning`, etc.) and only changes hex values. The existing test in `tests/test_chart_colors.py` only asserts key existence and that values start with `#` — it will not break. Risk: None after verification.
 
+10. **DB migration for user_settings** — Adding a new table uses `CREATE TABLE IF NOT EXISTS` in `init_db()`, which is non-breaking and idempotent — the existing code already follows this pattern. Risk: Low.
+
 ## Priority Summary
 
 | Priority | Count | Tasks |
 |----------|-------|-------|
 | P0 (critical) | 4 | 0.1–0.4: Bug fixes and localization |
 | P1 (high) | 13 | 1.1–1.4, 2.1–2.6, 3.1–3.3: Theme, layout, icons |
-| P2 (medium) | 11 | 3.4–3.7, 4.1–4.7: Polish, charts, dead-code cleanup |
+| P2 (medium) | 15 | 3.4–3.11, 4.1–4.7: Polish, configurability, charts, docs, dead-code |
 | P3 (nice-to-have) | 4 | 5.1–5.6 (with 5.4 removed): Extras, celebrations |
 
 ---
