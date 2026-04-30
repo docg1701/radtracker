@@ -8,6 +8,7 @@ from src.llm_client import LLMClient, LLMUnavailableError
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OK_JSON = {"choices": [{"message": {"content": "Insight gerado pela IA"}}]}
+_DEFAULT_PRICES = {"rm": 35.0, "tc": 25.0, "rx": 4.5}
 
 
 class TestLlmClientSuccess:
@@ -17,7 +18,7 @@ class TestLlmClientSuccess:
             return_value=Response(200, json=_OK_JSON)
         )
         llm = LLMClient("sk-fake-key")
-        result = llm.generate(_minimal_stats())
+        result = llm.generate(_minimal_stats(), _DEFAULT_PRICES)
         assert result == "Insight gerado pela IA"
 
 
@@ -40,7 +41,7 @@ class TestLlmClientErrors:
         respx.post(_OPENROUTER_URL).mock(side_effect=TimeoutException("timeout"))
         llm = LLMClient("sk-fake-key")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats())
+            llm.generate(_minimal_stats(), _DEFAULT_PRICES)
         assert "Timeout" in str(exc.value)
 
     @respx.mock
@@ -50,7 +51,7 @@ class TestLlmClientErrors:
         )
         llm = LLMClient("sk-fake-key")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats())
+            llm.generate(_minimal_stats(), _DEFAULT_PRICES)
         assert "HTTP 500" in str(exc.value)
 
     @respx.mock
@@ -60,7 +61,7 @@ class TestLlmClientErrors:
         )
         llm = LLMClient("sk-fake-key")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats())
+            llm.generate(_minimal_stats(), _DEFAULT_PRICES)
         assert "HTTP 429" in str(exc.value)
 
     @respx.mock
@@ -70,7 +71,7 @@ class TestLlmClientErrors:
         )
         llm = LLMClient("sk-fake-key")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats())
+            llm.generate(_minimal_stats(), _DEFAULT_PRICES)
         assert "HTTP 401" in str(exc.value)
 
 
@@ -78,14 +79,14 @@ class TestBuildPrompt:
     def test_build_prompt_sanitizes_none_wow(self):
         llm = LLMClient("sk-fake-key")
         stats = _minimal_stats(wow=None)
-        prompt = llm._build_prompt(stats)
+        prompt = llm._build_prompt(stats, _DEFAULT_PRICES)
         assert "sem dados suficientes" in prompt
         assert "None" not in prompt
 
     def test_build_prompt_includes_brl_formatting(self):
         llm = LLMClient("sk-fake-key")
         stats = _minimal_stats()
-        prompt = llm._build_prompt(stats)
+        prompt = llm._build_prompt(stats, _DEFAULT_PRICES)
         assert "R$ 22.500,00" in prompt
 
 

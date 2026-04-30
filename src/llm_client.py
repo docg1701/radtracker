@@ -202,12 +202,13 @@ class LLMClient:
             raise LLMUnavailableError("API key não configurada")
         self._api_key = api_key
 
-    def generate(self, stats: dict[str, Any]) -> str:
+    def generate(self, stats: dict[str, Any], prices: dict[str, float]) -> str:
         """Call GPT-OSS 120B via OpenRouter and return Portuguese insight.
 
         Args:
             stats: Dict from compute_historical_stats() (same shape used by
                    generate_rule_insights).
+            prices: User-configured exam prices {"rm": ..., "tc": ..., "rx": ...}.
 
         Returns:
             Markdown-formatted Portuguese insight text.
@@ -215,7 +216,7 @@ class LLMClient:
         Raises:
             LLMUnavailableError: timeout (>15s), HTTP error, or rate limit.
         """
-        user_prompt = self._build_prompt(stats)
+        user_prompt = self._build_prompt(stats, prices)
         payload = {
             "model": _MODEL,
             "messages": [
@@ -252,8 +253,7 @@ class LLMClient:
     # Private
     # ------------------------------------------------------------------
 
-    def _build_prompt(self, stats: dict[str, Any]) -> str:
+    def _build_prompt(self, stats: dict[str, Any], prices: dict[str, float]) -> str:
         """Enrich stats with DataFrame-derived metrics and interpolate template."""
-        prices: dict[str, float] = {"rm": 35.0, "tc": 25.0, "rx": 4.5}
         enriched = _enrich_stats(stats, prices)
         return _USER_PROMPT_TEMPLATE.format(**enriched)

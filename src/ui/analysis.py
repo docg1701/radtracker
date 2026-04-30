@@ -152,7 +152,7 @@ def _render_ai_section(stats: dict[str, Any]) -> None:
     try:
         with st.spinner("🧠 Gerando análise com IA..."):
             llm = LLMClient(api_key)
-            llm_text = llm.generate(stats)
+            llm_text = llm.generate(stats, st.session_state.prices)
         if not llm_text:
             llm_text = "(A IA retornou uma resposta vazia.)"
         st.session_state.llm_insight_text = llm_text
