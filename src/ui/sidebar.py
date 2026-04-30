@@ -29,7 +29,7 @@ def render_sidebar(conn: Any) -> None:
 
         # Date picker
         selected_date = st.date_input(
-            "📅 Data",
+            "Data",
             value=date.today(),
             format="DD/MM/YYYY",
             max_value=date.today(),
@@ -63,5 +63,4 @@ def render_sidebar(conn: Any) -> None:
             st.rerun()
 
         # Footer
-        st.divider()
         st.caption("radtracker v1.0 · local")

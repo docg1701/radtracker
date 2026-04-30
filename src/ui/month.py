@@ -85,10 +85,6 @@ def render_month_tab(conn: Any) -> None:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _safe(text: str) -> str:
-    return text
-
-
 def _render_kpi_row(
     stats: dict[str, Any],
     goal: float,

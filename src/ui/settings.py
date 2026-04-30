@@ -9,7 +9,6 @@ by every tab module.
 from datetime import date
 from typing import Any
 
-import sqlalchemy as sa
 import streamlit as st
 
 from src.db import DEFAULT_GOAL, DEFAULT_PRICES, load_goal, load_prices, save_goal, save_prices
@@ -37,8 +36,7 @@ def render_settings_tab(conn: Any) -> None:
     st.header("⚙️ Configurações")
 
     _render_settings_form(conn, year_month)
-    st.divider()
-    _render_danger_zone(conn)
+    _render_danger_zone()
 
 
 @st.fragment
@@ -63,7 +61,7 @@ def _render_settings_form(conn: Any, year_month: str) -> None:
         )
     with col_rx:
         rx = st.number_input(
-            "RX (R$)", min_value=0.01, step=0.01,
+            "RX (R$)", min_value=0.01, step=0.50,
             format="%.2f", value=prices["rx"], key="cfg_rx",
         )
 
@@ -95,7 +93,7 @@ def _save_settings(
 
 
 @st.fragment
-def _render_danger_zone(conn: Any) -> None:
+def _render_danger_zone() -> None:
     """Fragment: isolated rerun scope. Uses on_click to avoid double-click bug."""
     st.subheader("⚠️ Zona de Perigo")
 
@@ -118,7 +116,7 @@ def _render_danger_zone(conn: Any) -> None:
         with col1:
             st.button(
                 "✅ Sim, limpar tudo", type="primary",
-                on_click=lambda: _execute_delete(conn),
+                on_click=_execute_delete,
             )
         with col2:
             st.button(
@@ -127,9 +125,9 @@ def _render_danger_zone(conn: Any) -> None:
             )
 
 
-def _execute_delete(conn: Any) -> None:
+def _execute_delete() -> None:
     """Delete all data and reset session state."""
-    _delete_all_data(conn)
+    _delete_all_data()
     st.session_state.update(
         confirm_delete=False,
         prices=dict(DEFAULT_PRICES),
@@ -144,12 +142,12 @@ def _execute_delete(conn: Any) -> None:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _delete_all_data(conn: Any) -> None:
+def _delete_all_data() -> None:
     """Delete all rows from all 3 tables within a single transaction."""
     import sqlite3
-    raw = sqlite3.connect("data/telerrad.db")
-    raw.execute("DELETE FROM daily_production")
-    raw.execute("DELETE FROM exam_prices")
-    raw.execute("DELETE FROM monthly_goals")
-    raw.commit()
-    raw.close()
+
+    with sqlite3.connect("data/telerrad.db") as raw:
+        raw.execute("DELETE FROM daily_production")
+        raw.execute("DELETE FROM exam_prices")
+        raw.execute("DELETE FROM monthly_goals")
+        raw.commit()

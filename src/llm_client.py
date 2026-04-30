@@ -114,23 +114,28 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
             elif delta < -5:
                 tendencia = f"desacelerando ({delta:.0f}% na última semana)"
 
-    # ── Total exam counts ──
+    # ── Total exam counts (current month only) ──
     total_rm = total_tc = total_rx = 0
     if not df.empty:
-        total_rm = int(df["rm_count"].sum())
-        total_tc = int(df["tc_count"].sum())
-        total_rx = int(df["rx_count"].sum())
+        current_ym = df["date"].str[:7].max()
+        month_df = df[df["date"].str[:7] == current_ym]
+        total_rm = int(month_df["rm_count"].sum())
+        total_tc = int(month_df["tc_count"].sum())
+        total_rx = int(month_df["rx_count"].sum())
     total_exames = total_rm + total_tc + total_rx
 
-    # ── Best day ──
+    # ── Best day (current month only) ──
     dia_produtivo = "—"
     valor_dia_produtivo = "—"
     if not df.empty and "earnings" in df.columns:
-        best_idx = df["earnings"].idxmax()
-        if pd.notna(best_idx):
-            best_row = df.loc[best_idx]
-            dia_produtivo = str(best_row.get("date", "—"))
-            valor_dia_produtivo = fmt_brl(float(best_row.get("earnings", 0.0)))
+        current_ym = df["date"].str[:7].max()
+        month_df = df[df["date"].str[:7] == current_ym]
+        if not month_df.empty:
+            best_idx = month_df["earnings"].idxmax()
+            if pd.notna(best_idx):
+                best_row = month_df.loc[best_idx]
+                dia_produtivo = str(best_row.get("date", "—"))
+                valor_dia_produtivo = fmt_brl(float(best_row.get("earnings", 0.0)))
 
     # ── Historical monthly average ──
     media_historica = "R$ 0,00"
@@ -249,16 +254,6 @@ class LLMClient:
 
     def _build_prompt(self, stats: dict[str, Any]) -> str:
         """Enrich stats with DataFrame-derived metrics and interpolate template."""
-        # Extract prices from the current_month_stats calculation context
-        # The stats dict doesn't directly carry prices, but we can infer them
-        # from the modality_mix_current and raw counts.
-        current = stats.get("current_month_stats", {})
-        goal = current.get("mtd_earnings", 0.0) / max(current.get("pct_goal", 1.0), 0.01) * 100
-
         prices: dict[str, float] = {"rm": 35.0, "tc": 25.0, "rx": 4.5}
         enriched = _enrich_stats(stats, prices)
-
-        # Fix meta_mensal (overwrite the rough calc)
-        enriched["meta_mensal"] = fmt_brl(goal)
-
         return _USER_PROMPT_TEMPLATE.format(**enriched)

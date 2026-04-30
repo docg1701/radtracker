@@ -15,7 +15,6 @@ from src.calculations import (
     compute_daily_stats,
     compute_mtd_earnings,
 )
-from src.chart_colors import CHART_COLORS
 from src.charts import build_daily_sparkline, build_modality_donut
 from src.db import load_month
 from src.formatting import fmt_brl, md_escape
