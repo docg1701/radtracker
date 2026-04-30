@@ -90,6 +90,34 @@ class TestBuildPrompt:
         assert "R$ 22.500,00" in prompt
 
 
+class TestEnrichStatsMultiMonth:
+    def test_total_exames_filters_current_month_only(self):
+        llm = LLMClient("sk-fake-key")
+        stats = _multi_month_stats()
+        prompt = llm._build_prompt(stats, _DEFAULT_PRICES)
+        # April has 7+14+70 = 91 exams; March has 805 exams.
+        # If the filter works, prompt should say 91, not 896.
+        assert "Total de exames no mês: 91" in prompt
+        assert "Total de exames no mês: 896" not in prompt
+
+    def test_best_day_filters_current_month_only(self):
+        llm = LLMClient("sk-fake-key")
+        stats = _multi_month_stats()
+        prompt = llm._build_prompt(stats, _DEFAULT_PRICES)
+        # April best day is 2026-04-01 (first day, all equal).
+        # If unfiltered, best day would be a March date with 500 earnings.
+        assert "2026-04-01" in prompt
+        assert "2026-03-01" not in prompt
+
+    def test_ticket_medio_uses_current_month_counts(self):
+        llm = LLMClient("sk-fake-key")
+        stats = _multi_month_stats()
+        prompt = llm._build_prompt(stats, _DEFAULT_PRICES)
+        # April revenue = 7*35 + 14*25 + 70*4.5 = 910
+        # Ticket = 910 / 91 = 10.0
+        assert "R$ 10,00" in prompt
+
+
 # ── Helpers ──
 
 
@@ -117,6 +145,7 @@ def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
     })
     return {
         "df": df,
+        "year_month": "2026-04",
         "current_month_stats": {
             "mtd_earnings": 22500.0,
             "pct_goal": 50.0,
@@ -135,5 +164,38 @@ def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
             "2026-02": {"rm": 58.0, "tc": 28.0, "rx": 14.0},
             "2026-03": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
         },
+        "consecutive_below_target": 0,
+    }
+
+
+def _multi_month_stats():
+    import pandas as pd
+    dates = [f"2026-03-{d:02d}" for d in range(1, 8)] + [f"2026-04-{d:02d}" for d in range(1, 8)]
+    df = pd.DataFrame({
+        "date": dates,
+        "rm_count": [10] * 7 + [1] * 7,
+        "tc_count": [5] * 7 + [2] * 7,
+        "rx_count": [100] * 7 + [10] * 7,
+        "earnings": [500.0] * 7 + [100.0] * 7,
+        "ma7": [500.0] * 7 + [100.0] * 7,
+        "ma30": [500.0] * 7 + [100.0] * 7,
+    })
+    return {
+        "df": df,
+        "year_month": "2026-04",
+        "current_month_stats": {
+            "mtd_earnings": 700.0,
+            "pct_goal": 1.6,
+            "days_worked": 7,
+            "total_calendar_days": 30,
+            "daily_avg": 100.0,
+            "daily_target_needed": 0.0,
+            "projection_month_end": 700.0,
+            "remaining_calendar_days": 23,
+        },
+        "wow_change_pct": None,
+        "mom_change_pct": None,
+        "modality_mix_current": {"rm": 35.0, "tc": 50.0, "rx": 15.0},
+        "modality_mix_historical": {},
         "consecutive_below_target": 0,
     }

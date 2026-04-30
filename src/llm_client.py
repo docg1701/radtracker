@@ -117,7 +117,7 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
     # ── Total exam counts (current month only) ──
     total_rm = total_tc = total_rx = 0
     if not df.empty:
-        current_ym = df["date"].str[:7].max()
+        current_ym = stats.get("year_month") or df["date"].str[:7].max()
         month_df = df[df["date"].str[:7] == current_ym]
         total_rm = int(month_df["rm_count"].sum())
         total_tc = int(month_df["tc_count"].sum())
@@ -128,7 +128,7 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
     dia_produtivo = "—"
     valor_dia_produtivo = "—"
     if not df.empty and "earnings" in df.columns:
-        current_ym = df["date"].str[:7].max()
+        current_ym = stats.get("year_month") or df["date"].str[:7].max()
         month_df = df[df["date"].str[:7] == current_ym]
         if not month_df.empty:
             best_idx = month_df["earnings"].idxmax()
@@ -150,9 +150,9 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
     media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
 
     # ── Ticket médio ──
-    rm_rev = float(total_rm) * prices.get("rm", 35.0)
-    tc_rev = float(total_tc) * prices.get("tc", 25.0)
-    rx_rev = float(total_rx) * prices.get("rx", 4.5)
+    rm_rev = float(total_rm) * prices["rm"]
+    tc_rev = float(total_tc) * prices["tc"]
+    rx_rev = float(total_rx) * prices["rx"]
     total_rev = rm_rev + tc_rev + rx_rev
     ticket_medio = fmt_brl(total_rev / total_exames) if total_exames > 0 else "R$ 0,00"
 

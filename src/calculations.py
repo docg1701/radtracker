@@ -439,6 +439,7 @@ def compute_historical_stats(
 
     return {
         "df": df,
+        "year_month": year_month,
         "wow_change_pct": wow_change_pct, "mom_change_pct": mom_change_pct,
         "weekly_totals_last_4": weekly_totals_last_4,
         "modality_mix_current": modality_mix_current,
@@ -458,6 +459,7 @@ def _empty_historical_stats(
             "date", "rm_count", "tc_count", "rx_count",
             "earnings", "date_dt", "ma7", "ma30", "week", "iso_year",
         ]),
+        "year_month": year_month,
         "wow_change_pct": None, "mom_change_pct": None,
         "weekly_totals_last_4": [],
         "modality_mix_current": {"rm": 0.0, "tc": 0.0, "rx": 0.0},
