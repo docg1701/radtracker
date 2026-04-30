@@ -47,14 +47,18 @@ def render_today_tab(conn: Any) -> None:
     # ── KPI Row ──
     _render_kpi_row(stats, prices, monthly_goal, conn, year_month)
 
-    # ── Modality Donut ──
-    donut = build_modality_donut(
-        stats["rm_count"], stats["tc_count"], stats["rx_count"]
-    )
-    st.plotly_chart(donut, width="stretch")
+    # ── Donut + Sparkline side-by-side ──
+    spark = _build_sparkline_figure(conn, prices, year_month)
 
-    # ── Sparkline (7-day trend) ──
-    _render_sparkline(conn, prices, year_month)
+    col_left, col_right = st.columns(2)
+    with col_left:
+        donut = build_modality_donut(
+            stats["rm_count"], stats["tc_count"], stats["rx_count"]
+        )
+        st.plotly_chart(donut, use_container_width=True)
+    with col_right:
+        if spark is not None:
+            st.plotly_chart(spark, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
@@ -87,66 +91,73 @@ def _render_kpi_row(
     year_month: str,
 ) -> None:
     """Render the 4 KPI metric cards in st.columns(4)."""
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
 
     # ── Card 1: Faturamento Hoje ──
     with k1:
-        earnings = stats["earnings_today"]
-        if stats["delta_pct"] is not None:
-            delta_str = f"{stats['delta_pct']:+.1f}% vs ontem"
-            delta_color: Literal["normal", "off"] = "normal"
-        else:
-            delta_str = "— sem dados de ontem"
-            delta_color = "off"
+        with st.container(border=True, height="stretch"):
+            earnings = stats["earnings_today"]
+            if stats["delta_pct"] is not None:
+                delta_str = f"{stats['delta_pct']:+.1f}% vs ontem"
+                delta_color: Literal["normal", "off"] = "normal"
+            else:
+                delta_str = "— sem dados de ontem"
+                delta_color = "off"
 
-        st.metric(
-            label="💰 Faturamento hoje",
-            value=fmt_brl(earnings),
-            delta=delta_str,
-            delta_color=delta_color,
-        )
+            st.metric(
+                label="💰 Faturamento hoje",
+                value=fmt_brl(earnings),
+                delta=delta_str,
+                delta_color=delta_color,
+            )
 
     # ── Card 2: Exames Hoje ──
     with k2:
-        total = stats["exam_count_today"]
-        pills = _build_pill_indicators(
-            stats["rm_count"], stats["tc_count"], stats["rx_count"]
-        )
-        st.metric(
-            label="📋 Exames hoje",
-            value=str(total),
-            delta=pills,
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            total = stats["exam_count_today"]
+            pills = _build_pill_indicators(
+                stats["rm_count"], stats["tc_count"], stats["rx_count"]
+            )
+            st.metric(
+                label="📋 Exames hoje",
+                value=str(total),
+                delta=pills,
+                delta_color="off",
+            )
 
     # ── Card 3: Horas Estimadas ──
     with k3:
-        hours = stats["estimated_hours"]
-        time_range = stats["estimated_time_range"]
-        st.metric(
-            label="⏱️ Horas estimadas",
-            value=f"{hours:.1f}h",
-            delta=time_range,
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            hours = stats["estimated_hours"]
+            time_range = stats["estimated_time_range"]
+            st.metric(
+                label="⏱️ Horas estimadas",
+                value=f"{hours:.1f}h",
+                delta=time_range,
+                delta_color="off",
+            )
 
     # ── Card 4: Meta Mensal ──
     with k4:
-        month_df = load_month(conn, year_month)
-        mtd = compute_mtd_earnings(month_df, prices)
-        pct = (mtd / monthly_goal * 100) if monthly_goal > 0 else 0.0
-        st.metric(
-            label="🎯 Meta mensal",
-            value=f"{pct:.0f}%",
-            delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}"),
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            month_df = load_month(conn, year_month)
+            mtd = compute_mtd_earnings(month_df, prices)
+            pct = (mtd / monthly_goal * 100) if monthly_goal > 0 else 0.0
+            st.metric(
+                label="🎯 Meta mensal",
+                value=f"{pct:.0f}%",
+                delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}"),
+                delta_color="off",
+            )
 
 
-def _render_sparkline(
+def _build_sparkline_figure(
     conn: Any, prices: dict[str, float], year_month: str
-) -> None:
-    """Load recent 7 days and render the sparkline chart."""
+):
+    """Load recent 7 days and build the sparkline chart figure.
+
+    Returns plotly Figure or None if insufficient data.
+    """
     current_df = load_month(conn, year_month)
 
     # If early in the month (<7 days), pull from previous month too
@@ -162,15 +173,15 @@ def _render_sparkline(
         all_days = current_df
 
     if all_days.empty:
-        return
+        return None
 
     # Compute earnings per day, keep last 7
     all_days = add_earnings_column(all_days, prices)
     all_days = all_days.sort_values("date").tail(7)
 
     if len(all_days) >= 1:
-        spark = build_daily_sparkline(all_days)
-        st.plotly_chart(spark, width="stretch")
+        return build_daily_sparkline(all_days)
+    return None
 
 
 def _build_pill_indicators(rm: int, tc: int, rx: int) -> str:

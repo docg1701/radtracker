@@ -91,7 +91,7 @@ def _render_kpi_row(
     daily_target: float,
 ) -> None:
     """Render the 4 KPI metric cards for the month tab."""
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
 
     with k1:
         st.metric(

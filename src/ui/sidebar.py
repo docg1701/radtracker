@@ -24,8 +24,8 @@ def render_sidebar(conn: Any) -> None:
     """
     with st.sidebar:
         # Header
-        st.title("📊 radtracker")
-        st.markdown("Olá, **Galvani** 👋")
+        st.markdown("**radtracker**")
+        st.caption("Olá, Galvani")
 
         # Date picker
         selected_date = st.date_input(
@@ -52,14 +52,17 @@ def render_sidebar(conn: Any) -> None:
             rx = st.number_input("RX", min_value=0, step=1, value=default_rx, key=f"rx_{date_str}")
 
         # Save button
-        if st.button("💾 Salvar produção", type="primary", use_container_width=True):
+        if st.button(
+            "Salvar produção", icon=":material/save:",
+            type="primary", use_container_width=True,
+        ):
             upsert_daily(conn, date_str, rm, tc, rx)
             st.session_state.pop("historical_cache", None)
             formatted = selected_date.strftime("%d/%m")
             if existing:
-                st.toast(f"📝 Produção de {formatted} atualizada!", icon="📝")
+                st.toast(f"Produção de {formatted} atualizada!", icon=":material/check_circle:")
             else:
-                st.toast(f"✅ Produção de {formatted} salva!", icon="✅")
+                st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
             st.rerun()
 
         # Footer

@@ -26,6 +26,7 @@ st.set_page_config(
     page_title="radtracker",
     page_icon="📊",
     layout="wide",
+    initial_sidebar_state="auto",
 )
 
 # Load .env for optional OpenRouter API key (must happen before LLMClient usage)

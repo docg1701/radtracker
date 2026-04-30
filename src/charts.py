@@ -28,7 +28,7 @@ def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
         rx: RX exam count.
 
     Returns:
-        Plotly Figure with hole=0.4, modality colors, Portuguese labels.
+        Plotly Figure with hole=0.5, modality colors, Portuguese labels.
 
     Edge case: if all counts are zero, renders a donut with 3 zero slices
     (Plotly handles this gracefully — shows an empty ring).
@@ -42,7 +42,7 @@ def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
             go.Pie(
                 labels=labels,
                 values=values,
-                hole=0.4,
+                hole=0.5,
                 marker=dict(colors=colors),
                 textinfo="label+percent",
                 textfont=dict(size=14),
@@ -56,9 +56,10 @@ def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
             text="Distribuição por Modalidade — Hoje",
             font=dict(size=16),
         ),
+        height=280,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(
             orientation="h",
             yanchor="bottom",
