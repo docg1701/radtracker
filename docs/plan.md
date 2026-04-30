@@ -5,6 +5,82 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 
 ---
 
+## Phase Tracking
+
+| Phase | Descrição | Tarefas | Status | Worker | Reviewer |
+|-------|-----------|---------|--------|--------|----------|
+| **0** | Foundation fixes | 0.1–0.4 (4) | ⬜ Pending | — | — |
+| **1** | Theme & typography | 1.1–1.4 (4) | ⬜ Pending | — | — |
+| **2** | Layout & responsiveness | 2.1–2.6 (6) | ⬜ Pending | — | — |
+| **3** | Visual polish & configurability | 3.1–3.11 (11) | ⬜ Pending | — | — |
+| **4** | Chart & data refinements | 4.1–4.7 (7) | ⬜ Pending | — | — |
+| **5** | UX enhancements | 5.1–5.6 (4) | ⬜ Pending | — | — |
+
+**Workflow por phase:** `worker (1×) → reviewer (1+×) → ✅ Done`
+
+---
+
+## Dependencies
+
+```
+Phase 0 (independently executable tasks)
+    ↓
+Phase 1 (theme config — needed before visual polish)
+    ↓
+Phase 2 (layout changes — depend on theme for color consistency)
+    ↓
+Phase 3 (visual polish — depends on layout structure from Phase 2)
+    ↓
+Phase 4 (chart refinements — depends on theme colors from Phase 1)
+    ↓
+Phase 5 (UX enhancements — can be done anytime after Phase 1)
+```
+
+## Risks
+
+1. **Cal Sans substitute fidelity** — Manrope at 600 weight is the best free geometric display font, but it doesn't perfectly match Cal Sans's condensed, precise character. Risk: Medium. Mitigation: Accept Manrope; it's close enough for a non-Cal.com product.
+
+2. **Dark mode chart legibility** — Plotly charts with `rgba(0,0,0,0)` backgrounds inherit the page background but text annotations may need explicit color adjustment. Risk: Medium. Mitigation: Use `st.context.theme.base` to branch chart styling, and replace hardcoded annotation colors (e.g., `#0F172A` in `build_progress_gauge`) with theme-aware values.
+
+3. **st.form migration in sidebar — BLOCKER** — Wrapping the sidebar in `st.form` breaks date-dependent pre-fill because widgets inside a form do not trigger reruns on value changes. If the user picks a new date, the modality inputs (`rm`, `tc`, `rx`) below it will retain stale defaults until submit, causing data to be saved to the wrong date. Risk: High. Mitigation: Do **not** wrap the date picker + modality inputs in a form. Keep the current imperative save button and use `st.spinner()` for loading feedback.
+
+4. **streamlit-extras not in dependencies** — Tasks 3.4, 5.1–5.5 all import `streamlit-extras`, but `requirements.txt` does not list it. Risk: Medium. Mitigation: Add `streamlit-extras>=1.5.0` to `requirements.txt` before implementing Phase 3/5.
+
+5. **streamlit-extras volatility** — As noted in the guide, extras can be deprecated when core absorbs features. Risk: Low (for polish extras). Mitigation: Only adopt extras from Group B ("gain from core") or Group C ("polish"): `skeleton`, `let_it_rain`, `star_rating`, `stoggle`. Avoid Group A (deprecated).
+
+6. **Deploy button on Streamlit Cloud** — If the user deploys to Streamlit Cloud, the Deploy button is a platform feature and cannot be hidden. Risk: Low. Mitigation: Document this as expected; it's only an issue on local runs. The current config already has the relevant flags.
+
+7. **Config.toml font loading delay** — Google Fonts load via CDN; first cold load may show fallback fonts briefly. Risk: Low. Mitigation: The fallback stack (`Inter` → sans-serif) is acceptable for the split second before fonts load.
+
+8. **Missing source document for verification** — `analise-visual.md` is cited as a source in 10+ tasks but is not present in the repo. Risk: Low (only affects review confidence). Mitigation: Regenerate or locate the file before implementation if exact section references matter.
+
+9. **Test regressions from chart color changes** — Task 4.1 preserves existing key names (`progress_danger`, `progress_warning`, etc.) and only changes hex values. The existing test in `tests/test_chart_colors.py` only asserts key existence and that values start with `#` — it will not break. Risk: None after verification.
+
+10. **DB migration for user_settings** — Adding a new table uses `CREATE TABLE IF NOT EXISTS` in `init_db()`, which is non-breaking and idempotent — the existing code already follows this pattern. Risk: Low.
+
+## Priority Summary
+
+| Priority | Count | Tasks |
+|----------|-------|-------|
+| P0 (critical) | 4 | 0.1–0.4: Bug fixes and localization |
+| P1 (high) | 13 | 1.1–1.4, 2.1–2.6, 3.1–3.3: Theme, layout, icons |
+| P2 (medium) | 15 | 3.4–3.11, 4.1–4.7: Polish, configurability, charts, docs, dead-code |
+| P3 (nice-to-have) | 4 | 5.1–5.6 (with 5.4 removed): Extras, celebrations |
+
+## Quick Reference: What NOT to Do
+
+Per official Streamlit skills:
+- ❌ No custom CSS (`st.markdown(unsafe_allow_html=True)`, `st.html()` style blocks) for theming — use config.toml
+- ❌ No deprecated streamlit-extras: `add_vertical_space`, `app_logo`, `colored_header`, `row`, `stylable_container`, `tags`
+- ❌ No `st.cache_resource` for data (use `st.cache_data`)
+- ❌ No more than 4 columns in a single row
+- ❌ No `st.divider()` — remove all occurrences (use natural spacing or `st.space()`)
+- ❌ No emojis as functional icons (use Material icons); emojis only for celebrations
+- ❌ No Title Case labels (use sentence casing)
+- ❌ No `st.info()` for simple metadata (use `st.caption()`)
+
+---
+
 ## Phase 0: Foundation Fixes (Quick Wins)
 
 *Priority: P0 — critical. These fix bugs and localization issues with minimal risk. Each is independent.*
@@ -542,63 +618,3 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 |------|-------|---------|
 | None strictly required | — | All changes fit within existing file structure. Optional: `src/ui/footer.py` if footer becomes reusable. |
 
-## Dependencies
-
-```
-Phase 0 (independently executable tasks)
-    ↓
-Phase 1 (theme config — needed before visual polish)
-    ↓
-Phase 2 (layout changes — depend on theme for color consistency)
-    ↓
-Phase 3 (visual polish — depends on layout structure from Phase 2)
-    ↓
-Phase 4 (chart refinements — depends on theme colors from Phase 1)
-    ↓
-Phase 5 (UX enhancements — can be done anytime after Phase 1)
-```
-
-## Risks
-
-1. **Cal Sans substitute fidelity** — Manrope at 600 weight is the best free geometric display font, but it doesn't perfectly match Cal Sans's condensed, precise character. Risk: Medium. Mitigation: Accept Manrope; it's close enough for a non-Cal.com product.
-
-2. **Dark mode chart legibility** — Plotly charts with `rgba(0,0,0,0)` backgrounds inherit the page background but text annotations may need explicit color adjustment. Risk: Medium. Mitigation: Use `st.context.theme.base` to branch chart styling, and replace hardcoded annotation colors (e.g., `#0F172A` in `build_progress_gauge`) with theme-aware values.
-
-3. **st.form migration in sidebar — BLOCKER** — Wrapping the sidebar in `st.form` breaks date-dependent pre-fill because widgets inside a form do not trigger reruns on value changes. If the user picks a new date, the modality inputs (`rm`, `tc`, `rx`) below it will retain stale defaults until submit, causing data to be saved to the wrong date. Risk: High. Mitigation: Do **not** wrap the date picker + modality inputs in a form. Keep the current imperative save button and use `st.spinner()` for loading feedback.
-
-4. **streamlit-extras not in dependencies** — Tasks 3.4, 5.1–5.5 all import `streamlit-extras`, but `requirements.txt` does not list it. Risk: Medium. Mitigation: Add `streamlit-extras>=1.5.0` to `requirements.txt` before implementing Phase 3/5.
-
-5. **streamlit-extras volatility** — As noted in the guide, extras can be deprecated when core absorbs features. Risk: Low (for polish extras). Mitigation: Only adopt extras from Group B ("gain from core") or Group C ("polish"): `skeleton`, `let_it_rain`, `star_rating`, `stoggle`. Avoid Group A (deprecated).
-
-6. **Deploy button on Streamlit Cloud** — If the user deploys to Streamlit Cloud, the Deploy button is a platform feature and cannot be hidden. Risk: Low. Mitigation: Document this as expected; it's only an issue on local runs. The current config already has the relevant flags.
-
-7. **Config.toml font loading delay** — Google Fonts load via CDN; first cold load may show fallback fonts briefly. Risk: Low. Mitigation: The fallback stack (`Inter` → sans-serif) is acceptable for the split second before fonts load.
-
-8. **Missing source document for verification** — `analise-visual.md` is cited as a source in 10+ tasks but is not present in the repo. Risk: Low (only affects review confidence). Mitigation: Regenerate or locate the file before implementation if exact section references matter.
-
-9. **Test regressions from chart color changes** — Task 4.1 preserves existing key names (`progress_danger`, `progress_warning`, etc.) and only changes hex values. The existing test in `tests/test_chart_colors.py` only asserts key existence and that values start with `#` — it will not break. Risk: None after verification.
-
-10. **DB migration for user_settings** — Adding a new table uses `CREATE TABLE IF NOT EXISTS` in `init_db()`, which is non-breaking and idempotent — the existing code already follows this pattern. Risk: Low.
-
-## Priority Summary
-
-| Priority | Count | Tasks |
-|----------|-------|-------|
-| P0 (critical) | 4 | 0.1–0.4: Bug fixes and localization |
-| P1 (high) | 13 | 1.1–1.4, 2.1–2.6, 3.1–3.3: Theme, layout, icons |
-| P2 (medium) | 15 | 3.4–3.11, 4.1–4.7: Polish, configurability, charts, docs, dead-code |
-| P3 (nice-to-have) | 4 | 5.1–5.6 (with 5.4 removed): Extras, celebrations |
-
----
-
-## Quick Reference: What NOT to Do
-
-Per official Streamlit skills:
-- ❌ No custom CSS (`st.markdown(unsafe_allow_html=True)`, `st.html()` style blocks) for theming — use config.toml
-- ❌ No deprecated streamlit-extras: `add_vertical_space`, `app_logo`, `colored_header`, `row`, `stylable_container`, `tags`
-- ❌ No `st.cache_resource` for data (use `st.cache_data`)
-- ❌ No more than 4 columns in a single row
-- ❌ No `st.divider()` — remove all occurrences (use natural spacing or `st.space()`)
-- ❌ No emojis as functional icons (use Material icons); emojis only for celebrations
-- ❌ No Title Case labels (use sentence casing)
-- ❌ No `st.info()` for simple metadata (use `st.caption()`)
