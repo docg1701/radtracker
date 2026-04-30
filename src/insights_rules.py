@@ -7,7 +7,7 @@ Zero database or external dependencies.
 
 from typing import Any
 
-from src.formatting import fmt_brl, md_escape
+from src.formatting import fmt_brl
 
 
 def generate_rule_insights(stats: dict[str, Any]) -> str:
@@ -77,15 +77,15 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
         missing = max(0.0, current.get("daily_target_needed", 0))
         lines.append(
             f"🟠 **Atenção, Galvani.** Você está em **{pct:.0f}%** da meta "
-            f"({md_escape(fmt_brl(mtd))} em {days_worked} dias). "
-            f"O gap está em **{md_escape(fmt_brl(missing))}/dia** — "
+            f"({fmt_brl(mtd)} em {days_worked} dias). "
+            f"O gap está em **{fmt_brl(missing)}/dia** — "
             f"vale revisar o volume de exames nos próximos "
             f"{current['remaining_calendar_days']} dias."
         )
     else:
         lines.append(
             f"🔴 **Alerta, Galvani.** Apenas **{pct:.0f}%** da meta foi atingido "
-            f"({md_escape(fmt_brl(mtd))} em {days_worked} dias). "
+            f"({fmt_brl(mtd)} em {days_worked} dias). "
             f"Considere rever a meta mensal ou buscar fontes adicionais "
             f"de exames para os próximos {current['remaining_calendar_days']} dias."
         )

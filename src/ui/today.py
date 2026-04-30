@@ -18,7 +18,7 @@ from src.calculations import (
 from src.chart_colors import CHART_COLORS
 from src.charts import build_daily_sparkline, build_modality_donut
 from src.db import load_month
-from src.formatting import fmt_brl
+from src.formatting import fmt_brl, md_escape
 from src.ui.settings import ensure_settings
 
 
@@ -139,7 +139,7 @@ def _render_kpi_row(
         st.metric(
             label="🎯 Meta mensal",
             value=f"{pct:.0f}%",
-            delta=f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}",
+            delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}"),
             delta_color="off",
         )
 
@@ -175,25 +175,8 @@ def _render_sparkline(
 
 
 def _build_pill_indicators(rm: int, tc: int, rx: int) -> str:
-    """
-    Build modality-colored pill indicators as an HTML string.
-
-    Per DESIGN_SPEC §4.1a: "RM ● 8 · TC ● 10 · RX ● 6"
-    Each dot is colored with the modality's chart color.
-
-    Returns a string usable as st.metric's delta (rendered as markdown).
-    """
-    rm_color = CHART_COLORS["rm"]
-    tc_color = CHART_COLORS["tc"]
-    rx_color = CHART_COLORS["rx"]
-
-    return (
-        f'<span style="color:{rm_color}">●</span> RM {rm}'
-        f' &nbsp;·&nbsp; '
-        f'<span style="color:{tc_color}">●</span> TC {tc}'
-        f' &nbsp;·&nbsp; '
-        f'<span style="color:{rx_color}">●</span> RX {rx}'
-    )
+    """Build modality indicators as plain text (st.metric delta = markdown, not HTML)."""
+    return f"RM {rm}  ·  TC {tc}  ·  RX {rx}"
 
 
 
