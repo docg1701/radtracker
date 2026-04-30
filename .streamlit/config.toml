@@ -1,5 +1,6 @@
 # .streamlit/config.toml — radtracker theme configuration
 # Light theme is the default. Dark theme activates via Streamlit Settings menu.
+# DESIGN_SPEC §7.3 — token mapping for both themes.
 
 [theme]
 base = "light"
@@ -7,6 +8,16 @@ primaryColor = "#0D9488"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F1F5F9"
 textColor = "#0F172A"
+font = "sans serif"
+
+# Dark theme — lighter teal (#2DD4BF) for adequate contrast (~5.5:1) on dark canvas.
+# Activated via ☰ → Settings → Theme → Dark.
+[theme.dark]
+base = "dark"
+primaryColor = "#2DD4BF"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"
 font = "sans serif"
 
 [browser]

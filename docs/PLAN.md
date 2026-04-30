@@ -1,7 +1,7 @@
 # Implementation Plan — radtracker
 
 **Date**: 2026-04-29
-**Status**: Planning complete. Implementation pending.
+**Status**: All 6 sprints complete. v1.0.0 released.
 **Source docs**: [BRIEF.md](./BRIEF.md), [DESIGN_SPEC.md](./DESIGN_SPEC.md), [RESEARCH.md](./RESEARCH.md)
 
 ---
@@ -13,11 +13,11 @@ Cada sprint passa por **execução** (desenvolvimento) e em seguida por uma ou m
 | Sprint | Status | Execução | Revisão #1 | Revisão #2 | Revisão #3 | DoD | Notas |
 |--------|--------|----------|------------|------------|------------|-----|-------|
 | **S1** — Foundation & Data Entry | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | 12 files, 3 tables, UPSERT, app starts clean |
-| **S2** — "Hoje" Tab | ⬜ Pendente | — | — | — | — | ☐ | KPI cards, donut chart, empty state |
-| **S3** — "Mês Atual" Tab | ⬜ Pendente | — | — | — | — | ☐ | Progress gauge, daily trend, alerts |
-| **S4** — "Análise & Insights" Tab | ⬜ Pendente | — | — | — | — | ☐ | Rule insights, MA7/MA30, WoW, mix evolution |
-| **S5** — LLM & Settings | ⬜ Pendente | — | — | — | — | ☐ | Ollama Cloud, theme toggle, config tab |
-| **S6** — Testing & Release | ⬜ Pendente | — | — | — | — | ☐ | ≥80% coverage, README, git tag v1.0.0 |
+| **S2** — "Hoje" Tab | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | KPI cards, donut chart, sparkline, empty state |
+| **S3** — "Mês Atual" Tab | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | Progress gauge, daily trend, rhythm alerts |
+| **S4** — "Análise & Insights" Tab | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | Rule insights, MA7/MA30, WoW, mix evolution |
+| **S5** — LLM & Settings | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | GPT-OSS 120B via OpenRouter, settings tab, session_state |
+| **S6** — Testing & Release | ✅ Concluído | 2026-04-29 | ✅ Aprovado | — | — | ☑ | 93 tests, ≥80% coverage, README, git tag v1.0.0 |
 
 **Legenda**: ⬜ Pendente · 🔄 Em execução · 🔁 Em revisão · ✅ Concluído · ❌ Bloqueado
 
