@@ -150,11 +150,10 @@ def build_daily_sparkline(df: pd.DataFrame) -> go.Figure:
 
 def build_progress_gauge(pct_goal: float) -> go.Figure:
     """
-    Build a horizontal 4-segment stacked bar showing monthly goal progress.
+    Build a sleek horizontal progress bar showing monthly goal progress.
 
-    Segments: 0–25% danger (red), 25–50% warning (amber),
-    50–75% on-track (teal), 75–100% achieved (green),
-    remainder gray track.
+    4 milestone segments (red → amber → teal → green) + gray track.
+    Current-position indicator as a vertical rule with percentage badge.
     """
     display_pct = min(pct_goal, 100.0)
 
@@ -164,58 +163,59 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
     seg4 = max(0.0, display_pct - 75.0)
     unfilled = max(0.0, 100.0 - display_pct)
 
-    bar_y = [" "]
+    bar_y = ["Meta"]
 
     fig = go.Figure()
 
-    # 4 milestone segments
-    fig.add_trace(go.Bar(
-        x=[seg1], y=bar_y, orientation="h",
-        marker_color=CHART_COLORS["progress_danger"],
-        name="0-25%", showlegend=False,
-    ))
-    fig.add_trace(go.Bar(
-        x=[seg2], y=bar_y, orientation="h",
-        marker_color=CHART_COLORS["progress_warning"],
-        name="25-50%", showlegend=False,
-    ))
-    fig.add_trace(go.Bar(
-        x=[seg3], y=bar_y, orientation="h",
-        marker_color=CHART_COLORS["progress_on_track"],
-        name="50-75%", showlegend=False,
-    ))
-    fig.add_trace(go.Bar(
-        x=[seg4], y=bar_y, orientation="h",
-        marker_color=CHART_COLORS["progress_achieved"],
-        name="75-100%", showlegend=False,
-    ))
-    # Unfilled remainder
+    segments = [
+        (seg1, CHART_COLORS["progress_danger"],   "0–25%"),
+        (seg2, CHART_COLORS["progress_warning"],   "25–50%"),
+        (seg3, CHART_COLORS["progress_on_track"],  "50–75%"),
+        (seg4, CHART_COLORS["progress_achieved"],  "75–100%"),
+    ]
+    for val, color, name in segments:
+        fig.add_trace(go.Bar(
+            x=[val], y=bar_y, orientation="h",
+            marker=dict(color=color, line=dict(width=0)),
+            name=name, showlegend=False,
+            hovertemplate=f"{name}: %{{x:.0f}}%<extra></extra>",
+        ))
+
     fig.add_trace(go.Bar(
         x=[unfilled], y=bar_y, orientation="h",
-        marker_color=CHART_COLORS["track"],
+        marker=dict(color=CHART_COLORS["track"], line=dict(width=0)),
         name="restante", showlegend=False,
     ))
 
-    # Marker at current percentage
-    fig.add_trace(go.Scatter(
-        x=[display_pct], y=bar_y, mode="markers+text",
-        marker=dict(symbol="triangle-down", size=16, color=CHART_COLORS["neutral"]),
-        text=[f"{pct_goal:.0f}%"], textposition="top center",
-        textfont=dict(size=13, color=CHART_COLORS["neutral"]),
-        showlegend=False,
-    ))
+    # Vertical marker line (red)
+    marker_color = CHART_COLORS["progress_danger"]
+    fig.add_vline(
+        x=display_pct, line_width=3,
+        line_color=marker_color,
+        line_dash="solid",
+    )
+
+    # Percentage text inside the bar, just right of the marker (3px)
+    fig.add_annotation(
+        x=display_pct, y=0,
+        text=f"<b>{pct_goal:.0f}%</b>",
+        showarrow=False,
+        font=dict(size=16, color="#0F172A"),
+        xanchor="left",
+        xshift=5,
+    )
 
     fig.update_layout(
         barmode="stack",
-        bargap=0,
-        height=100,
+        bargap=0.25,
+        height=130,
         title=dict(
             text="Progresso da Meta Mensal",
             font=dict(size=16),
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=40, b=20),
+        margin=dict(l=20, r=20, t=40, b=50),
         xaxis=dict(
             range=[0, 100],
             ticksuffix="%",

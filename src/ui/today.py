@@ -75,7 +75,7 @@ def _render_empty_state() -> None:
             st.subheader("Nenhum registro ainda")
             st.markdown(
                 "Comece registrando sua produção de hoje "
-                "na **barra lateral** →"
+                "na **barra lateral**"
             )
             st.caption("Os dados aparecerão aqui assim que você salvar.")
 

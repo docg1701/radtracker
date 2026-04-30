@@ -54,6 +54,7 @@ def render_sidebar(conn: Any) -> None:
         # Save button
         if st.button("💾 Salvar produção", type="primary", use_container_width=True):
             upsert_daily(conn, date_str, rm, tc, rx)
+            st.session_state.pop("historical_cache", None)
             formatted = selected_date.strftime("%d/%m")
             if existing:
                 st.toast(f"📝 Produção de {formatted} atualizada!", icon="📝")

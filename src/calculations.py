@@ -263,12 +263,12 @@ def compute_monthly_stats(
     """
     Compute aggregate statistics for a given year-month.
 
-    Uses Mon–Sat as working days (Sunday excluded).
-    For past months, remaining_work_days and daily_target_needed are zero.
+    Uses calendar days for the month (28–31).
+    For past months, remaining_calendar_days and daily_target_needed are zero.
 
     Returns dict with keys:
-        mtd_earnings, pct_goal, days_worked, total_work_days,
-        remaining_work_days, daily_avg,
+        mtd_earnings, pct_goal, days_worked, total_calendar_days,
+        remaining_calendar_days, daily_avg,
         daily_target_needed, projection_month_end
     """
     month_df = load_month(conn, year_month)
@@ -279,49 +279,33 @@ def compute_monthly_stats(
     # Parse year-month
     year, month = int(year_month[:4]), int(year_month[5:7])
     last_day = calendar.monthrange(year, month)[1]
-    month_start = f"{year_month}-01"
-    month_end = f"{year_month}-{last_day:02d}"
+    total_calendar_days = last_day
 
-    # Total Mon–Sat days in the month
-    working_dates = pd.bdate_range(
-        start=month_start,
-        end=month_end,
-        freq="C",
-        weekmask="Mon Tue Wed Thu Fri Sat",
-    )
-    total_work_days = len(working_dates)
-
-    # Remaining working days (current month only)
+    # Remaining calendar days (current month only)
     today = date.today()
     current_ym = today.isoformat()[:7]
     if year_month == current_ym:
-        remaining_dates = pd.bdate_range(
-            start=today,
-            end=month_end,
-            freq="C",
-            weekmask="Mon Tue Wed Thu Fri Sat",
-        )
-        remaining_work_days = len(remaining_dates)
+        remaining_calendar_days = max(0, last_day - today.day + 1)
     else:
-        remaining_work_days = 0
+        remaining_calendar_days = 0
 
     daily_avg = mtd_earnings / days_worked if days_worked > 0 else 0.0
 
     remaining_needed = max(0.0, goal - mtd_earnings)
     daily_target_needed = (
-        remaining_needed / remaining_work_days
-        if remaining_work_days > 0
+        remaining_needed / remaining_calendar_days
+        if remaining_calendar_days > 0
         else 0.0
     )
 
-    projection_month_end = mtd_earnings + (daily_avg * remaining_work_days)
+    projection_month_end = mtd_earnings + (daily_avg * remaining_calendar_days)
 
     return {
         "mtd_earnings": mtd_earnings,
         "pct_goal": pct_goal,
         "days_worked": days_worked,
-        "total_work_days": total_work_days,
-        "remaining_work_days": remaining_work_days,
+        "total_calendar_days": total_calendar_days,
+        "remaining_calendar_days": remaining_calendar_days,
         "daily_avg": daily_avg,
         "daily_target_needed": daily_target_needed,
         "projection_month_end": projection_month_end,
@@ -442,8 +426,8 @@ def compute_historical_stats(
         modality_mix_historical[ym] = _modality_mix(ym_df)
 
     current_stats = compute_monthly_stats(conn, year_month, goal, prices)
-    total_work_days = current_stats["total_work_days"]
-    daily_target = compute_daily_target(goal, total_work_days)
+    total_calendar_days = current_stats["total_calendar_days"]
+    daily_target = compute_daily_target(goal, total_calendar_days)
 
     curr_sorted = current_month_df.sort_values("date", ascending=False)
     consecutive_below_target = 0

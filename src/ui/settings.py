@@ -81,43 +81,60 @@ def render_settings_tab(conn: Any) -> None:
         else:
             save_prices(conn, rm, tc, rx)
             save_goal(conn, year_month, goal)
-            # Sync session_state immediately so all tabs reflect the change
+            st.session_state.pop("historical_cache", None)
             st.session_state.prices = {"rm": rm, "tc": tc, "rx": rx}
             st.session_state.goal = goal
             st.toast("✅ Configurações salvas!")
 
     # ── Zona de Perigo ──
     st.divider()
+    _render_danger_zone(conn)
+
+
+@st.fragment
+def _render_danger_zone(conn: Any) -> None:
+    """Fragment: isolated rerun scope. Uses on_click to avoid double-click bug."""
     st.subheader("⚠️ Zona de Perigo")
 
     if "confirm_delete" not in st.session_state:
         st.session_state.confirm_delete = False
 
     if not st.session_state.confirm_delete:
-        if st.button("🗑️ Limpar todos os dados", type="secondary"):
-            st.session_state.confirm_delete = True
-            st.rerun()
+        st.button(
+            "🗑️ Limpar todos os dados", type="secondary",
+            on_click=lambda: st.session_state.update(confirm_delete=True),
+        )
     else:
         st.warning(
             "Tem certeza? **Esta ação não pode ser desfeita.** "
             "Todos os dados de produção, preços e metas serão removidos. "
             "Os valores padrão serão restaurados "
-            "(RM=R$35, TC=R$25, RX=R$4,50, meta=R$45.000)."
+            "(RM=R\\$35, TC=R\\$25, RX=R\\$4,50, meta=R\\$45.000)."
         )
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Sim, limpar tudo", type="primary"):
-                _delete_all_data(conn)
-                st.session_state.confirm_delete = False
-                # Reset session_state to defaults
-                st.session_state.prices = dict(DEFAULT_PRICES)
-                st.session_state.goal = DEFAULT_GOAL
-                st.toast("🗑️ Todos os dados foram removidos.")
-                st.rerun()
+            st.button(
+                "✅ Sim, limpar tudo", type="primary",
+                on_click=lambda: _execute_delete(conn),
+            )
         with col2:
-            if st.button("❌ Cancelar"):
-                st.session_state.confirm_delete = False
-                st.rerun()
+            st.button(
+                "❌ Cancelar",
+                on_click=lambda: st.session_state.update(confirm_delete=False),
+            )
+
+
+def _execute_delete(conn: Any) -> None:
+    """Delete all data and reset session state."""
+    _delete_all_data(conn)
+    st.session_state.update(
+        confirm_delete=False,
+        prices=dict(DEFAULT_PRICES),
+        goal=DEFAULT_GOAL,
+    )
+    st.session_state.pop("historical_cache", None)
+    st.cache_data.clear()
+    st.toast("🗑️ Todos os dados foram removidos.")
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +143,10 @@ def render_settings_tab(conn: Any) -> None:
 
 def _delete_all_data(conn: Any) -> None:
     """Delete all rows from all 3 tables within a single transaction."""
-    with conn.connect() as db_conn:
-        db_conn.execute(sa.text("DELETE FROM daily_production"))
-        db_conn.execute(sa.text("DELETE FROM exam_prices"))
-        db_conn.execute(sa.text("DELETE FROM monthly_goals"))
-        db_conn.commit()
+    import sqlite3
+    raw = sqlite3.connect("data/telerrad.db")
+    raw.execute("DELETE FROM daily_production")
+    raw.execute("DELETE FROM exam_prices")
+    raw.execute("DELETE FROM monthly_goals")
+    raw.commit()
+    raw.close()

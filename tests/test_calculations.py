@@ -94,7 +94,7 @@ class TestComputeMonthlyStats:
         assert stats["mtd_earnings"] == 0.0
         assert stats["pct_goal"] == 0.0
         assert stats["days_worked"] == 0
-        assert stats["remaining_work_days"] == 0  # past month
+        assert stats["remaining_calendar_days"] == 0  # past month
 
     def test_compute_monthly_stats_with_data(self, conn):
         init_db(conn)
@@ -120,23 +120,23 @@ class TestComputeMonthlyStats:
         # 3500+18970=22470, /45000*100 ≈ 49.93
         assert 49.0 < pct < 51.0
 
-    def test_compute_monthly_stats_total_work_days(self, conn):
+    def test_compute_monthly_stats_total_calendar_days(self, conn):
         init_db(conn)
         stats = compute_monthly_stats(conn, "2026-04", 45000.0, DEFAULT_PRICES)
-        # April 2026 has 26 Mon-Sat days
-        assert stats["total_work_days"] == 26
+        # April has 30 calendar days
+        assert stats["total_calendar_days"] == 30
 
-    def test_compute_monthly_stats_work_days_exclude_sunday(self, conn):
+    def test_compute_monthly_stats_calendar_days_vary(self, conn):
         init_db(conn)
-        stats = compute_monthly_stats(conn, "2026-04", 45000.0, DEFAULT_PRICES)
-        # 30 days total, total_work_days should be < 30 (Sundays excluded)
-        assert stats["total_work_days"] < 30
+        stats_feb = compute_monthly_stats(conn, "2026-02", 45000.0, DEFAULT_PRICES)
+        # February 2026 has 28 days
+        assert stats_feb["total_calendar_days"] == 28
 
     def test_compute_monthly_stats_past_month(self, conn):
         init_db(conn)
         stats = compute_monthly_stats(conn, "2026-03", 45000.0, DEFAULT_PRICES)
-        # Past month has 0 remaining work days
-        assert stats["remaining_work_days"] == 0
+        # Past month has 0 remaining calendar days
+        assert stats["remaining_calendar_days"] == 0
 
 
 class TestComputeDailyTarget:

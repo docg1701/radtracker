@@ -10,15 +10,9 @@ secondaryBackgroundColor = "#F1F5F9"
 textColor = "#0F172A"
 font = "sans serif"
 
-# Dark theme — lighter teal (#2DD4BF) for adequate contrast (~5.5:1) on dark canvas.
-# Activated via ☰ → Settings → Theme → Dark.
-[theme.dark]
-base = "dark"
-primaryColor = "#2DD4BF"
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"
-font = "sans serif"
+# Dark mode: Streamlit auto-inverts light-theme colors when the user selects
+# ☰ → Settings → Theme → Dark. All charts use transparent backgrounds
+# (rgba(0,0,0,0)) so they inherit the theme correctly.
 
 [browser]
 gatherUsageStats = false

@@ -42,7 +42,7 @@ def render_month_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     stats = compute_monthly_stats(conn, year_month, goal, prices)
-    daily_target = compute_daily_target(goal, stats["total_work_days"])
+    daily_target = compute_daily_target(goal, stats["total_calendar_days"])
 
     # Empty state: no data recorded this month
     if stats["days_worked"] == 0:
@@ -73,7 +73,7 @@ def render_month_tab(conn: Any) -> None:
         st.plotly_chart(line_chart, width="stretch")
 
     with col_right:
-        st.subheader("🍩 Receita por Modalidade")
+        st.subheader("Receita por Modalidade")
         donut = build_monthly_modality_donut(month_df, prices)
         st.plotly_chart(donut, width="stretch")
 
@@ -84,6 +84,11 @@ def render_month_tab(conn: Any) -> None:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+def _safe(text: str) -> str:
+    """Escape $ signs for Streamlit markdown (prevents LaTeX math-mode corruption)."""
+    return text.replace("$", "\\$")
+
 
 def _render_kpi_row(
     stats: dict[str, Any],
@@ -97,7 +102,7 @@ def _render_kpi_row(
         st.metric(
             label="💰 Faturamento MTD",
             value=fmt_brl(stats["mtd_earnings"]),
-            delta=f"{fmt_brl(stats['projection_month_end'])} projetado",
+            delta=_safe(f"{fmt_brl(stats['projection_month_end'])} projetado"),
             delta_color="off",
         )
 
@@ -105,21 +110,21 @@ def _render_kpi_row(
         st.metric(
             label="🎯 % da Meta",
             value=f"{stats['pct_goal']:.0f}%",
-            delta=f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}",
+            delta=_safe(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
             delta_color="off",
         )
 
     with k3:
         st.metric(
-            label="📅 Dias Trabalhados",
-            value=f"{stats['days_worked']} de {stats['total_work_days']}",
-            delta=f"{stats['remaining_work_days']} restantes",
+            label="📅 Dias trabalhados",
+            value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
+            delta=f"{stats['remaining_calendar_days']} restantes",
             delta_color="off",
         )
 
     with k4:
         daily_avg_str = fmt_brl(stats["daily_avg"])
-        target_str = fmt_brl(daily_target)
+        target_str = _safe(fmt_brl(daily_target))
         st.metric(
             label="📊 Média Diária",
             value=daily_avg_str,
@@ -130,14 +135,14 @@ def _render_kpi_row(
 
 def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     """Show a warning if behind pace to meet the monthly goal."""
-    total = stats["total_work_days"]
+    total = stats["total_calendar_days"]
     if total == 0:
         return
 
     if stats["mtd_earnings"] >= goal:
         return
 
-    if stats["remaining_work_days"] == 0:
+    if stats["remaining_calendar_days"] == 0:
         return
 
     days_worked = stats["days_worked"]
@@ -148,16 +153,16 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
         return
 
     missing = goal - stats["mtd_earnings"]
-    remaining = stats["remaining_work_days"]
+    remaining = stats["remaining_calendar_days"]
     needed = stats["daily_target_needed"]
 
     st.warning(
-        f"⚠️ **Atenção ao ritmo**\n\n"
+        "⚠️ **Atenção ao ritmo**\n\n"
         f"Galvani, você está atrás do ritmo para bater a meta "
-        f"de {fmt_brl(goal)}.\n\n"
-        f"Faltam {fmt_brl(missing)} em {remaining} dias úteis — "
-        f"você precisa de **{fmt_brl(needed)}/dia** daqui pra frente.\n\n"
-        f"Sua média atual: {fmt_brl(stats['daily_avg'])}/dia."
+        f"de {_safe(fmt_brl(goal))}.\n\n"
+        f"Faltam {_safe(fmt_brl(missing))} em {remaining} dias — "
+        f"você precisa de **{_safe(fmt_brl(needed))}/dia** daqui pra frente.\n\n"
+        f"Sua média atual: {_safe(fmt_brl(stats['daily_avg']))}/dia."
     )
 
 

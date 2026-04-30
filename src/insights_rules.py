@@ -43,7 +43,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     pct = current["pct_goal"]
     mtd = current["mtd_earnings"]
     days_worked = current["days_worked"]
-    total_days = current["total_work_days"]
+    total_days = current["total_calendar_days"]
 
     # ── Tone selection ──
     if pct >= 75:
@@ -71,7 +71,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             f"🟡 **No caminho certo, Galvani.** Você está com **{pct:.0f}%** "
             f"da meta ({fmt_brl(mtd)} em {days_worked} dias). "
             f"Para fechar o mês, precisa de cerca de **{fmt_brl(remaining)}/dia** "
-            f"nos próximos {current['remaining_work_days']} dias úteis."
+            f"nos próximos {current['remaining_calendar_days']} dias."
         )
     elif tone == "warning":
         missing = max(0.0, current.get("daily_target_needed", 0))
@@ -80,14 +80,14 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             f"({fmt_brl(mtd)} em {days_worked} dias). "
             f"O gap está em **{fmt_brl(missing)}/dia** — "
             f"vale revisar o volume de exames nos próximos "
-            f"{current['remaining_work_days']} dias."
+            f"{current['remaining_calendar_days']} dias."
         )
     else:
         lines.append(
             f"🔴 **Alerta, Galvani.** Apenas **{pct:.0f}%** da meta foi atingido "
             f"({fmt_brl(mtd)} em {days_worked} dias). "
             f"Considere rever a meta mensal ou buscar fontes adicionais "
-            f"de exames para os próximos {current['remaining_work_days']} dias."
+            f"de exames para os próximos {current['remaining_calendar_days']} dias."
         )
 
     # ── WoW trend ──

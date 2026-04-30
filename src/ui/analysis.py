@@ -37,8 +37,17 @@ def render_analysis_tab(conn: Any) -> None:
     prices = st.session_state.prices
     goal = st.session_state.goal
 
-    with st.spinner("Analisando dados históricos..."):
-        stats = compute_historical_stats(conn, year_month, goal, prices)
+    import json
+
+    cache_key = f"{year_month}:{goal}:{json.dumps(prices, sort_keys=True)}"
+    cached = st.session_state.get("historical_cache")
+
+    if cached is None or cached.get("key") != cache_key:
+        with st.spinner("Analisando dados históricos..."):
+            stats = compute_historical_stats(conn, year_month, goal, prices)
+        st.session_state.historical_cache = {"key": cache_key, "stats": stats}
+    else:
+        stats = cached["stats"]
 
     df = stats.get("df")
     if df is None or len(df) == 0:
@@ -87,7 +96,7 @@ def render_analysis_tab(conn: Any) -> None:
             st.plotly_chart(wow_chart, width="stretch")
 
     # ── Full-width: Modality Mix Evolution ──
-    st.subheader("🍩 Evolução do Mix de Modalidades")
+    st.subheader("Evolução do Mix de Modalidades")
     mix_history = stats.get("modality_mix_historical", {})
     if mix_history:
         mix_chart = build_modality_mix_evolution(mix_history)

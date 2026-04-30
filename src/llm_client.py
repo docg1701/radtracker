@@ -121,7 +121,7 @@ class LLMClient:
         mtd = current.get("mtd_earnings", 0.0)
         pct = current.get("pct_goal", 0.0)
         days_worked = current.get("days_worked", 0)
-        total_days = current.get("total_work_days", 0)
+        total_days = current.get("total_calendar_days", 0)
         daily_avg = current.get("daily_avg", 0.0)
 
         remaining_needed = max(0.0, current.get("daily_target_needed", 0.0))
