@@ -9,9 +9,9 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 
 | Phase | Descrição | Tarefas | Status | Worker | Reviewer |
 |-------|-----------|---------|--------|--------|----------|
-| **0** | Foundation fixes | 0.1–0.4 (4) | ⬜ Pending | — | — |
-| **1** | Theme & typography | 1.1–1.4 (4) | ⬜ Pending | — | — |
-| **2** | Layout & responsiveness | 2.1–2.6 (6) | ⬜ Pending | — | — |
+| **0** | Foundation fixes | 0.1–0.4 (4) | ✅ Done | worker | reviewer (2×) |
+| **1** | Theme & typography | 1.1–1.4 (4) | ✅ Done | worker | — |
+| **2** | Layout & responsiveness | 2.1–2.6 (6) | ✅ Done | worker | — |
 | **3** | Visual polish & configurability | 3.1–3.11 (11) | ⬜ Pending | — | — |
 | **4** | Chart & data refinements | 4.1–4.7 (7) | ⬜ Pending | — | — |
 | **5** | UX enhancements | 5.1–5.5 (3) | ⬜ Pending | — | — |
