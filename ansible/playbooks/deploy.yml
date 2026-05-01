@@ -13,7 +13,6 @@
           - gnupg
           - git
           - sqlite3
-          - python3-requests
         state: present
         update_cache: true
 

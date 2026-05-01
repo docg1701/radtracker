@@ -15,10 +15,10 @@
 | 4     | Code quality tooling (yamllint, hadolint, ansible-lint) | — | reviewer (2×) | ✅ |
 | 4     | docs/deployment.md (esboço — revisar na Phase 4) | — | reviewer (2×) | ✅ |
 | 4     | Revisão final + README.md | — | reviewer (2×) | ✅ |
-| 5     | Full VPS validation (both modes) | — | — | ⬜ |
-| 5     | Deployment-specific tests | — | — | ⬜ |
-| 5     | Commit, tag v1.1.0, push | — | — | ⬜ |
-| 5     | GitHub Release v1.1.0 | — | — | ⬜ |
+| 5     | Full VPS validation (both modes) | worker | reviewer (3×) | ✅ |
+| 5     | Deployment-specific tests | worker | reviewer (3×) | ✅ |
+| 5     | Commit, tag v1.1.0, push | worker | reviewer (3×) | ✅ |
+| 5     | GitHub Release v1.1.0 | worker | reviewer (3×) | ✅ |
 
 ### Test VPS
 
@@ -125,7 +125,7 @@ The Caddyfile template uses the `deployment_mode` variable. When `lan`, Caddy li
 | `ansible/ansible.cfg` | Ansible config: host_key_checking=false, pipelining=true |
 | `ansible/inventory.yml` | Single host definition; user is a regular sudoer, never root |
 | `ansible/requirements.yml` | Galaxy collection dependencies (community.docker) |
-| `ansible/group_vars/all.yml` | Shared variables (paths, domain, mode, repo, secrets, backup retention) |
+| `ansible/group_vars/all.yml` | Shared variables — sensitive values encrypted inline with `!vault` via `ansible-vault encrypt_string` |
 | `ansible/playbooks/deploy.yml` | Bootstrap + deploy: clone repo, install Docker + fail2ban, build image, start containers |
 | `ansible/playbooks/update.yml` | Git fetch + reset (no force clean — data safe), rebuild image, recreate container, wait health |
 | `ansible/playbooks/health.yml` | Verify container running, health endpoint responds, assert state, fail2ban check |
@@ -416,7 +416,10 @@ radtracker_data_dir: "{{ radtracker_dir }}/data"
 radtracker_backup_dir: "{{ radtracker_dir }}/backups"
 
 # Deployment mode: "internet" or "lan"
-deployment_mode: internet
+# Encrypted with ansible-vault encrypt_string
+deployment_mode: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
 
 # Domain (only used in internet mode)
 domain: radtracker.example.com
@@ -426,15 +429,16 @@ github_repo: git@github.com:docg1701/radtracker.git
 github_branch: master
 
 # BasicAuth: generate with: docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "password"
-# Format: "username bcrypt_hash" (space-separated)
-# The .env.j2 template escapes $ → $$ for Docker's env_file parser automatically.
-basicauth_users: "admin $2a$14$examplehashhere"
+# Encrypted with ansible-vault encrypt_string
+basicauth_users: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
 
 # Backup retention (days)
 backup_retention_days: 30
 ```
 
-This file should be edited once per deployment with actual domain, repo URL, and hash values.
+Sensitive values (`deployment_mode`, `basicauth_users`) are encrypted inline using `ansible-vault encrypt_string` and pasted into `all.yml` as `!vault` blocks. The rest of the file remains plaintext. The file can be committed safely — only the `!vault` blocks are encrypted.
 
 ### 5.4 `ansible/templates/Caddyfile.j2`
 
@@ -585,7 +589,7 @@ Bootstrap + deploy in one idempotent playbook. Safe to run on a fresh VPS or to 
           ansible.builtin.copy:
             content: |
               [Definition]
-              failregex = .*"remote_ip":"<HOST>".*"status":401
+              failregex = .*"remote_ip"\s*:\s*"<HOST>".*"status"\s*:\s*401
               ignoreregex =
             dest: /etc/fail2ban/filter.d/radtracker-caddy.conf
             mode: "0644"
@@ -668,7 +672,7 @@ Pulls latest source, rebuilds image, recreates container. Data never touched.
 
   tasks:
     - name: Fetch and reset to remote branch (preserves untracked files)
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: |
           git fetch origin {{ github_branch }}
           git reset --hard origin/{{ github_branch }}

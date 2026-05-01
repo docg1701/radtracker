@@ -1,7 +1,6 @@
 # Environment & secrets
 .env
 .streamlit/secrets.toml
-ansible/group_vars/secrets.yml
 
 # Database and backup files
 data/*.db

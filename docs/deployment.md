@@ -16,9 +16,7 @@ ansible/
 ├── inventory.yml                # VPS_HOST + VPS_USER via env vars
 ├── requirements.yml             # community.docker collection
 ├── group_vars/
-│   ├── all.yml                  # Placeholders genéricos (commitado)
-│   ├── secrets.yml              # Credenciais reais (VAULT, NÃO commitado)
-│   └── secrets.yml.example      # Template de secrets
+│   └── all.yml                  # Variáveis compartilhadas (valores sensíveis criptografados com Vault)
 ├── templates/
 │   ├── Caddyfile.j2             # Template do Caddy (LAN ou internet)
 │   └── .env.j2                  # Template do .env ($ → $$)
@@ -32,20 +30,37 @@ ansible/
 
 ## 1. Configuração única
 
-### 1.1 Secrets (Ansible Vault)
+### 1.1 Secrets (Ansible Vault encrypt_string)
+
+Valores sensíveis (`deployment_mode`, `basicauth_users`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
 
 ```bash
-cp ansible/group_vars/secrets.yml.example ansible/group_vars/secrets.yml
-ansible-vault encrypt ansible/group_vars/secrets.yml   # define uma senha forte
-ansible-vault decrypt ansible/group_vars/secrets.yml   # pra editar depois
+# Criptografar um valor
+ansible-vault encrypt_string "lan" --name deployment_mode
+# Copiar o output (!vault | ...) e colar no all.yml
+
+ansible-vault encrypt_string "galvani \$2a\$14\$HASH_AQUI" --name basicauth_users
+# Copiar o output e colar no all.yml
 ```
 
-Conteúdo do `secrets.yml`:
+O arquivo `all.yml` fica assim (valores sensíveis criptografados, resto em plaintext):
 
 ```yaml
 ---
-deployment_mode: lan          # ou "internet"
-basicauth_users: "usuario $2a$14$HASH_GERADO_COM_CADDY"
+radtracker_dir: "/home/{{ ansible_user }}/radtracker"
+deployment_mode: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
+basicauth_users: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
+```
+
+**Nota:** O arquivo `all.yml` pode ser commitado — apenas os valores marcados com `!vault` estão criptografados.
+
+Para editar valores criptografados:
+```bash
+ansible-vault decrypt_string --vault-id @prompt  # ou usar --vault-password-file
 ```
 
 ### 1.2 Gerar hash da senha
@@ -57,10 +72,10 @@ docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "suasenha"
 
 ### 1.3 Modo internet — domínio
 
-No `secrets.yml`:
+No `all.yml`, edite o valor criptografado de `deployment_mode`:
 
 ```yaml
-deployment_mode: internet
+deployment_mode: !vault | ...  # valor criptografado = "internet"
 ```
 
 E editar `all.yml`:
@@ -125,7 +140,7 @@ http://10.10.10.209
 https://radtracker.exemplo.com
 ```
 
-Autenticação: HTTP Basic Auth (usuário e senha configurados no `secrets.yml`).
+Autenticação: HTTP Basic Auth (usuário e senha configurados no `all.yml`, valor `basicauth_users` criptografado).
 
 ## 5. Atualização
 
@@ -217,10 +232,9 @@ sudo systemctl stop nginx apache2   # parar servidores conflitantes
 # Gerar novo hash
 docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "novasenha"
 
-# Editar secrets.yml
-ansible-vault decrypt ansible/group_vars/secrets.yml
-# atualizar basicauth_users
-ansible-vault encrypt ansible/group_vars/secrets.yml
+# Editar all.yml — criptografar novo valor
+ansible-vault encrypt_string "galvani \$2a\$14\$NOVO_HASH" --name basicauth_users
+# Substituir o bloco !vault existente no all.yml pelo novo output
 
 # Re-deployar
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vault-pass
