@@ -8,6 +8,9 @@ from datetime import date
 from typing import Any
 
 import streamlit as st
+from streamlit_extras.let_it_rain import rain
+from streamlit_extras.star_rating import star_rating
+from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
     add_earnings_column,
@@ -62,8 +65,16 @@ def render_month_tab(conn: Any) -> None:
     _render_kpi_row(stats, goal, daily_target)
 
     # ── Progress Gauge ──
-    gauge = build_progress_gauge(stats["pct_goal"])
+    pct_goal = stats["pct_goal"]
+    gauge = build_progress_gauge(pct_goal)
     st.plotly_chart(gauge, width="stretch")
+
+    # ── Star rating (visual performance indicator) ──
+    stars = min(5.0, pct_goal / 20.0)
+    star_rating(stars)
+
+    # ── Celebration rain (once per goal achievement) ──
+    _maybe_celebrate(pct_goal, year_month)
 
     # ── Charts Row (2-column) ──
     month_df = load_month(conn, year_month)
@@ -85,6 +96,10 @@ def render_month_tab(conn: Any) -> None:
 
     # ── Rhythm Alert ──
     _render_rhythm_alert(stats, goal)
+
+    # ── Raw data toggle ──
+    raw_text = month_df.to_string(index=False)
+    stoggle(":material/table: Ver dados brutos", raw_text)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +197,22 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
         f"você precisa de **{md_escape(fmt_brl(needed))}/dia** daqui pra frente.\n\n"
         f"Sua média atual: {md_escape(fmt_brl(stats['daily_avg']))}/dia."
     )
+
+
+def _maybe_celebrate(pct_goal: float, year_month: str) -> None:
+    """Trigger rain animation once when monthly goal is achieved.
+
+    Uses st.session_state.goal_celebrated to prevent re-triggering
+    on reruns. The key includes year_month so a new month resets it.
+    """
+    if pct_goal < 100.0:
+        return
+    celebrate_key = f"goal_celebrated_{year_month}"
+    if st.session_state.get(celebrate_key):
+        return
+    rain(emoji="🎉", font_size=36, falling_speed=5, animation_length=3)
+    st.toast(":material/check_circle: Meta do mês atingida! Parabéns!")
+    st.session_state[celebrate_key] = True
 
 
 

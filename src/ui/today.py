@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import pandas as pd
 import streamlit as st
+from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
     add_earnings_column,
@@ -61,6 +62,18 @@ def render_today_tab(conn: Any) -> None:
     with col_right:
         if spark is not None:
             st.plotly_chart(spark, width="stretch")
+
+    # ── Raw data toggle ──
+    today_data = {
+        "Data": today_str,
+        "RM": stats["rm_count"],
+        "TC": stats["tc_count"],
+        "RX": stats["rx_count"],
+        "Faturamento": fmt_brl(stats["earnings_today"]),
+        "Horas": f"{stats['estimated_hours']:.1f}h",
+    }
+    raw_text = "\n".join(f"{k}: {v}" for k, v in today_data.items())
+    stoggle(":material/table: Ver dados brutos", raw_text)
 
 
 # ---------------------------------------------------------------------------
