@@ -100,38 +100,42 @@ def _render_kpi_row(
     k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
 
     with k1:
-        st.metric(
-            label=":material/payments: Faturamento MTD",
-            value=fmt_brl(stats["mtd_earnings"]),
-            delta=md_escape(f"{fmt_brl(stats['projection_month_end'])} projetado"),
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            st.metric(
+                label=":material/payments: Faturamento MTD",
+                value=fmt_brl(stats["mtd_earnings"]),
+                delta=md_escape(f"{fmt_brl(stats['projection_month_end'])} projetado"),
+                delta_color="off",
+            )
 
     with k2:
-        st.metric(
-            label=":material/target: % da meta",
-            value=f"{stats['pct_goal']:.0f}%",
-            delta=md_escape(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            st.metric(
+                label=":material/target: % da meta",
+                value=f"{stats['pct_goal']:.0f}%",
+                delta=md_escape(f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"),
+                delta_color="off",
+            )
 
     with k3:
-        st.metric(
-            label=":material/calendar_month: Dias trabalhados",
-            value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
-            delta=f"{stats['remaining_calendar_days']} restantes",
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            st.metric(
+                label=":material/calendar_month: Dias trabalhados",
+                value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
+                delta=f"{stats['remaining_calendar_days']} restantes",
+                delta_color="off",
+            )
 
     with k4:
-        daily_avg_str = fmt_brl(stats["daily_avg"])
-        target_str = md_escape(fmt_brl(daily_target))
-        st.metric(
-            label=":material/trending_up: Média diária",
-            value=daily_avg_str,
-            delta=f"Alvo: {target_str}/dia",
-            delta_color="off",
-        )
+        with st.container(border=True, height="stretch"):
+            daily_avg_str = fmt_brl(stats["daily_avg"])
+            target_str = md_escape(fmt_brl(daily_target))
+            st.metric(
+                label=":material/trending_up: Média diária",
+                value=daily_avg_str,
+                delta=f"Alvo: {target_str}/dia",
+                delta_color="off",
+            )
 
 
 def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
