@@ -1,0 +1,46 @@
+---
+- name: Update radtracker without data loss
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Fetch and reset to remote branch (preserves untracked files)
+      ansible.builtin.command:
+        cmd: |
+          git fetch origin {{ github_branch }}
+          git reset --hard origin/{{ github_branch }}
+        chdir: "{{ radtracker_dir }}"
+      changed_when: false  # tracked by compose build below
+
+    - name: Template latest Caddyfile
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/Caddyfile.j2"
+        dest: "{{ radtracker_dir }}/Caddyfile"
+        mode: "0644"
+
+    - name: Template latest .env
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/.env.j2"
+        dest: "{{ radtracker_dir }}/.env"
+        mode: "0600"
+
+    - name: Rebuild image and recreate containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ radtracker_dir }}"
+        state: present
+        build: always
+        pull: true
+        remove_orphans: true
+
+    - name: Wait for Streamlit to become healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8501/_stcore/health"
+        status_code: 200
+      register: health
+      until: health.status == 200
+      retries: 15
+      delay: 5
+
+    - name: Update complete
+      ansible.builtin.debug:
+        msg: "radtracker updated successfully"

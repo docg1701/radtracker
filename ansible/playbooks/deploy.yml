@@ -1,0 +1,150 @@
+---
+- name: Deploy radtracker to VPS
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - sqlite3
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository (Ubuntu/Debian)
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Clone or reset repository (preserves untracked files)
+      ansible.builtin.shell:
+        cmd: |
+          if [ -d "{{ radtracker_dir }}/.git" ]; then
+            cd "{{ radtracker_dir }}"
+            git fetch origin {{ github_branch }}
+            git reset --hard origin/{{ github_branch }}
+          else
+            git clone --branch {{ github_branch }} {{ github_repo }} {{ radtracker_dir }}
+          fi
+      changed_when: false  # tracked by compose build below
+
+    - name: Create persistent directories (preserved across deploys)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ radtracker_data_dir }}"
+        - "{{ radtracker_backup_dir }}"
+        - "{{ radtracker_dir }}/caddy_logs"
+
+    - name: Template Caddyfile
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/Caddyfile.j2"
+        dest: "{{ radtracker_dir }}/Caddyfile"
+        mode: "0644"
+
+    - name: Template .env file
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/.env.j2"
+        dest: "{{ radtracker_dir }}/.env"
+        mode: "0600"
+
+    - name: Ensure data directory has correct ownership (uid 1000)
+      ansible.builtin.file:
+        path: "{{ radtracker_data_dir }}"
+        owner: 1000
+        group: 1000
+        recurse: true
+
+    - name: Install and configure fail2ban
+      block:
+        - name: Install fail2ban
+          ansible.builtin.apt:
+            name: fail2ban
+            state: present
+
+        - name: Create fail2ban filter for Caddy BasicAuth failures
+          ansible.builtin.copy:
+            content: |
+              [Definition]
+              failregex = .*"remote_ip":"<HOST>".*"status":401
+              ignoreregex =
+            dest: /etc/fail2ban/filter.d/radtracker-caddy.conf
+            mode: "0644"
+
+        - name: Create radtracker jail
+          ansible.builtin.copy:
+            content: |
+              [radtracker-caddy]
+              enabled = true
+              port = http,https
+              filter = radtracker-caddy
+              logpath = {{ radtracker_dir }}/caddy_logs/access.log
+              maxretry = 5
+              findtime = 600
+              bantime = 3600
+            dest: /etc/fail2ban/jail.d/radtracker.conf
+            mode: "0644"
+
+        - name: Ensure fail2ban is running
+          ansible.builtin.systemd:
+            name: fail2ban
+            state: restarted
+            enabled: true
+
+    - name: Build images and start containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ radtracker_dir }}"
+        state: present
+        build: always
+        pull: true
+
+    - name: Wait for Streamlit to become healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8501/_stcore/health"
+        status_code: 200
+      register: health
+      until: health.status == 200
+      retries: 15
+      delay: 5
+
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg: >-
+          radtracker deployed!
+          {% if deployment_mode == "lan" %}
+          Access at http://{{ ansible_default_ipv4.address | default('localhost') }}
+          {% else %}
+          Access at https://{{ domain }}
+          {% endif %}

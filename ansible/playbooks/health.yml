@@ -1,0 +1,80 @@
+---
+- name: Check radtracker health
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Get radtracker container info
+      community.docker.docker_container_info:
+        name: radtracker
+      register: radtracker_ct
+
+    - name: Assert radtracker exists
+      ansible.builtin.assert:
+        that: radtracker_ct.exists
+        fail_msg: "Container 'radtracker' does not exist"
+        success_msg: "radtracker container exists"
+
+    - name: Assert radtracker is running
+      ansible.builtin.assert:
+        that: radtracker_ct.container.State.Status == "running"
+        fail_msg: "radtracker is NOT running (state: {{ radtracker_ct.container.State.Status }})"
+        success_msg: "radtracker is running"
+
+    - name: Assert radtracker is healthy
+      ansible.builtin.assert:
+        that: radtracker_ct.container.State.Health.Status == "healthy"
+        fail_msg: "radtracker health check FAILED (status: {{ radtracker_ct.container.State.Health.Status }})"
+        success_msg: "radtracker health check passed"
+
+    - name: Check Streamlit health endpoint (bypasses Caddy via localhost:8501)
+      ansible.builtin.uri:
+        url: "http://localhost:8501/_stcore/health"
+        status_code: 200
+      register: streamlit_health
+
+    - name: Assert Streamlit endpoint responds
+      ansible.builtin.assert:
+        that: streamlit_health.status == 200
+        fail_msg: "Streamlit health returned {{ streamlit_health.status }}"
+        success_msg: "Streamlit endpoint healthy"
+
+    - name: Get caddy container info
+      community.docker.docker_container_info:
+        name: caddy
+      register: caddy_ct
+
+    - name: Assert caddy exists
+      ansible.builtin.assert:
+        that: caddy_ct.exists
+        fail_msg: "Container 'caddy' does not exist"
+        success_msg: "caddy container exists"
+
+    - name: Assert caddy is running
+      ansible.builtin.assert:
+        that: caddy_ct.container.State.Status == "running"
+        fail_msg: "caddy is NOT running (state: {{ caddy_ct.container.State.Status }})"
+        success_msg: "caddy is running"
+
+    - name: Check Caddy is serving (expect 401 — no auth provided)
+      ansible.builtin.uri:
+        url: "http://localhost/"
+        status_code: 401
+      register: caddy_endpoint
+
+    - name: Assert Caddy responds with 401
+      ansible.builtin.assert:
+        that: caddy_endpoint.status == 401
+        fail_msg: "Caddy returned {{ caddy_endpoint.status }} (expected 401)"
+        success_msg: "Caddy responding (401 — auth required)"
+
+    - name: Check fail2ban is running
+      ansible.builtin.systemd:
+        name: fail2ban
+      register: fail2ban_status
+
+    - name: Assert fail2ban active
+      ansible.builtin.assert:
+        that: fail2ban_status.status.ActiveState == "active"
+        fail_msg: "fail2ban is not running"
+        success_msg: "fail2ban is active"

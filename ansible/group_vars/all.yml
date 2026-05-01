@@ -1,0 +1,23 @@
+---
+# Project root on VPS (in the ansible_user's home directory)
+radtracker_dir: "/home/{{ ansible_user }}/radtracker"
+radtracker_data_dir: "{{ radtracker_dir }}/data"
+radtracker_backup_dir: "{{ radtracker_dir }}/backups"
+
+# Deployment mode: "internet" or "lan"
+deployment_mode: internet
+
+# Domain (only used in internet mode)
+domain: radtracker.example.com
+
+# GitHub private repository (SSH URL for agent-forwarding auth)
+github_repo: git@github.com:docg1701/radtracker.git
+github_branch: master
+
+# BasicAuth: generate with: docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "password"
+# Format: "username bcrypt_hash" (space-separated)
+# The .env.j2 template escapes $ → $$ for Docker's env_file parser automatically.
+basicauth_users: "admin $2a$14$examplehashhere"
+
+# Backup retention (days)
+backup_retention_days: 30

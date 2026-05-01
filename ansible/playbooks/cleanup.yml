@@ -1,0 +1,45 @@
+---
+- name: Cleanup radtracker from VPS
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Stop and remove radtracker containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ radtracker_dir }}"
+        state: absent
+        remove_orphans: true
+      ignore_errors: true
+
+    - name: Prune unused Docker objects
+      community.docker.docker_prune:
+        containers: true
+        images: true
+        networks: true
+        builder_cache: true
+
+    - name: Stop and disable fail2ban radtracker jail
+      ansible.builtin.file:
+        path: /etc/fail2ban/jail.d/radtracker.conf
+        state: absent
+
+    - name: Restart fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: restarted
+      ignore_errors: true
+
+    - name: System package cleanup
+      ansible.builtin.apt:
+        autoremove: true
+        autoclean: true
+
+    - name: Verify data directory preserved
+      ansible.builtin.stat:
+        path: "{{ radtracker_data_dir }}"
+      register: data_dir_stat
+
+    - name: Confirm data is safe
+      ansible.builtin.debug:
+        msg: "Data directory preserved at {{ radtracker_data_dir }}"
+      when: data_dir_stat.stat.exists
