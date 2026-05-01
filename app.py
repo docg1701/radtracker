@@ -10,7 +10,6 @@ LLM insights, settings, session_state wiring.
 
 import streamlit as st
 
-from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
 from src.ui.month import render_month_tab
@@ -33,41 +32,22 @@ init_db(conn)
 # Sidebar
 render_sidebar(conn)
 
-# ── Navigation (cookie-persisted tab selection) ──
-TAB_LABELS = [
+# Tabs (4 implemented)
+tab_hoje, tab_mes, tab_analise, tab_config = st.tabs([
     ":material/today: Hoje",
     ":material/calendar_month: Mês Atual",
     ":material/trending_up: Análise",
     ":material/settings: Configuração",
-]
+])
 
-if "active_tab_idx" not in st.session_state:
-    try:
-        st.session_state.active_tab_idx = int(get_last_tab_index())
-    except (ValueError, Exception):
-        st.session_state.active_tab_idx = 0
-    if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
-        st.session_state.active_tab_idx = 0
-
-active = st.radio(
-    "Navegação",
-    TAB_LABELS,
-    index=st.session_state.active_tab_idx,
-    horizontal=True,
-    label_visibility="collapsed",
-)
-
-selected_idx = TAB_LABELS.index(active)
-if selected_idx != st.session_state.active_tab_idx:
-    st.session_state.active_tab_idx = selected_idx
-    set_last_tab_index(str(selected_idx))
-
-# ── Tab content ──
-if selected_idx == 0:
+with tab_hoje:
     render_today_tab(conn)
-elif selected_idx == 1:
+
+with tab_mes:
     render_month_tab(conn)
-elif selected_idx == 2:
+
+with tab_analise:
     render_analysis_tab(conn)
-else:
+
+with tab_config:
     render_settings_tab(conn)
