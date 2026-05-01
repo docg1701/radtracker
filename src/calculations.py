@@ -244,17 +244,17 @@ def _yesterday_str(date_str: str) -> str:
 # Monthly stats and targets
 # ---------------------------------------------------------------------------
 
-def compute_daily_target(monthly_goal: float, total_working_days: int) -> float:
+def compute_daily_target(monthly_goal: float, total_calendar_days: int) -> float:
     """
     Calculate the daily earnings target needed to meet the monthly goal.
 
     Example:
-        >>> compute_daily_target(45000.0, 26)
-        1730.7692307692307
+        >>> compute_daily_target(45000.0, 30)
+        1500.0
     """
-    if total_working_days <= 0:
+    if total_calendar_days <= 0:
         return 0.0
-    return monthly_goal / total_working_days
+    return monthly_goal / total_calendar_days
 
 
 def compute_monthly_stats(

@@ -160,7 +160,7 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
         # Meta e ritmo
         "mtd": fmt_brl(current.get("mtd_earnings", 0.0)),
         "pct": current.get("pct_goal", 0.0),
-        "meta_mensal": fmt_brl(stats.get("current_month_stats", {}).get("mtd_earnings", 0.0)
+        "meta_mensal": fmt_brl(current.get("mtd_earnings", 0.0)
                                 / max(current.get("pct_goal", 1.0), 0.01) * 100),
         "dias_trabalhados": days_worked,
         "total_dias": current.get("total_calendar_days", 0),

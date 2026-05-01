@@ -378,13 +378,14 @@ def build_monthly_modality_donut(
         ]
     )
 
-    # Derive month name from first row's date, or use "Mês" as fallback
-    month_name = "Mês"
+    # Derive month name and year from first row's date, or fall back
     if not df.empty and "date" in df.columns:
         _m = int(str(df["date"].iloc[0])[5:7])
         month_name = MONTHS_PT.get(_m, "Mês")
-    # Extract year from the date
-    chart_year = str(df["date"].iloc[0])[:4] if not df.empty and "date" in df.columns else "2026"
+        chart_year = str(df["date"].iloc[0])[:4]
+    else:
+        month_name = "Mês"
+        chart_year = str(date.today().year)
 
     fig.update_layout(
         title=dict(

@@ -115,7 +115,7 @@ def render_analysis_tab(conn: Any) -> None:
 
     # ── Full-width: Year-to-Date Earnings ──
     st.subheader(":material/bar_chart: Faturamento por mês")
-    ytd_chart = build_ytd_earnings_chart(df, year_month, goal, prices)
+    ytd_chart = build_ytd_earnings_chart(df, year_month, goal)
     st.plotly_chart(ytd_chart, width="stretch")
 
 

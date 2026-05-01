@@ -48,16 +48,21 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     goal = (mtd / pct * 100) if pct > 0 else 0.0
 
     # ── Tone: can the current pace hit the goal? ──
+    # When days_worked is small (< 5), daily_needed vs daily_avg
+    # ratio is unstable — fall back to linear-expected-progress logic.
     if remaining == 0:
         tone = "success" if pct >= 100 else "danger"
     elif daily_needed <= 0:
         tone = "success"
-    elif daily_avg > 0 and daily_needed <= daily_avg * 1.1:
-        tone = "on_track"
-    elif daily_avg > 0 and daily_needed <= daily_avg * 1.5:
-        tone = "warning"
-    elif daily_avg > 0:
-        tone = "danger"
+    elif days_worked >= 5:
+        if daily_avg > 0 and daily_needed <= daily_avg * 1.1:
+            tone = "on_track"
+        elif daily_avg > 0 and daily_needed <= daily_avg * 1.5:
+            tone = "warning"
+        elif daily_avg > 0:
+            tone = "danger"
+        else:
+            tone = "on_track"  # days_worked >= 5 with no daily_avg is impossible
     else:
         expected_pct = (days_worked / total_days) * 100
         if pct >= expected_pct * 1.1:

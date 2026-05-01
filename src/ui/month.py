@@ -139,9 +139,17 @@ def _render_kpi_row(
 
 
 def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
-    """Show a warning if behind pace to meet the monthly goal."""
+    """Show a warning if behind pace to meet the monthly goal.
+
+    Only fires when there are at least 5 days of data — earlier than
+    that, the pace calculation is too volatile to be meaningful.
+    """
     total = stats["total_calendar_days"]
     if total == 0:
+        return
+
+    days_worked = stats["days_worked"]
+    if days_worked < 5:
         return
 
     if stats["mtd_earnings"] >= goal:
@@ -150,7 +158,6 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     if stats["remaining_calendar_days"] == 0:
         return
 
-    days_worked = stats["days_worked"]
     pct_goal = stats["pct_goal"]
 
     expected_pct = (days_worked / total) * 100.0
@@ -161,12 +168,17 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     remaining = stats["remaining_calendar_days"]
     needed = stats["daily_target_needed"]
 
+    if remaining == 1:
+        day_text = "1 dia"
+    else:
+        day_text = f"{remaining} dias"
+
     st.warning(
         ":material/warning: **Atenção ao ritmo**\n\n"
         f"{st.session_state.get('user_name', 'Galvani')}, "
         f"você está atrás do ritmo para bater a meta "
         f"de {md_escape(fmt_brl(goal))}.\n\n"
-        f"Faltam {md_escape(fmt_brl(missing))} em {remaining} dias — "
+        f"Faltam {md_escape(fmt_brl(missing))} em {day_text} — "
         f"você precisa de **{md_escape(fmt_brl(needed))}/dia** daqui pra frente.\n\n"
         f"Sua média atual: {md_escape(fmt_brl(stats['daily_avg']))}/dia."
     )

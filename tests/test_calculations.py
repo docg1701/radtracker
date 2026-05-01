@@ -140,9 +140,9 @@ class TestComputeMonthlyStats:
 
 
 class TestComputeDailyTarget:
-    def test_compute_daily_target_normal(self):
-        result = compute_daily_target(45000.0, 26)
-        assert result == pytest.approx(1730.7692307692307)
+    def test_compute_daily_target_typical(self):
+        result = compute_daily_target(45000.0, 30)
+        assert result == pytest.approx(1500.0)
 
     def test_compute_daily_target_zero_days(self):
         result = compute_daily_target(45000.0, 0)

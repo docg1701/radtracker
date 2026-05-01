@@ -270,7 +270,7 @@ def build_modality_mix_evolution(
 # ---------------------------------------------------------------------------
 
 def build_ytd_earnings_chart(
-    df: pd.DataFrame, year_month: str, goal: float, prices: dict[str, float]
+    df: pd.DataFrame, year_month: str, goal: float
 ) -> go.Figure:
     """
     Bar chart: earnings per month across the entire year to date.
@@ -317,7 +317,7 @@ def build_ytd_earnings_chart(
 
     # Goal line
     fig.add_hline(
-        y=goal, line_dash="dash", line_color=CHART_COLORS["progress_danger"],
+        y=goal, line_dash="dash", line_color=CHART_COLORS["neutral"],
         line_width=1.5,
         annotation=dict(
             text=f"Meta: R$ {goal:,.0f}".replace(",", "."),
