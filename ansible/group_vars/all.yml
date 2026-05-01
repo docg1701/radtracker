@@ -5,10 +5,10 @@ radtracker_data_dir: "{{ radtracker_dir }}/data"
 radtracker_backup_dir: "{{ radtracker_dir }}/backups"
 
 # Deployment mode: "internet" or "lan"
-deployment_mode: internet
+deployment_mode: lan
 
 # Domain (only used in internet mode)
-domain: radtracker.example.com
+# domain: radtracker.example.com
 
 # GitHub private repository (SSH URL for agent-forwarding auth)
 github_repo: git@github.com:docg1701/radtracker.git

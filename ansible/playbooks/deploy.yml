@@ -16,15 +16,22 @@
         state: present
         update_cache: true
 
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Create APT keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
 
     - name: Add Docker repository (Ubuntu/Debian)
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch=amd64]
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
           https://download.docker.com/linux/{{ ansible_distribution | lower }}
           {{ ansible_distribution_release }} stable
         state: present
@@ -58,6 +65,7 @@
       environment:
         GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
       changed_when: false  # tracked by compose build below
+      become: false
 
     - name: Create persistent directories (preserved across deploys)
       ansible.builtin.file:
@@ -124,12 +132,20 @@
             state: restarted
             enabled: true
 
-    - name: Build images and start containers
+    - name: Create Caddy access log file (fail2ban requires it)
+      ansible.builtin.file:
+        path: "{{ radtracker_dir }}/caddy_logs/access.log"
+        state: touch
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Restart fail2ban (log file now exists)
       community.docker.docker_compose_v2:
         project_src: "{{ radtracker_dir }}"
         state: present
         build: always
-        pull: true
+        pull: always
 
     - name: Wait for Streamlit to become healthy
       ansible.builtin.uri:
