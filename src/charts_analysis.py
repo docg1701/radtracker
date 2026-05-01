@@ -44,8 +44,6 @@ def build_moving_averages_chart(
 
     fill_rgba = hex_to_rgba(CHART_COLORS["primary"], 0.1)
 
-    month_name = MONTHS_PT.get(month, str(month))
-
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -67,7 +65,7 @@ def build_moving_averages_chart(
     ))
 
     fig.update_layout(
-        title=dict(text=f"Médias Móveis — {month_name} {year}", font=dict(size=16)),
+        title=dict(text="", font=dict(size=16)),
         height=400,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -120,7 +118,7 @@ def build_wow_comparison_chart(
             )
         ])
         fig.update_layout(
-            title=dict(text="Comparação Semanal — 1 semana disponível", font=dict(size=14)),
+            title=dict(text="", font=dict(size=14)),
             height=350,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -163,7 +161,7 @@ def build_wow_comparison_chart(
     ))
 
     fig.update_layout(
-        title=dict(text="Comparação Semanal por Modalidade", font=dict(size=16)),
+        title=dict(text="", font=dict(size=16)),
         height=350,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -247,7 +245,7 @@ def build_modality_mix_evolution(
         ))
 
     fig.update_layout(
-        title=dict(text="Evolução do Mix de Modalidades", font=dict(size=16)),
+        title=dict(text="", font=dict(size=16)),
         height=350,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -328,7 +326,7 @@ def build_ytd_earnings_chart(
     )
 
     fig.update_layout(
-        title=dict(text="Faturamento por Mês — 2026", font=dict(size=16)),
+        title=dict(text="", font=dict(size=16)),
         height=380,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",

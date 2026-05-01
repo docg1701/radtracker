@@ -14,14 +14,11 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     """
     Generate Portuguese-language insights from historical statistics.
 
-    Uses 4 tone levels based on pct_goal:
-        >=75%  -> success
-        50-75% -> on-track
-        25-50% -> warning
-        <25%   -> danger
+    Tone is determined by whether the current pace can realistically
+    hit the goal, not just by a fixed pct_goal threshold.
 
-    Also checks WoW trend, modality mix shifts, and consecutive below-target days.
-    Addresses the user as "Galvani".
+    Also checks WoW/MoM trends, modality mix shifts, and
+    consecutive below-target days.
 
     Args:
         stats: Dict from compute_historical_stats() with keys:
@@ -43,78 +40,146 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     pct = current["pct_goal"]
     mtd = current["mtd_earnings"]
     days_worked = current["days_worked"]
+    remaining = current["remaining_calendar_days"]
     total_days = current["total_calendar_days"]
+    daily_avg = current.get("daily_avg", 0.0)
+    daily_needed = max(0.0, current.get("daily_target_needed", 0.0))
+    projection = current.get("projection_month_end", 0.0)
+    goal = (mtd / pct * 100) if pct > 0 else 0.0
 
-    # ── Tone selection ──
-    if pct >= 75:
+    # ── Tone: can the current pace hit the goal? ──
+    if remaining == 0:
+        tone = "success" if pct >= 100 else "danger"
+    elif daily_needed <= 0:
         tone = "success"
-    elif pct >= 50:
+    elif daily_avg > 0 and daily_needed <= daily_avg * 1.1:
         tone = "on_track"
-    elif pct >= 25:
+    elif daily_avg > 0 and daily_needed <= daily_avg * 1.5:
         tone = "warning"
-    else:
+    elif daily_avg > 0:
         tone = "danger"
+    else:
+        expected_pct = (days_worked / total_days) * 100
+        if pct >= expected_pct * 1.1:
+            tone = "success"
+        elif pct >= expected_pct:
+            tone = "on_track"
+        elif pct >= expected_pct * 0.5:
+            tone = "warning"
+        else:
+            tone = "danger"
 
     lines: list[str] = []
 
-    # ── Main tone-based opening ──
+    # ── Plural-aware helpers ──
+    def _dia(n: int) -> str:
+        return "dia" if n == 1 else "dias"
+
+    def _restar(n: int) -> str:
+        return "Resta" if n == 1 else "Restam"
+
+    def _restante(n: int) -> str:
+        return "restante" if n == 1 else "restantes"
+
+    # ── Opening paragraph ──
+    lines.append(
+        f"**{pct:.0f}%** da meta ({fmt_brl(mtd)} de {fmt_brl(goal)}) "
+        f"em **{days_worked}** {_dia(days_worked)} trabalhados. "
+    )
+
+    # ── Remaining-days projection line ──
+    if remaining > 0:
+        if tone == "success":
+            lines.append(
+                f"Com apenas **{remaining}** {_dia(remaining)} "
+                f"{_restante(remaining)} e faturamento de "
+                f"{fmt_brl(mtd)}, faltam "
+                f"**{fmt_brl(max(0, goal - mtd))}**. "
+                f"Sua projeção é fechar em "
+                f"**{fmt_brl(projection)}**."
+            )
+        elif tone == "on_track":
+            lines.append(
+                f"{_restar(remaining)} **{remaining}** "
+                f"{_dia(remaining)}. Seu ritmo atual de "
+                f"**{fmt_brl(daily_avg)}/dia** "
+                f"projeta **{fmt_brl(projection)}** — suficiente "
+                f"para bater a meta."
+            )
+        elif tone == "warning":
+            gap = daily_needed - daily_avg
+            lines.append(
+                f"{_restar(remaining)} **{remaining}** "
+                f"{_dia(remaining)}. Para bater a meta, você "
+                f"precisa de **{fmt_brl(daily_needed)}/dia**, "
+                f"mas sua média atual é "
+                f"**{fmt_brl(daily_avg)}/dia** "
+                f"({fmt_brl(gap)}/dia acima do seu ritmo). "
+                f"Projeção atual: **{fmt_brl(projection)}**."
+            )
+        else:
+            missing = goal - projection
+            lines.append(
+                f"{_restar(remaining)} **{remaining}** "
+                f"{_dia(remaining)}. Você precisaria de "
+                f"**{fmt_brl(daily_needed)}/dia**, "
+                f"mas sua média é **{fmt_brl(daily_avg)}/dia**. "
+                f"No ritmo atual, fecharia em "
+                f"**{fmt_brl(projection)}** "
+                f"— **{fmt_brl(missing)}** abaixo da meta."
+            )
+
+    # ── Tone-based assessment ──
     if tone == "success":
         lines.append(
-            f"**Excelente, Galvani!** Você já alcançou **{pct:.0f}%** "
-            f"da meta mensal com **{fmt_brl(mtd)}** faturados em "
-            f"**{days_worked}** de {total_days} dias úteis. "
-            f"O ritmo está forte — continue assim!"
+            "\n:material/check_circle: **Você já bateu a meta!** "
+            "O ritmo foi excelente este mês."
         )
     elif tone == "on_track":
-        remaining = max(0.0, current.get("daily_target_needed", 0))
         lines.append(
-            f"**No caminho certo, Galvani.** Você está com **{pct:.0f}%** "
-            f"da meta ({fmt_brl(mtd)} em {days_worked} dias). "
-            f"Para fechar o mês, precisa de cerca de **{fmt_brl(remaining)}/dia** "
-            f"nos próximos {current['remaining_calendar_days']} dias."
-        )
-    elif tone == "warning":
-        missing = max(0.0, current.get("daily_target_needed", 0))
-        lines.append(
-            f"**Atenção, Galvani.** Você está em **{pct:.0f}%** da meta "
-            f"({fmt_brl(mtd)} em {days_worked} dias). "
-            f"O gap está em **{fmt_brl(missing)}/dia** — "
-            f"vale revisar o volume de exames nos próximos "
-            f"{current['remaining_calendar_days']} dias."
-        )
-    else:
-        lines.append(
-            f"**Alerta, Galvani.** Apenas **{pct:.0f}%** da meta foi atingido "
-            f"({fmt_brl(mtd)} em {days_worked} dias). "
-            f"Considere rever a meta mensal ou buscar fontes adicionais "
-            f"de exames para os próximos {current['remaining_calendar_days']} dias."
+            "\n:material/check_circle: **Ritmo adequado.** "
+            "Mantendo a média atual, a meta será atingida."
         )
 
     # ── WoW trend ──
     wow = stats.get("wow_change_pct")
     if wow is not None:
-        direction = "(alta)" if wow > 0 else "(queda)" if wow < 0 else "(estável)"
+        if wow > 0:
+            direction = ":material/trending_up:"
+            trend_word = "crescimento"
+        elif wow < 0:
+            direction = ":material/trending_down:"
+            trend_word = "queda"
+        else:
+            direction = ":material/trending_flat:"
+            trend_word = "estável"
         lines.append(
             f"\n{direction} **Semana a semana:** "
-            f"{'crescimento' if wow > 0 else 'queda' if wow < 0 else 'estável'}"
-            f" de **{abs(wow):.1f}%** no faturamento."
+            f"{trend_word} de **{abs(wow):.1f}%** no faturamento."
         )
 
     # ── MoM trend ──
     mom = stats.get("mom_change_pct")
     if mom is not None:
-        direction = "(alta)" if mom > 0 else "(queda)" if mom < 0 else "(estável)"
+        if mom > 0:
+            direction = ":material/trending_up:"
+            trend_word = "crescimento"
+        elif mom < 0:
+            direction = ":material/trending_down:"
+            trend_word = "queda"
+        else:
+            direction = ":material/trending_flat:"
+            trend_word = "estável"
         lines.append(
             f"\n{direction} **Mês a mês:** "
-            f"{'crescimento' if mom > 0 else 'queda' if mom < 0 else 'estável'}"
-            f" de **{abs(mom):.1f}%** em relação ao mês anterior."
+            f"{trend_word} de **{abs(mom):.1f}%** "
+            f"em relação ao mês anterior."
         )
 
     # ── Modality mix shift ──
     mix_current = stats.get("modality_mix_current", {})
     mix_history = stats.get("modality_mix_historical", {})
     if days_worked > 0 and mix_history and len(mix_history) >= 2:
-        # Compute historical average (excluding current month if present)
         months_sorted = sorted(mix_history.keys())
         current_ym = max(months_sorted)
         past_months = [m for m in months_sorted if m != current_ym]
@@ -126,7 +191,6 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             for mod in avg_mix:
                 avg_mix[mod] /= len(past_months)
 
-            # Detect shifts >10 percentage points
             shifts: list[str] = []
             for mod, label in (("rm", "RM"), ("tc", "TC"), ("rx", "RX")):
                 diff = mix_current.get(mod, 0.0) - avg_mix[mod]
@@ -139,35 +203,39 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             if shifts:
                 lines.append(
                     "\n**Mudança no mix de modalidades:** "
-                    + "; ".join(shifts)
-                    + "."
+                    + "; ".join(shifts) + "."
                 )
 
     # ── Consecutive below target ──
     below = stats.get("consecutive_below_target", 0)
     if below >= 3:
         lines.append(
-            f"\n:material/warning: Você está há **{below} dias consecutivos** "
+            f"\n:material/warning: **{below}** {_dia(below)} consecutivos "
             f"abaixo da meta diária. Pode ser um bom momento para "
-            f"revisar a carga de trabalho ou ajustar a meta."
+            f"revisar a carga de trabalho."
         )
 
-    # ── Actionable suggestions ──
-    if tone in ("warning", "danger"):
-        lines.append(
-            "\n**Sugestão:** Avalie se há possibilidade de aumentar "
-            "o volume de exames de **RM** (maior remuneração) ou revisar "
-            "a meta para refletir melhor a demanda atual."
-        )
-
+    # ── Suggestions (context-aware) ──
     if tone == "success":
         lines.append(
-            "\n**Sugestão:** O momento é de consolidar o bom ritmo. "
-            "Considere documentar o que está funcionando bem este mês "
-            "para replicar nos próximos."
+            "\n:material/lightbulb: **Sugestão:** O momento é de "
+            "consolidar o bom ritmo. Documente o que funcionou "
+            "bem este mês para replicar nos próximos."
+        )
+    elif tone == "on_track":
+        lines.append(
+            f"\n:material/lightbulb: **Sugestão:** Continue no ritmo "
+            f"atual. Se conseguir alguns dias acima de "
+            f"**{fmt_brl(daily_avg)}**, você fecha com folga."
+        )
+    elif tone in ("warning", "danger"):
+        lines.append(
+            "\n:material/lightbulb: **Sugestão:** Para melhorar o "
+            "faturamento, priorize exames de **RM** "
+            "(maior remuneração). Se a demanda não permitir, "
+            "considere ajustar a meta na aba "
+            "**:material/settings: Configuração** para refletir "
+            "a realidade atual."
         )
 
     return "\n".join(lines)
-
-
-

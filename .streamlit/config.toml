@@ -34,9 +34,9 @@ dataframeHeaderBackgroundColor = "#F8F9FA"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
 # Headings: Manrope (geometric, close to Cal Sans substitute)
 headingFont = "Manrope:https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
-baseFontSize = 14
+baseFontSize = 16
 baseFontWeight = 400
-headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontSizes = ["32px", "25px", "21px", "18px", "16px", "14px"]
 headingFontWeights = [600, 600, 600, 500, 500, 500]
 linkUnderline = false
 

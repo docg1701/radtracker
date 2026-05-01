@@ -79,7 +79,7 @@ def render_month_tab(conn: Any) -> None:
         st.plotly_chart(line_chart, width="stretch")
 
     with col_right:
-        st.subheader("Receita por Modalidade")
+        st.subheader(":material/pie_chart: Receita por Modalidade")
         donut = build_monthly_modality_donut(month_df, prices)
         st.plotly_chart(donut, width="stretch")
 

@@ -53,7 +53,7 @@ def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
 
     fig.update_layout(
         title=dict(
-            text="Distribuição por Modalidade — Hoje",
+            text="Distribuição por Modalidade",
             font=dict(size=16),
         ),
         height=280,
@@ -317,11 +317,9 @@ def build_monthly_earnings_chart(
             font=dict(size=11, color=CHART_COLORS["neutral"]),
         )
 
-    month_name = MONTHS_PT.get(month, str(month))
-
     fig.update_layout(
         title=dict(
-            text=f"Faturamento Diário — {month_name} {year}",
+            text="Abril, 2026",
             font=dict(size=16),
         ),
         height=400,
@@ -383,14 +381,14 @@ def build_monthly_modality_donut(
     # Derive month name from first row's date, or use "Mês" as fallback
     month_name = "Mês"
     if not df.empty and "date" in df.columns:
-        first_date = str(df["date"].iloc[0])
-        if len(first_date) >= 7:
-            m = int(first_date[5:7])
-            month_name = MONTHS_PT.get(m, "Mês")
+        _m = int(str(df["date"].iloc[0])[5:7])
+        month_name = MONTHS_PT.get(_m, "Mês")
+
+    _ = month_name
 
     fig.update_layout(
         title=dict(
-            text=f"Receita por Modalidade — {month_name}",
+            text="Abril, 2026",
             font=dict(size=16),
         ),
         paper_bgcolor="rgba(0,0,0,0)",

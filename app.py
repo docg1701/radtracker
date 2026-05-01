@@ -37,7 +37,7 @@ tab_hoje, tab_mes, tab_analise, tab_config = st.tabs([
     ":material/today: Hoje",
     ":material/calendar_month: Mês Atual",
     ":material/trending_up: Análise",
-    ":material/settings: Config",
+    ":material/settings: Configuração",
 ])
 
 with tab_hoje:

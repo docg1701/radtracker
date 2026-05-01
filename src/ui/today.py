@@ -50,6 +50,8 @@ def render_today_tab(conn: Any) -> None:
     # ── Donut + Sparkline side-by-side ──
     spark = _build_sparkline_figure(conn, prices, year_month)
 
+    st.subheader(":material/dashboard: Visão geral")
+
     col_left, col_right = st.columns(2)
     with col_left:
         donut = build_modality_donut(

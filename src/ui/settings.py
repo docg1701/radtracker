@@ -63,7 +63,6 @@ def render_settings_tab(conn: Any) -> None:
     year_month = today.isoformat()[:7]
 
     ensure_settings(conn)
-    st.header(":material/settings: Configurações")
 
     _render_settings_form(conn, year_month)
     _render_danger_zone()
@@ -78,7 +77,7 @@ def _render_settings_form(conn: Any, year_month: str) -> None:
     current_api_key = st.session_state.get("api_key", "")
     current_prompt = st.session_state.get("llm_prompt", _DEFAULT_LLM_PROMPT)
 
-    st.subheader("Preços dos exames")
+    st.subheader(":material/payments: Preços dos exames")
     st.caption("Valores em reais (R$) por exame. Alterações entram em vigor imediatamente.")
 
     col_rm, col_tc, col_rx = st.columns(3)
@@ -98,16 +97,16 @@ def _render_settings_form(conn: Any, year_month: str) -> None:
             format="%.2f", value=prices["rx"], key="cfg_rx",
         )
 
-    st.subheader("Meta mensal")
+    st.subheader(":material/target: Meta mensal")
     goal = st.number_input(
         "Meta mensal (R$)", min_value=0.0, step=100.0,
         value=current_goal, key="cfg_goal",
     )
 
-    st.subheader("Personalização")
+    st.subheader(":material/person: Personalização")
     user_name = st.text_input("Seu nome", value=current_name, key="cfg_name")
 
-    st.subheader("IA — OpenRouter")
+    st.subheader(":material/smart_toy: IA — OpenRouter")
     api_key = st.text_input(
         "Chave API OpenRouter", type="password",
         value=current_api_key, key="cfg_apikey",
@@ -160,7 +159,7 @@ def _save_settings(
 @st.fragment
 def _render_danger_zone() -> None:
     """Fragment: isolated rerun scope. Uses on_click to avoid double-click bug."""
-    st.subheader("Zona de perigo")
+    st.subheader(":material/warning: Zona de perigo")
 
     if "confirm_delete" not in st.session_state:
         st.session_state.confirm_delete = False
