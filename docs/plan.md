@@ -13,8 +13,8 @@
 | 2     | Integration test (full cycle) | — | — | ✅ |
 | 3     | Verify app for Docker (config.toml, paths) | — | reviewer | ✅ |
 | 4     | Code quality tooling (yamllint, hadolint, ansible-lint) | — | — | ⬜ |
-| 4     | docs/deployment.md | — | — | ⬜ |
-| 4     | Update .gitignore + README.md | — | — | ⬜ |
+| 4     | docs/deployment.md (esboço — revisar na Phase 4) | — | — | ⬜ |
+| 4     | Revisão final + README.md | — | — | ⬜ |
 | 5     | Full VPS validation (both modes) | — | — | ⬜ |
 | 5     | Deployment-specific tests | — | — | ⬜ |
 | 5     | Commit, tag v1.1.0, push | — | — | ⬜ |
@@ -1024,9 +1024,9 @@ docker compose up -d
 
 ## 9. Documentation
 
-### 9.1 `docs/deployment.md`
+### 9.1 `docs/deployment.md` (ESBOÇO — finalizar na Phase 4)
 
-Comprehensive guide in Brazilian Portuguese covering:
+Guia capturado durante o integration test da Phase 2. Cobre:
 
 1. **Pré-requisitos:** VPS (Ubuntu 22.04/24.04 ou Debian 12/13), domínio com DNS A record (internet) ou acesso IP local (LAN), acesso SSH, chave SSH carregada no agente
 2. **Configuração única:** Editar `inventory.yml` e `group_vars/all.yml` com host, domínio, hash da senha, repo URL
@@ -1174,9 +1174,10 @@ ansible-lint ansible/playbooks/
   - Ansible: `ansible-lint` for playbook validation
 - Acceptance: All tools run clean
 
-**Task 10:** Create `docs/deployment.md`
+**Task 10:** Esboçar `docs/deployment.md` (rascunho inicial)
 - File: `docs/deployment.md`
-- Acceptance: Another developer can follow the guide to deploy in both modes
+- NOTA: Este é um esboço capturando o aprendizado do integration test. Deve ser revisado, refinado e finalizado na Phase 4.
+- Acceptance: Conteúdo cobre todos os passos do deploy real executado no VPS de teste.
 
 **Task 11:** Update `.gitignore` and `README.md`
 - Files: `.gitignore`, `README.md`
