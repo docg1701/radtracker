@@ -1,0 +1,22 @@
+---
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false", "yes", "no"]
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+
+ignore: |
+  ansible/templates/

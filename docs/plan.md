@@ -12,9 +12,9 @@
 | 2     | update.yml, health.yml, backup.yml, cleanup.yml | worker | pi (6×) | ✅ |
 | 2     | Integration test (full cycle) | — | — | ✅ |
 | 3     | Verify app for Docker (config.toml, paths) | — | reviewer | ✅ |
-| 4     | Code quality tooling (yamllint, hadolint, ansible-lint) | — | — | ⬜ |
-| 4     | docs/deployment.md (esboço — revisar na Phase 4) | — | — | ⬜ |
-| 4     | Revisão final + README.md | — | — | ⬜ |
+| 4     | Code quality tooling (yamllint, hadolint, ansible-lint) | — | reviewer (2×) | ✅ |
+| 4     | docs/deployment.md (esboço — revisar na Phase 4) | — | reviewer (2×) | ✅ |
+| 4     | Revisão final + README.md | — | reviewer (2×) | ✅ |
 | 5     | Full VPS validation (both modes) | — | — | ⬜ |
 | 5     | Deployment-specific tests | — | — | ⬜ |
 | 5     | Commit, tag v1.1.0, push | — | — | ⬜ |
@@ -114,6 +114,9 @@ The Caddyfile template uses the `deployment_mode` variable. When `lan`, Caddy li
 | `Caddyfile` | Reverse proxy config: domain (internet) or `:80` (LAN), basicauth, reverse_proxy to Streamlit |
 | `docker-compose.yml` | Caddy + Streamlit services, volumes, healthchecks |
 | `.env.example` | Template for deployment secrets (DOMAIN, BASICAUTH_USERS) |
+| `.yamllint.yml` | yamllint config: relaxed rules, excludes Jinja2 templates |
+| `.ansible-lint.yml` | ansible-lint config: skips intentional rule violations |
+| `.hadolint.yml` | hadolint config: ignores rules conflicting with Dockerfile design |
 
 ### 2.2 Ansible
 
@@ -127,7 +130,7 @@ The Caddyfile template uses the `deployment_mode` variable. When `lan`, Caddy li
 | `ansible/playbooks/update.yml` | Git fetch + reset (no force clean — data safe), rebuild image, recreate container, wait health |
 | `ansible/playbooks/health.yml` | Verify container running, health endpoint responds, assert state, fail2ban check |
 | `ansible/playbooks/backup.yml` | `.backup` inside container, copy to host, integrity check, rotate |
-| `ansible/playbooks/cleanup.yml` | Stop containers, prune Docker, apt autoremove — preserve `data/` |
+| `ansible/playbooks/cleanup.yml` | Full reset: remove containers, Docker, fail2ban, project dir, prerequisites — VPS fresh |
 | `ansible/templates/Caddyfile.j2` | Jinja2 template for Caddyfile (supports internet + LAN) |
 | `ansible/templates/.env.j2` | Jinja2 template for the `.env` file from Ansible vars |
 
@@ -486,20 +489,29 @@ Bootstrap + deploy in one idempotent playbook. Safe to run on a fresh VPS or to 
           - ca-certificates
           - curl
           - gnupg
-          - lsb-release
           - git
           - sqlite3
         state: present
         update_cache: true
 
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Create APT keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
 
     - name: Add Docker repository (Ubuntu/Debian)
       ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
         state: present
 
     - name: Install Docker
@@ -528,7 +540,10 @@ Bootstrap + deploy in one idempotent playbook. Safe to run on a fresh VPS or to 
           else
             git clone --branch {{ github_branch }} {{ github_repo }} {{ radtracker_dir }}
           fi
+      environment:
+        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
       changed_when: false  # tracked by compose build below
+      become: false
 
     - name: Create persistent directories (preserved across deploys)
       ansible.builtin.file:
@@ -589,18 +604,26 @@ Bootstrap + deploy in one idempotent playbook. Safe to run on a fresh VPS or to 
             dest: /etc/fail2ban/jail.d/radtracker.conf
             mode: "0644"
 
-        - name: Ensure fail2ban is running
-          ansible.builtin.systemd:
-            name: fail2ban
-            state: restarted
-            enabled: true
+    - name: Create Caddy access log file (fail2ban requires it)
+      ansible.builtin.file:
+        path: "{{ radtracker_dir }}/caddy_logs/access.log"
+        state: touch
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure fail2ban is running
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: restarted
+        enabled: true
 
     - name: Build images and start containers
       community.docker.docker_compose_v2:
         project_src: "{{ radtracker_dir }}"
         state: present
         build: always
-        pull: true
+        pull: always
 
     - name: Wait for Streamlit to become healthy
       ansible.builtin.uri:
@@ -650,7 +673,10 @@ Pulls latest source, rebuilds image, recreates container. Data never touched.
           git fetch origin {{ github_branch }}
           git reset --hard origin/{{ github_branch }}
         chdir: "{{ radtracker_dir }}"
+      environment:
+        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
       changed_when: false  # tracked by compose build below
+      become: false
 
     - name: Template latest Caddyfile
       ansible.builtin.template:
@@ -669,7 +695,7 @@ Pulls latest source, rebuilds image, recreates container. Data never touched.
         project_src: "{{ radtracker_dir }}"
         state: present
         build: always
-        pull: true
+        pull: always
         remove_orphans: true
 
     - name: Wait for Streamlit to become healthy
@@ -843,55 +869,99 @@ Pulls latest source, rebuilds image, recreates container. Data never touched.
 
 ### 5.10 Playbook: `cleanup.yml`
 
+Full VPS reset — removes radtracker, Docker, fail2ban, and all prerequisites installed during bootstrap. VPS returns to fresh state.
+
 ```yaml
 ---
-- name: Cleanup radtracker from VPS
+- name: Full cleanup — reset VPS to fresh state
   hosts: all
   become: true
 
   tasks:
-    - name: Stop and remove radtracker containers
+    - name: Stop and remove containers
       community.docker.docker_compose_v2:
         project_src: "{{ radtracker_dir }}"
         state: absent
         remove_orphans: true
       ignore_errors: true
 
-    - name: Prune unused Docker objects
+    - name: Prune Docker objects (images, volumes, networks, build cache)
       community.docker.docker_prune:
         containers: true
         images: true
+        images_filters:
+          dangling: false
         networks: true
+        volumes: true
         builder_cache: true
+      ignore_errors: true
 
-    - name: Stop and disable fail2ban radtracker jail
+    - name: Uninstall Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: absent
+        purge: true
+
+    - name: Remove Docker GPG key
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.asc
+        state: absent
+
+    - name: Remove Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        state: absent
+
+    - name: Remove fail2ban radtracker jail
       ansible.builtin.file:
         path: /etc/fail2ban/jail.d/radtracker.conf
         state: absent
 
-    - name: Restart fail2ban
-      ansible.builtin.systemd:
+    - name: Remove fail2ban radtracker filter
+      ansible.builtin.file:
+        path: /etc/fail2ban/filter.d/radtracker-caddy.conf
+        state: absent
+
+    - name: Uninstall fail2ban
+      ansible.builtin.apt:
         name: fail2ban
-        state: restarted
+        state: absent
+        purge: true
       ignore_errors: true
 
-    - name: System package cleanup
+    - name: Remove radtracker project directory
+      ansible.builtin.file:
+        path: "{{ radtracker_dir }}"
+        state: absent
+
+    - name: Remove bootstrap prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - git
+          - sqlite3
+        state: absent
+        purge: true
+
+    - name: System cleanup
       ansible.builtin.apt:
         autoremove: true
         autoclean: true
 
-    - name: Verify data directory preserved
-      ansible.builtin.stat:
-        path: "{{ radtracker_data_dir }}"
-      register: data_dir_stat
-
-    - name: Confirm data is safe
+    - name: Confirm state
       ansible.builtin.debug:
-        msg: "Data directory preserved at {{ radtracker_data_dir }}"
-      when: data_dir_stat.stat.exists
+        msg: "VPS reset complete — radtracker, Docker, fail2ban, prerequisites removed."
 ```
-
-**Important:** This playbook does NOT delete the `data/` subdirectory — the SQLite database survives cleanup.
 
 ---
 
@@ -1117,7 +1187,7 @@ sudo fail2ban-client status radtracker-caddy  # Should show banned IP
 uv run ruff check src/ tests/
 uv run mypy src/
 yamllint ansible/ docker-compose.yml
-docker run --rm -i hadolint/hadolint < Dockerfile
+docker run --rm -i -v "$(pwd)/.hadolint.yml:/.hadolint.yml" hadolint/hadolint hadolint --config /.hadolint.yml - < Dockerfile
 ansible-lint ansible/playbooks/
 ```
 
@@ -1170,7 +1240,7 @@ ansible-lint ansible/playbooks/
 - Tools:
   - Python: `ruff` (format + lint), `mypy` (type check) — already configured
   - YAML (Ansible, compose): `yamllint` with relaxed config (line-length disabled, Jinja2 templates excluded)
-  - Dockerfile: `hadolint` via Docker (`docker run --rm -i hadolint/hadolint < Dockerfile`)
+  - Dockerfile: `hadolint` via Docker (config file `.hadolint.yml` mounts for rule overrides)
   - Ansible: `ansible-lint` for playbook validation
 - Acceptance: All tools run clean
 
@@ -1263,7 +1333,7 @@ Phases 2, 3, and 4 can run in parallel after Phase 1 completes.
 3. `ansible-playbook update.yml` rebuilds image, recreates container, data intact
 4. `ansible-playbook backup.yml` produces a valid `.backup` with passed `PRAGMA integrity_check`
 5. `ansible-playbook health.yml` returns all green assertions including fail2ban check
-6. `ansible-playbook cleanup.yml` removes everything except the `data/` subdirectory
+6. `ansible-playbook cleanup.yml` fully resets the VPS — radtracker, Docker, fail2ban, and prerequisites all removed
 7. HTTPS access (internet mode) or HTTP access (LAN mode) with BasicAuth working
 8. Unauthenticated requests receive 401; authenticated requests pass through
 9. fail2ban blocks IP after 5 failed BasicAuth attempts in 10 minutes

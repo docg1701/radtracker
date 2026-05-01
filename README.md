@@ -88,6 +88,21 @@ radtracker/
 - streamlit-extras (skeleton loading)
 - pytest + pytest-cov
 
+## Deploy
+
+radtracker pode ser deployado em qualquer VPS com Docker + Ansible.
+Funciona em rede local (HTTP) ou com domínio próprio (HTTPS + Let's Encrypt).
+
+```bash
+git clone https://github.com/docg1701/radtracker.git
+cd radtracker
+# seguir o guia em docs/deployment.md
+```
+
+Stack de produção: Streamlit → Docker → Caddy (BasicAuth + Let's Encrypt) → fail2ban → Ansible
+
+Veja [docs/deployment.md](docs/deployment.md) para o guia completo.
+
 ## Licença
 
 MIT

@@ -1,0 +1,7 @@
+---
+# ansible-lint configuration for radtracker
+
+skip_list:
+  - no-relative-paths    # Template src paths use {{ playbook_dir }}/../templates/ — intentional
+  - ignore-errors        # cleanup.yml uses ignore_errors because Docker/fail2ban may already be stopped
+  - command-instead-of-module  # Raw git commands chosen over ansible.builtin.git (force: true would git clean -fdx = data loss)

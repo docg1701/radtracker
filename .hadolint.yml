@@ -1,0 +1,9 @@
+ignored:
+  # apt package version pinning would cause stale images on rebuild
+  - DL3008
+  # pip version pinning handled by uv + explicit dependency list
+  - DL3013
+  # uv manages its own cache; --no-cache-dir is for pip, not uv
+  - DL3042
+  # stage separation is intentional for readability and debugging
+  - DL3059

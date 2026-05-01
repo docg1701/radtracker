@@ -27,7 +27,7 @@ ansible/
     ├── update.yml               # Atualização sem perda de dados
     ├── health.yml               # Verificação de saúde
     ├── backup.yml               # Backup do SQLite
-    └── cleanup.yml              # Limpeza (preserva data/)
+    └── cleanup.yml              # Reset total do VPS
 ```
 
 ## 1. Configuração única
@@ -158,11 +158,16 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --ask-va
 ```
 
 - Para e remove containers
-- Prune Docker (imagens, networks, cache)
-- Remove jail do fail2ban
-- `apt autoremove`
+- Prune Docker (imagens, volumes, networks, build cache)
+- Remove Docker (pacotes, GPG key, repositório APT)
+- Remove fail2ban (jail, filter, pacote)
+- Remove diretório do projeto
+- Remove pré-requisitos (git, curl, sqlite3, etc.)
+- `apt autoremove` + `apt autoclean`
 
-**O diretório `data/` é preservado.** O banco de dados sobrevive à limpeza.
+VPS volta ao estado original — pronto pra um novo bootstrap + deploy.
+
+Remove radtracker, Docker, fail2ban e todos os pré-requisitos instalados. VPS volta ao estado original.
 
 ## Solução de problemas
 

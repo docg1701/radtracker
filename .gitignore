@@ -1,6 +1,7 @@
 # Environment & secrets
 .env
 .streamlit/secrets.toml
+ansible/group_vars/secrets.yml
 
 # Database and backup files
 data/*.db
@@ -39,4 +40,3 @@ Thumbs.db
 dist/
 *.egg-info/
 temp/
-ansible/group_vars/secrets.yml
