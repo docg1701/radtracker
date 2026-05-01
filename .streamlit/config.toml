@@ -24,7 +24,7 @@ violetColor = "#8B5CF6"
 grayColor = "#6B7280"
 
 # Chart categorical colors (modality colors)
-chartCategoricalColors = ["#2563EB", "#D97706", "#0891B2", "#0D9488", "#111111", "#6B7280", "#94A3B8"]
+chartCategoricalColors = ["#2563EB", "#D97706", "#0891B2", "#0D9488", "#94A3B8", "#64748B", "#E2E8F0"]
 
 # Dataframe styling
 dataframeBorderColor = "#E5E7EB"

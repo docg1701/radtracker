@@ -28,12 +28,27 @@ CHART_COLORS = {
     "muted": "#94A3B8",    # Slate-400 — secondary lines, grid
     "neutral": "#64748B",  # Slate-500 — annotations
 
-    # Progress milestone segments
-    "progress_danger": "#DC2626",   # 0-25%
-    "progress_warning": "#CA8A04",  # 25-50%
-    "progress_on_track": "#0D9488", # 50-75%
-    "progress_achieved": "#16A34A", # 75-100%
+    # Progress milestone segments (teal monochrome gradient)
+    "progress_danger": "#CCFBF1",      # teal-50  — 0-25%
+    "progress_warning": "#5EEAD4",    # teal-300 — 25-50%
+    "progress_on_track": "#14B8A6",   # teal-500 — 50-75%
+    "progress_achieved": "#0F766E",    # teal-700 — 75-100%
 
     # Chart background / grid
     "track": "#E2E8F0",  # Slate-200 — progress gauge background, gridlines
 }
+
+
+def get_chart_text_color() -> str:
+    """Return the chart annotation color for the current Streamlit theme.
+
+    Returns #E5E7EB for dark theme (readable on #101010 background),
+    #0F172A for light theme (readable on #FFFFFF background).
+    Falls back to light theme when called outside Streamlit runtime
+    (e.g., during tests).
+    """
+    try:
+        import streamlit as st  # noqa: PLC0415 — lazy import to avoid test dependency
+        return "#E5E7EB" if st.context.theme.base == "dark" else "#0F172A"
+    except Exception:
+        return "#0F172A"

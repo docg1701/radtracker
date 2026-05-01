@@ -13,7 +13,7 @@ Transform radtracker from a functional Streamlit app into a **professional, poli
 | **1** | Theme & typography | 1.1–1.4 (4) | ✅ Done | worker | reviewer (2×) |
 | **2** | Layout & responsiveness | 2.1–2.6 (6) | ✅ Done | worker | reviewer (2×) |
 | **3** | Visual polish & configurability | 3.1–3.11 (11) | ✅ Done | worker | reviewer (3×) |
-| **4** | Chart & data refinements | 4.1–4.7 (7) | ⬜ Pending | — | — |
+| **4** | Chart & data refinements | 4.1–4.7 (7) | ✅ Done | worker | reviewer (3×) |
 | **5** | UX enhancements | 5.1–5.5 (3) | ⬜ Pending | — | — |
 
 **Workflow por phase:** `worker (1×) → reviewer (1+×) → ✅ Done`

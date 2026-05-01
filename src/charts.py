@@ -11,7 +11,7 @@ from datetime import date
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.chart_colors import CHART_COLORS, hex_to_rgba
+from src.chart_colors import CHART_COLORS, get_chart_text_color, hex_to_rgba
 from src.formatting import MONTHS_PT
 
 # ---------------------------------------------------------------------------
@@ -188,8 +188,8 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
         name="restante", showlegend=False,
     ))
 
-    # Vertical marker line (red)
-    marker_color = CHART_COLORS["progress_danger"]
+    # Vertical marker line (primary teal — contrasts with gradient bar)
+    marker_color = CHART_COLORS["primary"]
     fig.add_vline(
         x=display_pct, line_width=3,
         line_color=marker_color,
@@ -201,7 +201,7 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
         x=display_pct, y=0,
         text=f"<b>{pct_goal:.0f}%</b>",
         showarrow=False,
-        font=dict(size=16, color="#0F172A"),
+        font=dict(size=16, color=get_chart_text_color()),
         xanchor="left",
         xshift=5,
     )
@@ -314,12 +314,12 @@ def build_monthly_earnings_chart(
             arrowhead=1,
             ax=20,
             ay=-30,
-            font=dict(size=11, color=CHART_COLORS["neutral"]),
+            font=dict(size=11, color=get_chart_text_color()),
         )
 
     fig.update_layout(
         title=dict(
-            text="Abril, 2026",
+            text=f"{MONTHS_PT.get(month, str(month))}, {year}",
             font=dict(size=16),
         ),
         height=400,
@@ -383,12 +383,12 @@ def build_monthly_modality_donut(
     if not df.empty and "date" in df.columns:
         _m = int(str(df["date"].iloc[0])[5:7])
         month_name = MONTHS_PT.get(_m, "Mês")
-
-    _ = month_name
+    # Extract year from the date
+    chart_year = str(df["date"].iloc[0])[:4] if not df.empty and "date" in df.columns else "2026"
 
     fig.update_layout(
         title=dict(
-            text="Abril, 2026",
+            text=f"{month_name}, {chart_year}",
             font=dict(size=16),
         ),
         paper_bgcolor="rgba(0,0,0,0)",

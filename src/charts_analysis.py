@@ -10,7 +10,7 @@ import calendar
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.chart_colors import CHART_COLORS, hex_to_rgba
+from src.chart_colors import CHART_COLORS, get_chart_text_color, hex_to_rgba
 from src.formatting import MONTHS_PT
 
 # ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ def build_ytd_earnings_chart(
         line_width=1.5,
         annotation=dict(
             text=f"Meta: R$ {goal:,.0f}".replace(",", "."),
-            font=dict(size=11, color=CHART_COLORS["neutral"]),
+            font=dict(size=11, color=get_chart_text_color()),
         ),
     )
 
