@@ -1,0 +1,11 @@
+{$DOMAIN:localhost} {
+    log {
+        output file /var/log/caddy/access.log {
+            format console
+        }
+    }
+    basic_auth * {
+        {$BASICAUTH_USERS}
+    }
+    reverse_proxy streamlit:8501
+}

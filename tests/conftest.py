@@ -37,6 +37,13 @@ DB_CREATE_SQL = [
         updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     """,
+    """
+    CREATE TABLE IF NOT EXISTS user_settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    """,
 ]
 
 

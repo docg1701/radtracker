@@ -26,7 +26,7 @@ def get_connection() -> Any:
 
 
 def init_db(conn: Any) -> None:
-    """Create all 3 tables if they don't exist. Idempotent."""
+    """Create all 4 tables if they don't exist. Idempotent."""
     create_daily = """
     CREATE TABLE IF NOT EXISTS daily_production (
         date        TEXT PRIMARY KEY,

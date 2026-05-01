@@ -4,9 +4,9 @@
 
 | Phase | Task | Worker | Review | Done |
 |-------|------|--------|--------|------|
-| 1     | Dockerfile + .dockerignore | — | — | ⬜ |
-| 1     | Caddyfile | — | — | ⬜ |
-| 1     | docker-compose.yml + .env.example | — | — | ⬜ |
+| 1     | Dockerfile + .dockerignore | worker | — | ✅ |
+| 1     | Caddyfile | worker | — | ✅ |
+| 1     | docker-compose.yml + .env.example | worker | — | ✅ |
 | 2     | Ansible skeleton (cfg, inventory, group_vars) | — | — | ⬜ |
 | 2     | Templates + deploy.yml | — | — | ⬜ |
 | 2     | update.yml, health.yml, backup.yml, cleanup.yml | — | — | ⬜ |
@@ -78,8 +78,8 @@ SQLite DB (/app/data/telerrad.db → bind-mounted from host /home/user/radtracke
 
 | Mode | Domain | TLS | Caddy config |
 |------|--------|-----|--------------|
-| **Internet** | `radtracker.example.com` | Let's Encrypt (auto) | `radtracker.example.com { basicauth ... reverse_proxy ... }` |
-| **LAN** | none (IP:port) | none (plain HTTP) | `:80 { basicauth ... reverse_proxy ... }` |
+| **Internet** | `radtracker.example.com` | Let's Encrypt (auto) | `radtracker.example.com { basic_auth ... reverse_proxy ... }` |
+| **LAN** | none (IP:port) | none (plain HTTP) | `:80 { basic_auth ... reverse_proxy ... }` |
 
 The Caddyfile template uses the `deployment_mode` variable. When `lan`, Caddy listens on `:80` with HTTP only (no TLS). When `internet`, it uses the domain with automatic Let's Encrypt.
 
@@ -274,7 +274,7 @@ scripts/
             format console
         }
     }
-    basicauth * {
+    basic_auth * {
         {$BASICAUTH_USERS}
     }
     reverse_proxy streamlit:8501
@@ -285,7 +285,7 @@ Key points:
 - `format console` outputs human-readable text (not JSON) so fail2ban can parse the log
 - `{$DOMAIN}`: when set to a real domain → Caddy auto-provisions Let's Encrypt; when `localhost` → plain HTTP
 - `{$BASICAUTH_USERS}`: variable from `.env`, format `"user hash"` (space-separated, no colon)
-- `basicauth *` protege toda a aplicação
+- `basic_auth *` protege toda a aplicação
 - `reverse_proxy` já lida com WebSockets automaticamente
 - Let's Encrypt é **zero config** — Caddy provisiona e renova certificados sozinho
 
@@ -326,11 +326,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1.0"
+    mem_limit: 512m
+    cpus: 1.0
 
 networks:
   radtracker:
@@ -440,7 +437,7 @@ This file should be edited once per deployment with actual domain, repo URL, and
             format console
         }
     }
-    basicauth * {
+    basic_auth * {
         {{ basicauth_users }}
     }
     reverse_proxy streamlit:8501
@@ -455,8 +452,10 @@ DOMAIN=:80
 {% else %}
 DOMAIN={{ domain }}
 {% endif %}
-BASICAUTH_USERS={{ basicauth_users }}
+BASICAUTH_USERS={{ basicauth_users | regex_replace('\\$', '$$') }}
 ```
+
+Note: The `regex_replace` filter escapes `$` → `$$` because Docker's `env_file` parser expands unescaped `$` as variable references. Docker unescapes `$$` back to `$` before passing to the container.
 
 All variables are defined in `group_vars/all.yml`. No extra vars needed.
 
@@ -1200,6 +1199,7 @@ Phases 2, 3, and 4 can run in parallel after Phase 1 completes.
 | Ansible `community.docker` collection version | `docker_compose_v2` module is stable since collection 3.0.0 |
 | Docker install fails on Debian vs Ubuntu (different repo paths) | `apt_repository` uses `{{ ansible_distribution \| lower }}` — resolves to `debian` or `ubuntu` automatically |
 | Build failure due to Python dependency changes | Dependencies listed explicitly in Dockerfile; multi-stage build isolates venv |
+| `deploy.resources` silently ignored in standalone compose (Swarm-only syntax) | Replaced with `mem_limit: 512m` + `cpus: 1.0` (works in all compose modes) |
 | Backup size grows unbounded | `backup.yml` enforces 30-day rotation |
 | LAN mode sem senha forte | Documentar que BasicAuth é obrigatório mesmo em LAN |
 | `.dockerignore` missing or incomplete | Verify with `docker history` after build; checklist: `.env`, `data/`, `.git/` excluded |

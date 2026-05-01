@@ -1,0 +1,40 @@
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile:ro"
+      - "./caddy_data:/data"
+      - "./caddy_config:/config"
+      - "./caddy_logs:/var/log/caddy"
+    env_file:
+      - .env
+    networks:
+      - radtracker
+
+  streamlit:
+    build: .
+    container_name: radtracker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8501:8501"   # loopback only — health checks, never exposed externally
+    volumes:
+      - "./data:/app/data"
+    networks:
+      - radtracker
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 1.0
+
+networks:
+  radtracker:
+    driver: bridge

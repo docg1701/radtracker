@@ -22,7 +22,7 @@ class TestInitDb:
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         names = set(df["name"].tolist())
-        expected = {"daily_production", "exam_prices", "monthly_goals"}
+        expected = {"daily_production", "exam_prices", "monthly_goals", "user_settings"}
         assert expected.issubset(names)
 
     def test_init_db_idempotent(self, conn):
