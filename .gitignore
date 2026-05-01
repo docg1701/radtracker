@@ -39,3 +39,4 @@ Thumbs.db
 dist/
 *.egg-info/
 temp/
+ansible/group_vars/secrets.yml
