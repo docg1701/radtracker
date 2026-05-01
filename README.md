@@ -5,11 +5,11 @@ Acompanhe faturamento, metas e tendências com Streamlit + SQLite.
 
 ## Funcionalidades
 
-- :material/today: **Hoje**: KPI cards, distribuição por modalidade, sparkline de 7 dias
-- :material/calendar_month: **Mês Atual**: progresso da meta, faturamento diário, alertas de ritmo
-- :material/trending_up: **Análise**: médias móveis (MA7/MA30), comparação semanal, evolução do mix
-- :material/smart_toy: **Insights IA**: GPT-OSS 120B via OpenRouter (fallback para regras se offline)
-- :material/settings: **Config**: preços por exame, meta mensal, seu nome, chave API, prompt da IA
+- 📅 **Hoje**: KPI cards, distribuição por modalidade, sparkline de 7 dias
+- 📆 **Mês Atual**: progresso da meta, faturamento diário, alertas de ritmo
+- 📈 **Análise**: médias móveis (MA7/MA30), comparação semanal, evolução do mix
+- 🤖 **Insights IA**: GPT-OSS 120B via OpenRouter (fallback para regras se offline)
+- ⚙️ **Config**: preços por exame, meta mensal, seu nome, chave API, prompt da IA
 
 ## Pré-requisitos
 
