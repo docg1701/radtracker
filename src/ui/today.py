@@ -73,7 +73,7 @@ def render_today_tab(conn: Any) -> None:
         "Horas": f"{stats['estimated_hours']:.1f}h",
     }
     raw_text = "\n".join(f"{k}: {v}" for k, v in today_data.items())
-    stoggle(":material/table: Ver dados brutos", raw_text)
+    stoggle("Ver dados brutos", raw_text)
 
 
 # ---------------------------------------------------------------------------

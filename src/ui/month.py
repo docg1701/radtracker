@@ -99,7 +99,7 @@ def render_month_tab(conn: Any) -> None:
 
     # ── Raw data toggle ──
     raw_text = month_df.to_string(index=False)
-    stoggle(":material/table: Ver dados brutos", raw_text)
+    stoggle("Ver dados brutos", raw_text)
 
 
 # ---------------------------------------------------------------------------
