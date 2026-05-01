@@ -10,6 +10,8 @@
           git fetch origin {{ github_branch }}
           git reset --hard origin/{{ github_branch }}
         chdir: "{{ radtracker_dir }}"
+      environment:
+        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
       changed_when: false  # tracked by compose build below
 
     - name: Template latest Caddyfile

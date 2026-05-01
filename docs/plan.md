@@ -7,11 +7,11 @@
 | 1     | Dockerfile + .dockerignore | worker | pi (3×) | ✅ |
 | 1     | Caddyfile | worker | pi (3×) | ✅ |
 | 1     | docker-compose.yml + .env.example | worker | pi (3×) | ✅ |
-| 2     | Ansible skeleton (cfg, inventory, group_vars) | worker | — | ✅ |
-| 2     | Templates + deploy.yml | worker | — | ✅ |
-| 2     | update.yml, health.yml, backup.yml, cleanup.yml | worker | — | ✅ |
+| 2     | Ansible skeleton (cfg, inventory, group_vars) | worker | pi (6×) | ✅ |
+| 2     | Templates + deploy.yml | worker | pi (6×) | ✅ |
+| 2     | update.yml, health.yml, backup.yml, cleanup.yml | worker | pi (6×) | ✅ |
 | 2     | Integration test (full cycle) | worker | — | ⬜ |
-| 3     | Verify app for Docker (config.toml, paths) | — | — | ⬜ |
+| 3     | Verify app for Docker (config.toml, paths) | — | — | ✅ |
 | 4     | Code quality tooling (yamllint, hadolint, ansible-lint) | — | — | ⬜ |
 | 4     | docs/deployment.md | — | — | ⬜ |
 | 4     | Update .gitignore + README.md | — | — | ⬜ |

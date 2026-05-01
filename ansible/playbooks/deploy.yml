@@ -11,7 +11,6 @@
           - ca-certificates
           - curl
           - gnupg
-          - lsb-release
           - git
           - sqlite3
         state: present
@@ -56,6 +55,8 @@
           else
             git clone --branch {{ github_branch }} {{ github_repo }} {{ radtracker_dir }}
           fi
+      environment:
+        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
       changed_when: false  # tracked by compose build below
 
     - name: Create persistent directories (preserved across deploys)
