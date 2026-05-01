@@ -44,7 +44,11 @@ class FakeConnection:
     """Emulates st.connection('telerrad', type='sql') with SQLite :memory:."""
 
     def __init__(self) -> None:
-        self._engine = sa.create_engine("sqlite:///:memory:")
+        self._engine = sa.create_engine(
+            "sqlite:///:memory:",
+            poolclass=sa.pool.StaticPool,
+            connect_args={"check_same_thread": False},
+        )
 
     def connect(self) -> sa.engine.Connection:
         """Returns a SQLAlchemy connection (context-manager compatible)."""

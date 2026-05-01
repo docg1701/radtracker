@@ -30,11 +30,11 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
         Markdown-formatted Portuguese insight string.
     """
     current = stats.get("current_month_stats")
-    if current is None:
+    if current is None or current.get("days_worked", 0) == 0:
         return (
-            "Ainda não há dados suficientes para gerar insights. "
-            "Registre sua produção diária na aba **:material/today: Hoje** "
-            "e volte aqui quando tiver pelo menos alguns dias de trabalho."
+            "Nenhum registro ainda — registre sua produção "
+            "na **barra lateral** e volte aqui quando "
+            "tiver pelo menos alguns dias de trabalho."
         )
 
     pct = current["pct_goal"]

@@ -178,5 +178,4 @@ class TestEmptyStats:
     def test_empty_stats_returns_message(self):
         stats = {"current_month_stats": None}
         text = generate_rule_insights(stats)
-        assert "dados suficientes" in text
-        assert ":material/today: Hoje" in text
+        assert "barra lateral" in text

@@ -1,7 +1,5 @@
 """Tests for src.calculations — earnings, stats, MA, WoW, MoM, historical."""
 
-from datetime import date
-
 import pandas as pd
 import pytest
 
@@ -293,16 +291,12 @@ class TestHistoricalStats:
 
     def test_historical_consecutive_below_target(self, conn):
         init_db(conn)
-        # Insert 3 days with very low earnings (below daily_target ~1730.77)
-        today = date.today()
-        ym = today.isoformat()[:7]
-        from datetime import timedelta
-        # Insert 3 days with 1 RM exam each = 35.0 << 1730.77
-        for i in range(3):
-            day = (today - timedelta(days=3 - i)).isoformat()
+        year_month = "2026-03"
+        # Insert 3 days in 2026-03 with 1 RM exam each = 35.0 << 1500
+        for day in ("2026-03-29", "2026-03-30", "2026-03-31"):
             upsert_daily(conn, day, 1, 0, 0)
 
-        result = compute_historical_stats(conn, ym, 45000.0, DEFAULT_PRICES)
+        result = compute_historical_stats(conn, year_month, 45000.0, DEFAULT_PRICES)
         assert result["consecutive_below_target"] >= 3
 
     def test_historical_empty_df_columns(self, conn):

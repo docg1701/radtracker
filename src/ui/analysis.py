@@ -129,10 +129,10 @@ def _render_empty_state() -> None:
     with col2:
         with st.container(border=True):
             st.markdown(":material/bar_chart:", text_alignment="center")
-            st.subheader("Nenhum dado histórico")
+            st.subheader("Nenhum registro ainda")
             st.markdown(
-                "Registre pelo menos **1 dia** de produção "
-                "na aba **:material/today: Hoje**."
+                "Registre sua produção na "
+                "**barra lateral**."
             )
             st.caption("As análises históricas aparecerão aqui.")
 

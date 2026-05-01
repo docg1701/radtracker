@@ -53,10 +53,10 @@ def render_month_tab(conn: Any) -> None:
         with col2:
             with st.container(border=True):
                 st.markdown(":material/calendar_month:", text_alignment="center")
-                st.subheader("Nenhum dado este mês")
+                st.subheader("Nenhum registro ainda")
                 st.markdown(
                     "Comece registrando sua produção "
-                    "na aba **:material/today: Hoje**."
+                    "na **barra lateral**."
                 )
                 st.caption("Os dados mensais aparecerão aqui.")
         return
