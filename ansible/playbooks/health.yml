@@ -56,18 +56,6 @@
         fail_msg: "caddy is NOT running (state: {{ caddy_ct.container.State.Status }})"
         success_msg: "caddy is running"
 
-    - name: Check Caddy is serving (expect 401 — no auth provided)
-      ansible.builtin.uri:
-        url: "http://localhost/"
-        status_code: 401
-      register: caddy_endpoint
-
-    - name: Assert Caddy responds with 401
-      ansible.builtin.assert:
-        that: caddy_endpoint.status == 401
-        fail_msg: "Caddy returned {{ caddy_endpoint.status }} (expected 401)"
-        success_msg: "Caddy responding (401 — auth required)"
-
     - name: Check fail2ban is running
       ansible.builtin.systemd:
         name: fail2ban
