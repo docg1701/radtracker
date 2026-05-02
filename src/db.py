@@ -445,17 +445,23 @@ def _migrate_v1_to_v2(conn: Any) -> None:
             "tc_geral": (float(row["tc_price"]), 7.5),
             "radiografia": (float(row["rx_price"]), 75.0),
         }
-        with conn.connect() as db_conn:
-            for slug, (price, eph) in price_map.items():
-                db_conn.execute(
-                    sa.text("""
-                        UPDATE modalities
-                        SET price = :price,
-                            exams_per_hour = :eph,
-                            active = 1,
-                            updated_at = datetime('now','localtime')
-                        WHERE slug = :slug
-                    """),
-                    {"slug": slug, "price": price, "eph": eph},
-                )
-            db_conn.commit()
+    else:
+        price_map = {
+            "ressonancia_magnetica": (DEFAULT_PRICES["ressonancia_magnetica"], 7.5),
+            "tc_geral": (DEFAULT_PRICES["tc_geral"], 7.5),
+            "radiografia": (DEFAULT_PRICES["radiografia"], 75.0),
+        }
+    with conn.connect() as db_conn:
+        for slug, (price, eph) in price_map.items():
+            db_conn.execute(
+                sa.text("""
+                    UPDATE modalities
+                    SET price = :price,
+                        exams_per_hour = :eph,
+                        active = 1,
+                        updated_at = datetime('now','localtime')
+                    WHERE slug = :slug
+                """),
+                {"slug": slug, "price": price, "eph": eph},
+            )
+        db_conn.commit()

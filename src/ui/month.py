@@ -38,7 +38,7 @@ def render_month_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     if not active_mods:
-        _render_empty_state("Nenhuma modalidade ativa.")
+        _render_empty_state("Nenhuma modalidade ativa. Configure na aba **Configuração**.")
         return
 
     stats = compute_monthly_stats(conn, year_month, goal, active_mods)

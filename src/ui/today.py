@@ -12,6 +12,7 @@ import streamlit as st
 from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
+    _compute_daily_earnings_from_items,
     compute_daily_stats,
     compute_monthly_stats,
 )
@@ -176,7 +177,7 @@ def _build_sparkline_figure(
     if current_items.empty:
         return None
 
-    daily = _daily_earnings_from_items(current_items, prices)
+    daily = _compute_daily_earnings_from_items(current_items, prices)
     if daily.empty:
         return None
 
@@ -189,7 +190,7 @@ def _build_sparkline_figure(
             prev_ym = f"{y}-{m - 1:02d}"
         prev_items = load_month_items(conn, prev_ym)
         if not prev_items.empty:
-            prev_daily = _daily_earnings_from_items(prev_items, prices)
+            prev_daily = _compute_daily_earnings_from_items(prev_items, prices)
             daily = pd.concat([prev_daily, daily], ignore_index=True)
 
     daily = daily.sort_values("date").tail(7)
@@ -199,14 +200,3 @@ def _build_sparkline_figure(
     return None
 
 
-def _daily_earnings_from_items(
-    items_df: pd.DataFrame, prices: dict[str, float]
-) -> pd.DataFrame:
-    """Sum per-modality revenue by date → earnings column."""
-    items_df = items_df.copy()
-    items_df["revenue"] = items_df.apply(
-        lambda r: int(r["count"]) * prices.get(str(r["modality_slug"]), 0.0),
-        axis=1,
-    )
-    daily = items_df.groupby("date", as_index=False).agg(earnings=("revenue", "sum"))
-    return daily

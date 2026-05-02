@@ -33,7 +33,7 @@ def render_analysis_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     if not active_mods:
-        _render_empty_state("Nenhuma modalidade ativa.")
+        _render_empty_state("Nenhuma modalidade ativa. Configure na aba **Configuração**.")
         return
 
     import json
@@ -138,7 +138,10 @@ def _render_ai_section(
 ) -> None:
     """Render the AI button + optional result expander."""
     api_key = st.session_state.get("api_key", "")
-    llm_model = st.session_state.get("llm_model", "openai/gpt-oss-120b:free")
+    llm_model = (
+        st.session_state.get("llm_model", "openai/gpt-oss-120b:free")
+        or "openai/gpt-oss-120b:free"
+    )
 
     if not api_key:
         st.caption(

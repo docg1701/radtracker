@@ -368,3 +368,31 @@ class TestMigration:
         tx = next(m for m in active if m["slug"] == "radiografia")
         assert tx["price"] == 5.0
         assert tx["exams_per_hour"] == 75.0
+
+    def test_v1_to_v2_migrates_data_without_prices(self, conn):
+        """If exam_prices is empty, migration falls back to DEFAULT_PRICES."""
+        with conn.connect() as c:
+            c.execute(sa.text("""
+                CREATE TABLE IF NOT EXISTS daily_production (
+                    date TEXT PRIMARY KEY, rm_count INTEGER, tc_count INTEGER,
+                    rx_count INTEGER, created_at TEXT, updated_at TEXT
+                )
+            """))
+            c.commit()
+
+        upsert_daily(conn, "2026-03-10", 8, 6, 35)
+        # No exam_prices row inserted
+
+        init_db(conn)
+
+        items = load_daily_items(conn, "2026-03-10")
+        assert items.get("ressonancia_magnetica") == 8
+        assert items.get("tc_geral") == 6
+        assert items.get("radiografia") == 35
+
+        active = load_active_modalities(conn)
+        assert len(active) == 3
+        from src.db import DEFAULT_PRICES
+        rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
+        assert rm["price"] == DEFAULT_PRICES["ressonancia_magnetica"]
+        assert rm["exams_per_hour"] == 7.5

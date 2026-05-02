@@ -170,7 +170,7 @@ def _save_modalities(
     st.session_state.prices = {
         m["slug"]: m["price"] for m in st.session_state.active_modalities
     }
-    st.toast(":material/check_circle: Modalidades salvas! Recarregue para aplicar.")
+    st.toast(":material/check_circle: Modalidades salvas! Barra lateral atualizada.")
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +212,12 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
         "Digite o slug exato do modelo como aparece no site do OpenRouter. "
         "Ex: `google/gemini-2.5-flash`, `anthropic/claude-sonnet-4`."
     )
+    if llm_model and "/" not in llm_model:
+        st.warning(
+            "Slug inválido: use o formato provedor/modelo "
+            "(ex: openai/gpt-oss-120b:free).",
+            icon=":material/warning:",
+        )
 
     system_prompt = st.text_area(
         "Prompt da IA", value=current_prompt, height=200, key="cfg_prompt",
@@ -239,16 +245,16 @@ def _save_llm_settings(
     save_goal(conn, year_month, goal)
     save_setting(conn, "user_name", user_name)
     save_setting(conn, "api_key", api_key)
-    save_setting(conn, "llm_model", llm_model)
+    save_setting(conn, "llm_model", llm_model or DEFAULT_LLM_MODEL)
     save_setting(conn, "llm_prompt", system_prompt)
 
     st.session_state.pop("historical_cache", None)
     st.session_state.goal = goal
     st.session_state.user_name = user_name
     st.session_state.api_key = api_key
-    st.session_state.llm_model = llm_model
+    st.session_state.llm_model = llm_model or DEFAULT_LLM_MODEL
     st.session_state.llm_prompt = system_prompt
-    st.toast(":material/check_circle: Configurações salvas! Recarregue para aplicar.")
+    st.toast(":material/check_circle: Configurações salvas!")
 
 
 # ---------------------------------------------------------------------------
