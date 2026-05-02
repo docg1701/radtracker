@@ -163,6 +163,8 @@
         state: present
         build: always
         pull: always
+        recreate: always
+        remove_orphans: true
 
     - name: Wait for Streamlit to become healthy
       ansible.builtin.uri:
