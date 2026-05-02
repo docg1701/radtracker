@@ -51,24 +51,25 @@ def render_sidebar(conn: Any) -> None:
         # Pre-fill from existing data
         existing = load_daily_items(conn, date_str)
 
-        # Modality inputs in compact rows
+        # Modality inputs — label + input on same row
         values: dict[str, int] = {}
-        cols = st.columns(3)
-        col_idx = 0
 
         for m in active_mods:
             slug = m["slug"]
             label = m["label"]
             default_val = existing.get(slug, 0)
 
-            with cols[col_idx % 3]:
+            col_label, col_input = st.columns([3, 1])
+            with col_label:
+                st.write(label)
+            with col_input:
                 val = st.number_input(
                     label, min_value=0, step=1,
                     value=default_val,
                     key=f"sidebar_{slug}_{date_str}",
+                    label_visibility="collapsed",
                 )
                 values[slug] = val
-            col_idx += 1
 
         # Save button
         if st.button(
