@@ -17,11 +17,41 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-CHART_COLORS = {
-    # Modality colors — used in bar, pie, stacked charts
-    "rm": "#2563EB",      # Blue-600
-    "tc": "#D97706",      # Amber-600
-    "rx": "#0891B2",      # Cyan-600
+# Modalidade → cor fixa (11 modalidades, palette distinta e colorblind-safe)
+MODALITY_COLORS: dict[str, str] = {
+    "tc_abdome_total": "#2563EB",          # Blue-600
+    "tc_geral": "#D97706",                 # Amber-600
+    "angiotomografia": "#0891B2",          # Cyan-600
+    "ressonancia_magnetica": "#DC2626",    # Red-600
+    "ultrassonografia": "#7C3AED",         # Violet-600
+    "dopplervelocimetria": "#059669",      # Emerald-600
+    "mamografia": "#DB2777",               # Pink-600
+    "radiografia": "#CA8A04",              # Yellow-600
+    "radiografia_contrastada": "#9333EA",  # Purple-600
+    "ultrassom_morfologico": "#0D9488",    # Teal-600
+    "densitometria": "#EA580C",            # Orange-600
+}
+
+
+def color_for_modality(slug: str) -> str:
+    """Return the fixed color for a modality slug; fallback to Slate-500.
+
+    Example:
+        >>> color_for_modality("ressonancia_magnetica")
+        '#DC2626'
+        >>> color_for_modality("desconhecido")
+        '#64748B'
+    """
+    return MODALITY_COLORS.get(slug, "#64748B")
+
+
+# Modality color aliases for backward compatibility in tests
+CHART_COLORS: dict[str, str] = {
+    **MODALITY_COLORS,
+    # Legacy aliases (kept for transition)
+    "rm": MODALITY_COLORS["ressonancia_magnetica"],
+    "tc": MODALITY_COLORS["tc_geral"],
+    "rx": MODALITY_COLORS["radiografia"],
 
     # Chart accent
     "primary": "#0D9488",  # Teal-600 — main line/bar color

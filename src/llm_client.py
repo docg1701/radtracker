@@ -1,13 +1,14 @@
 """
-LLM client for radtracker — OpenRouter API (GPT-OSS 120B, free tier).
+LLM client for radtracker — OpenRouter API (configurable model).
 
-Stateless wrapper. Constructor takes API key; generate() takes stats dict
-and returns Portuguese markdown insight text.
+Stateless wrapper. Constructor takes API key and model slug;
+generate() takes stats dict + active_modalities and returns
+Portuguese markdown insight text.
 
 Usage:
     try:
-        llm = LLMClient(api_key)
-        insight = llm.generate(stats, prices)
+        llm = LLMClient(api_key, model)
+        insight = llm.generate(stats, active_modalities)
     except LLMUnavailableError:
         insight = generate_rule_insights(stats)  # fallback
 """
@@ -25,9 +26,8 @@ class LLMUnavailableError(Exception):
 
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-_MODEL = "openai/gpt-oss-120b:free"
 
-SYSTEM_PROMPT = (
+_SYSTEM_PROMPT = (
     "Você é um assistente pessoal de produtividade para um médico "
     "radiologista chamado Galvani. "
     "Analise os dados de produção abaixo e produza uma análise completa "
@@ -37,7 +37,6 @@ SYSTEM_PROMPT = (
     "Seja analítico e profundo. Dê sugestões acionáveis e específicas, "
     "cite valores exatos e compare com períodos anteriores."
 )
-
 
 _USER_PROMPT_TEMPLATE = """\
 Dados completos da produção:
@@ -61,11 +60,8 @@ Dados completos da produção:
 - Média histórica mensal (todos os meses): {media_historica}
 - Tendência de aceleração/desaceleração: {tendencia}
 
-=== VOLUME DE EXAMES ===
-- Total de exames no mês: {total_exames}
-- RM: {total_rm} exames ({mix_rm:.1f}% da receita)
-- TC: {total_tc} exames ({mix_tc:.1f}% da receita)
-- RX: {total_rx} exames ({mix_rx:.1f}% da receita)
+=== VOLUME DE EXAMES (por modalidade) ===
+{modality_breakdown}
 
 === DESTAQUES DO MÊS ===
 - Dia mais produtivo: {dia_produtivo} com {valor_dia_produtivo}
@@ -77,19 +73,11 @@ Inclua: avaliação do ritmo, tendências de curto e longo prazo, análise
 do mix de modalidades, riscos e oportunidades, e recomendações práticas."""
 
 
-def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, Any]:
-    """Extract scalar metrics from the stats DataFrame for the prompt.
-
-    Computes: MA7/MA30 latest, total exam counts, best day, historical
-    monthly average, acceleration trend, ticket médio.
-
-    Args:
-        stats: Dict from compute_historical_stats().
-        prices: Prices dict for computing ticket médio.
-
-    Returns:
-        Flat dict of scalar values safe for string interpolation.
-    """
+def _enrich_stats(
+    stats: dict[str, Any],
+    active_modalities: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Extract scalar metrics from stats + modality data for the prompt."""
     df: pd.DataFrame = stats.get("df", pd.DataFrame())
     current = stats.get("current_month_stats", {})
     mix = stats.get("modality_mix_current", {})
@@ -102,7 +90,7 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
         ma7_val = float(last_row.get("ma7", 0.0) or 0.0)
         ma30_val = float(last_row.get("ma30", 0.0) or 0.0)
 
-    # ── Acceleration trend: compare last 7 days MA7 change ──
+    # ── Acceleration trend ──
     tendencia = "estável"
     if not df.empty and len(df) >= 14:
         recent = df["ma7"].iloc[-1] if pd.notna(df["ma7"].iloc[-1]) else 0.0
@@ -114,21 +102,28 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
             elif delta < -5:
                 tendencia = f"desacelerando ({delta:.0f}% na última semana)"
 
-    # ── Total exam counts (current month only) ──
-    total_rm = total_tc = total_rx = 0
-    if not df.empty:
-        current_ym = stats.get("year_month") or df["date"].str[:7].max()
-        month_df = df[df["date"].str[:7] == current_ym]
-        total_rm = int(month_df["rm_count"].sum())
-        total_tc = int(month_df["tc_count"].sum())
-        total_rx = int(month_df["rx_count"].sum())
-    total_exames = total_rm + total_tc + total_rx
+    # ── Total exam counts per modality (current month) ──
+    total_exames = 0
+    modality_lines: list[str] = []
+    current_ym = stats.get("year_month") or ""
+    for m in active_modalities:
+        slug = m["slug"]
+        count_col = slug
+        count = 0
+        if not df.empty and count_col in df.columns:
+            month_df = df[df["date"].str[:7] == current_ym]
+            count = int(month_df[count_col].sum()) if not month_df.empty else 0
+        total_exames += count
+        mix_pct = mix.get(slug, 0.0)
+        modality_lines.append(
+            f"- {m['label']}: {count} exames ({mix_pct:.1f}% da receita)"
+        )
+    modality_breakdown = "\n".join(modality_lines)
 
-    # ── Best day (current month only) ──
+    # ── Best day ──
     dia_produtivo = "—"
     valor_dia_produtivo = "—"
     if not df.empty and "earnings" in df.columns:
-        current_ym = stats.get("year_month") or df["date"].str[:7].max()
         month_df = df[df["date"].str[:7] == current_ym]
         if not month_df.empty:
             best_idx = month_df["earnings"].idxmax()
@@ -150,18 +145,14 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
     media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
 
     # ── Ticket médio ──
-    rm_rev = float(total_rm) * prices["rm"]
-    tc_rev = float(total_tc) * prices["tc"]
-    rx_rev = float(total_rx) * prices["rx"]
-    total_rev = rm_rev + tc_rev + rx_rev
-    ticket_medio = fmt_brl(total_rev / total_exames) if total_exames > 0 else "R$ 0,00"
+    mtd = current.get("mtd_earnings", 0.0)
+    ticket_medio = fmt_brl(mtd / total_exames) if total_exames > 0 else "R$ 0,00"
 
     return {
-        # Meta e ritmo
-        "mtd": fmt_brl(current.get("mtd_earnings", 0.0)),
+        "mtd": fmt_brl(mtd),
         "pct": current.get("pct_goal", 0.0),
-        "meta_mensal": fmt_brl(current.get("mtd_earnings", 0.0)
-                                / max(current.get("pct_goal", 1.0), 0.01) * 100),
+        "meta_mensal": fmt_brl(mtd / max(current.get("pct_goal", 1.0), 0.01) * 100
+                                if current.get("pct_goal", 0) > 0 else 0),
         "dias_trabalhados": days_worked,
         "total_dias": current.get("total_calendar_days", 0),
         "dias_restantes": current.get("remaining_calendar_days", 0),
@@ -169,7 +160,6 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
         "meta_diaria": fmt_brl(max(0.0, current.get("daily_target_needed", 0.0))),
         "projecao": fmt_brl(current.get("projection_month_end", 0.0)),
         "consecutivos": stats.get("consecutive_below_target", 0),
-        # Tendências
         "wow": f"{stats.get('wow_change_pct'):+.1f}%"
                if stats.get("wow_change_pct") is not None else "sem dados suficientes",
         "mom": f"{stats.get('mom_change_pct'):+.1f}%"
@@ -178,15 +168,7 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
         "ma30": fmt_brl(ma30_val),
         "media_historica": media_historica,
         "tendencia": tendencia,
-        # Volume
-        "total_exames": total_exames,
-        "total_rm": total_rm,
-        "total_tc": total_tc,
-        "total_rx": total_rx,
-        "mix_rm": mix.get("rm", 0.0),
-        "mix_tc": mix.get("tc", 0.0),
-        "mix_rx": mix.get("rx", 0.0),
-        # Destaques
+        "modality_breakdown": modality_breakdown,
         "dia_produtivo": dia_produtivo,
         "valor_dia_produtivo": valor_dia_produtivo,
         "media_exames_dia": media_exames_dia,
@@ -195,31 +177,40 @@ def _enrich_stats(stats: dict[str, Any], prices: dict[str, float]) -> dict[str, 
 
 
 class LLMClient:
-    """Stateless wrapper for OpenRouter free tier (GPT-OSS 120B)."""
+    """Stateless wrapper for OpenRouter API with configurable model."""
 
-    def __init__(self, api_key: str | None, prompt: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str = "openai/gpt-oss-120b:free",
+        prompt: str | None = None,
+    ) -> None:
         if not api_key:
             raise LLMUnavailableError("API key não configurada")
         self._api_key = api_key
-        self._prompt = prompt or SYSTEM_PROMPT
+        self._model = model
+        self._prompt = prompt or _SYSTEM_PROMPT
 
-    def generate(self, stats: dict[str, Any], prices: dict[str, float]) -> str:
-        """Call GPT-OSS 120B via OpenRouter and return Portuguese insight.
+    def generate(
+        self,
+        stats: dict[str, Any],
+        active_modalities: list[dict[str, Any]],
+    ) -> str:
+        """Call the configured model via OpenRouter and return Portuguese insight.
 
         Args:
-            stats: Dict from compute_historical_stats() (same shape used by
-                   generate_rule_insights).
-            prices: User-configured exam prices {"rm": ..., "tc": ..., "rx": ...}.
+            stats: Dict from compute_historical_stats().
+            active_modalities: List of active modality dicts.
 
         Returns:
             Markdown-formatted Portuguese insight text.
 
         Raises:
-            LLMUnavailableError: timeout (>15s), HTTP error, or rate limit.
+            LLMUnavailableError: timeout, HTTP error, or rate limit.
         """
-        user_prompt = self._build_prompt(stats, prices)
+        user_prompt = self._build_prompt(stats, active_modalities)
         payload = {
-            "model": _MODEL,
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": self._prompt},
                 {"role": "user", "content": user_prompt},
@@ -254,7 +245,11 @@ class LLMClient:
     # Private
     # ------------------------------------------------------------------
 
-    def _build_prompt(self, stats: dict[str, Any], prices: dict[str, float]) -> str:
+    def _build_prompt(
+        self,
+        stats: dict[str, Any],
+        active_modalities: list[dict[str, Any]],
+    ) -> str:
         """Enrich stats with DataFrame-derived metrics and interpolate template."""
-        enriched = _enrich_stats(stats, prices)
+        enriched = _enrich_stats(stats, active_modalities)
         return _USER_PROMPT_TEMPLATE.format(**enriched)

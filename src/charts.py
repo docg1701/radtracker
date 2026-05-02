@@ -1,72 +1,83 @@
 """
-Plotly chart factory functions for radtracker.
+Plotly chart factory functions for radtracker — v2 dynamic modalities.
 
-Every function accepts data as parameters (DataFrame or scalars)
-and returns a plotly.graph_objects.Figure. No database access here.
+Every function accepts data as parameters and returns a plotly Figure.
+No database access here.
 """
 
 import calendar
 from datetime import date
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.chart_colors import CHART_COLORS, get_chart_text_color, hex_to_rgba
+from src.chart_colors import (
+    CHART_COLORS,
+    color_for_modality,
+    get_chart_text_color,
+    hex_to_rgba,
+)
 from src.formatting import MONTHS_PT
 
 # ---------------------------------------------------------------------------
-# Modality donut chart
+# Modality donut chart (dynamic)
 # ---------------------------------------------------------------------------
 
-def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
+def build_modality_donut(
+    counts: dict[str, int],
+    labels_lookup: dict[str, str],
+) -> go.Figure:
     """
-    Build a donut chart showing exam count breakdown by modality.
+    Build a donut chart showing exam count by modality.
 
     Args:
-        rm: RM exam count.
-        tc: TC exam count.
-        rx: RX exam count.
+        counts: dict slug→count (only positive counts).
+        labels_lookup: dict slug→display label.
 
     Returns:
-        Plotly Figure with hole=0.5, modality colors, Portuguese labels.
-
-    Edge case: if all counts are zero, renders a donut with 3 zero slices
-    (Plotly handles this gracefully — shows an empty ring).
+        Plotly Figure — hole=0.5, per-modality colors, Portuguese labels.
     """
-    labels = ["RM", "TC", "RX"]
-    values = [rm, tc, rx]
-    colors = [CHART_COLORS["rm"], CHART_COLORS["tc"], CHART_COLORS["rx"]]
+    slugs: list[str] = []
+    values: list[int] = []
+    display_labels: list[str] = []
+    slice_colors: list[str] = []
+
+    for slug, count in counts.items():
+        if count > 0:
+            slugs.append(slug)
+            values.append(count)
+            display_labels.append(labels_lookup.get(slug, slug))
+            slice_colors.append(color_for_modality(slug))
+
+    if not values:
+        values = [0]
+        display_labels = ["—"]
+        slice_colors = [CHART_COLORS["muted"]]
 
     fig = go.Figure(
         data=[
             go.Pie(
-                labels=labels,
+                labels=display_labels,
                 values=values,
                 hole=0.5,
-                marker=dict(colors=colors),
+                marker=dict(colors=slice_colors),
                 textinfo="label+percent",
                 textfont=dict(size=14),
-                sort=False,  # Preserve RM → TC → RX order
+                sort=False,
             )
         ]
     )
 
     fig.update_layout(
-        title=dict(
-            text="Distribuição por Modalidade",
-            font=dict(size=16),
-        ),
+        title=dict(text="Distribuição por Modalidade", font=dict(size=16)),
         height=280,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=12),
+            orientation="h", yanchor="bottom", y=-0.2,
+            xanchor="center", x=0.5, font=dict(size=12),
         ),
     )
 
@@ -74,71 +85,51 @@ def build_modality_donut(rm: int, tc: int, rx: int) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# Daily earnings sparkline (mini trend)
+# Daily earnings sparkline (unchanged — works on earnings column)
 # ---------------------------------------------------------------------------
 
 def build_daily_sparkline(df: pd.DataFrame) -> go.Figure:
     """
-    Build a compact line chart showing recent daily earnings.
+    Build a compact line chart of recent daily earnings.
 
     Args:
-        df: DataFrame with columns 'date' (str, ISO format) and 'earnings' (float).
-            Must be sorted by date ascending. Should contain 1–7 rows.
-
-    Returns:
-        Plotly Figure — 250px tall, minimal chrome, teal line.
-
-    Edge case: a single-row DataFrame shows a single marker (no line).
-    An empty DataFrame returns an empty Figure (no traces).
+        df: DataFrame with 'date' (ISO str) and 'earnings' (float). Last 1–7 rows.
     """
     if df.empty:
         return go.Figure()
 
     fill_rgba = hex_to_rgba(CHART_COLORS["primary"], 0.1)
 
-    # Build display labels (DD/MM)
     labels = []
     for d in df["date"]:
         try:
-            labels.append(f"{d[8:10]}/{d[5:7]}")  # "DD/MM"
+            labels.append(f"{d[8:10]}/{d[5:7]}")
         except (IndexError, TypeError):
             labels.append(str(d))
 
     fig = go.Figure(
         data=[
             go.Scatter(
-                x=labels,
-                y=df["earnings"],
+                x=labels, y=df["earnings"],
                 mode="lines+markers",
                 line=dict(color=CHART_COLORS["primary"], width=2),
                 marker=dict(size=6, color=CHART_COLORS["primary"]),
-                fill="tozeroy",
-                fillcolor=fill_rgba,
+                fill="tozeroy", fillcolor=fill_rgba,
                 hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
             )
         ]
     )
 
     fig.update_layout(
-        title=dict(
-            text="Faturamento — Últimos 7 Dias",
-            font=dict(size=14),
-        ),
+        title=dict(text="Faturamento — Últimos 7 Dias", font=dict(size=14)),
         height=250,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=40, b=20),
-        xaxis=dict(
-            title=None,
-            tickfont=dict(size=11),
-            showgrid=False,
-        ),
+        xaxis=dict(title=None, tickfont=dict(size=11), showgrid=False),
         yaxis=dict(
-            title=None,
-            tickprefix="R$ ",
-            tickfont=dict(size=11),
-            showgrid=True,
-            gridcolor=CHART_COLORS["track"],
+            title=None, tickprefix="R$ ", tickfont=dict(size=11),
+            showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
 
@@ -146,16 +137,11 @@ def build_daily_sparkline(df: pd.DataFrame) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# Progress gauge (monthly goal)
+# Progress gauge (unchanged)
 # ---------------------------------------------------------------------------
 
 def build_progress_gauge(pct_goal: float) -> go.Figure:
-    """
-    Build a sleek horizontal progress bar showing monthly goal progress.
-
-    4 milestone segments (red → amber → teal → green) + gray track.
-    Current-position indicator as a vertical rule with percentage badge.
-    """
+    """Build a horizontal progress bar showing monthly goal progress (0–100%)."""
     display_pct = min(pct_goal, 100.0)
 
     seg1 = min(25.0, display_pct)
@@ -169,10 +155,10 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
     fig = go.Figure()
 
     segments = [
-        (seg1, CHART_COLORS["progress_danger"],   "0–25%"),
-        (seg2, CHART_COLORS["progress_warning"],   "25–50%"),
-        (seg3, CHART_COLORS["progress_on_track"],  "50–75%"),
-        (seg4, CHART_COLORS["progress_achieved"],  "75–100%"),
+        (seg1, CHART_COLORS["progress_danger"], "0–25%"),
+        (seg2, CHART_COLORS["progress_warning"], "25–50%"),
+        (seg3, CHART_COLORS["progress_on_track"], "50–75%"),
+        (seg4, CHART_COLORS["progress_achieved"], "75–100%"),
     ]
     for val, color, name in segments:
         fig.add_trace(go.Bar(
@@ -188,93 +174,61 @@ def build_progress_gauge(pct_goal: float) -> go.Figure:
         name="restante", showlegend=False,
     ))
 
-    # Vertical marker line (primary teal — contrasts with gradient bar)
-    marker_color = CHART_COLORS["primary"]
     fig.add_vline(
         x=display_pct, line_width=3,
-        line_color=marker_color,
-        line_dash="solid",
+        line_color=CHART_COLORS["primary"], line_dash="solid",
     )
 
-    # Percentage text inside the bar, just right of the marker (3px)
     fig.add_annotation(
         x=display_pct, y=0,
         text=f"<b>{pct_goal:.0f}%</b>",
         showarrow=False,
         font=dict(size=16, color=get_chart_text_color()),
-        xanchor="left",
-        xshift=5,
+        xanchor="left", xshift=5,
     )
 
     fig.update_layout(
-        barmode="stack",
-        bargap=0.25,
-        height=130,
-        title=dict(
-            text="Progresso da Meta Mensal",
-            font=dict(size=16),
-        ),
+        barmode="stack", bargap=0.25, height=130,
+        title=dict(text="Progresso da Meta Mensal", font=dict(size=16)),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=40, b=50),
         xaxis=dict(
-            range=[0, 100],
-            ticksuffix="%",
-            tickvals=[0, 25, 50, 75, 100],
-            showgrid=False,
-            fixedrange=True,
+            range=[0, 100], ticksuffix="%", tickvals=[0, 25, 50, 75, 100],
+            showgrid=False, fixedrange=True,
         ),
-        yaxis=dict(
-            showticklabels=False,
-            fixedrange=True,
-        ),
+        yaxis=dict(showticklabels=False, fixedrange=True),
     )
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Monthly earnings line chart
+# Monthly earnings line chart (unchanged)
 # ---------------------------------------------------------------------------
 
 def build_monthly_earnings_chart(
     df: pd.DataFrame, daily_target: float, year_month: str
 ) -> go.Figure:
-    """
-    Build a daily earnings line chart for a given month.
-
-    Fills missing days with zero earnings. Includes a dashed daily-target
-    line and a today vertical marker (current month only).
-
-    Args:
-        df: DataFrame with 'date' (ISO str) and 'earnings' (float) columns.
-        daily_target: Daily earnings target in R$.
-        year_month: "YYYY-MM" string identifying the month.
-    """
+    """Build a daily earnings line chart for a given month with target line."""
     year, month = int(year_month[:4]), int(year_month[5:7])
     days_in_month = calendar.monthrange(year, month)[1]
 
-    # Build full date range for the month
     all_dates = pd.date_range(
-        start=f"{year_month}-01",
-        periods=days_in_month,
-        freq="D",
+        start=f"{year_month}-01", periods=days_in_month, freq="D",
     )
     full = pd.DataFrame({
         "date": all_dates.strftime("%Y-%m-%d"),
         "day_number": range(1, days_in_month + 1),
     })
 
-    # Left-join actual data
     merged = full.merge(df[["date", "earnings"]], on="date", how="left")
     merged["earnings"] = merged["earnings"].fillna(0.0)
 
     fig = go.Figure()
 
-    # Main earnings line
     fig.add_trace(go.Scatter(
-        x=merged["day_number"],
-        y=merged["earnings"],
+        x=merged["day_number"], y=merged["earnings"],
         mode="lines+markers",
         line=dict(color=CHART_COLORS["primary"], width=2),
         marker=dict(size=6, color=CHART_COLORS["primary"]),
@@ -282,7 +236,6 @@ def build_monthly_earnings_chart(
         hovertemplate="Dia %{x}: R$ %{y:,.2f}<extra></extra>",
     ))
 
-    # Daily target line
     fig.add_trace(go.Scatter(
         x=[1, days_in_month],
         y=[daily_target, daily_target],
@@ -292,7 +245,6 @@ def build_monthly_earnings_chart(
         hovertemplate="Alvo: R$ %{y:,.2f}<extra></extra>",
     ))
 
-    # Today marker (current month only)
     today = date.today()
     current_ym = today.isoformat()[:7]
     if year_month == current_ym:
@@ -301,19 +253,12 @@ def build_monthly_earnings_chart(
         today_val = float(today_row.iloc[0]) if len(today_row) > 0 else 0.0
 
         fig.add_vline(
-            x=today_day,
-            line_dash="dot",
-            line_color=CHART_COLORS["neutral"],
-            line_width=1.5,
+            x=today_day, line_dash="dot",
+            line_color=CHART_COLORS["neutral"], line_width=1.5,
         )
         fig.add_annotation(
-            x=today_day,
-            y=today_val,
-            text="Hoje",
-            showarrow=True,
-            arrowhead=1,
-            ax=20,
-            ay=-30,
+            x=today_day, y=today_val,
+            text="Hoje", showarrow=True, arrowhead=1, ax=20, ay=-30,
             font=dict(size=11, color=get_chart_text_color()),
         )
 
@@ -328,16 +273,12 @@ def build_monthly_earnings_chart(
         margin=dict(l=20, r=20, t=50, b=20),
         hovermode="x unified",
         xaxis=dict(
-            title=None,
-            tickvals=list(range(1, days_in_month + 1)),
-            showgrid=False,
-            fixedrange=True,
+            title=None, tickvals=list(range(1, days_in_month + 1)),
+            showgrid=False, fixedrange=True,
         ),
         yaxis=dict(
-            title=None,
-            tickprefix="R$ ",
-            showgrid=True,
-            gridcolor=CHART_COLORS["track"],
+            title=None, tickprefix="R$ ",
+            showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
 
@@ -345,32 +286,57 @@ def build_monthly_earnings_chart(
 
 
 # ---------------------------------------------------------------------------
-# Monthly modality revenue donut
+# Monthly modality revenue donut (dynamic)
 # ---------------------------------------------------------------------------
 
 def build_monthly_modality_donut(
-    df: pd.DataFrame, prices: dict[str, float]
+    df: pd.DataFrame,
+    active_modalities: list[dict[str, Any]],
 ) -> go.Figure:
     """
     Build a donut chart showing monthly revenue share by modality.
 
-    Revenue = sum(count) * price per modality, not raw exam counts.
+    Args:
+        df: DataFrame from load_month_items() with columns:
+            date, modality_slug, count.
+        active_modalities: List of active modality dicts with slug, label, price.
     """
-    rm_rev = float(df["rm_count"].sum()) * prices["rm"]
-    tc_rev = float(df["tc_count"].sum()) * prices["tc"]
-    rx_rev = float(df["rx_count"].sum()) * prices["rx"]
+    prices = {m["slug"]: float(m["price"]) for m in active_modalities}
+    labels_lookup = {m["slug"]: m["label"] for m in active_modalities}
 
-    labels = ["RM", "TC", "RX"]
-    values = [rm_rev, tc_rev, rx_rev]
-    colors = [CHART_COLORS["rm"], CHART_COLORS["tc"], CHART_COLORS["rx"]]
+    # Compute revenue per modality
+    rev: dict[str, float] = {}
+    if not df.empty:
+        for _, row in df.iterrows():
+            slug = str(row["modality_slug"])
+            if slug in prices:
+                rev[slug] = rev.get(slug, 0.0) + int(row["count"]) * prices[slug]
+
+    slugs: list[str] = []
+    values: list[float] = []
+    display_labels: list[str] = []
+    slice_colors: list[str] = []
+
+    for m in active_modalities:
+        slug = m["slug"]
+        val = rev.get(slug, 0.0)
+        if val > 0:
+            slugs.append(slug)
+            values.append(val)
+            display_labels.append(labels_lookup.get(slug, slug))
+            slice_colors.append(color_for_modality(slug))
+
+    if not values:
+        values = [0]
+        display_labels = ["—"]
+        slice_colors = [CHART_COLORS["muted"]]
 
     fig = go.Figure(
         data=[
             go.Pie(
-                labels=labels,
-                values=values,
+                labels=display_labels, values=values,
                 hole=0.4,
-                marker=dict(colors=colors),
+                marker=dict(colors=slice_colors),
                 textinfo="label+percent",
                 textfont=dict(size=14),
                 sort=False,
@@ -378,7 +344,6 @@ def build_monthly_modality_donut(
         ]
     )
 
-    # Derive month name and year from first row's date, or fall back
     if not df.empty and "date" in df.columns:
         _m = int(str(df["date"].iloc[0])[5:7])
         month_name = MONTHS_PT.get(_m, "Mês")
@@ -388,22 +353,14 @@ def build_monthly_modality_donut(
         chart_year = str(date.today().year)
 
     fig.update_layout(
-        title=dict(
-            text=f"{month_name}, {chart_year}",
-            font=dict(size=16),
-        ),
+        title=dict(text=f"{month_name}, {chart_year}", font=dict(size=16)),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=50, b=20),
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=12),
+            orientation="h", yanchor="bottom", y=-0.2,
+            xanchor="center", x=0.5, font=dict(size=12),
         ),
     )
 
     return fig
-

@@ -1,9 +1,8 @@
 """
-Settings tab — exam prices, monthly goal, danger zone.
+Settings tab — modality configuration, monthly goal, LLM model, danger zone.
 
-Renders the "Config" tab per Sprint 5 plan.
-Also exports ensure_settings() for session_state initialization used
-by every tab module.
+v2: replaces hardcoded RM/TC/RX prices with dynamic modality grid.
+Each modality gets a row: label, price, exams/hour, active toggle.
 """
 
 from datetime import date
@@ -13,12 +12,13 @@ import streamlit as st
 
 from src.db import (
     DEFAULT_GOAL,
-    DEFAULT_PRICES,
+    DEFAULT_LLM_MODEL,
+    load_active_modalities,
+    load_all_modalities,
     load_goal,
-    load_prices,
     load_setting,
     save_goal,
-    save_prices,
+    save_modality,
     save_setting,
 )
 
@@ -26,11 +26,16 @@ from src.db import (
 def ensure_settings(conn: Any) -> None:
     """Idempotent: populates st.session_state from DB if absent.
 
-    Called once at the start of every tab render function. The DB is the
-    source of truth; session_state is a per-session cache.
+    Called once at the start of every tab render function.
     """
+    if "all_modalities" not in st.session_state:
+        st.session_state.all_modalities = load_all_modalities(conn)
+    if "active_modalities" not in st.session_state:
+        st.session_state.active_modalities = load_active_modalities(conn)
     if "prices" not in st.session_state:
-        st.session_state.prices = load_prices(conn)
+        st.session_state.prices = {
+            m["slug"]: m["price"] for m in st.session_state.active_modalities
+        }
     if "goal" not in st.session_state:
         today = date.today()
         st.session_state.goal = load_goal(conn, today.isoformat()[:7])
@@ -43,6 +48,10 @@ def ensure_settings(conn: Any) -> None:
             "{user_name}", st.session_state.user_name
         )
         st.session_state.llm_prompt = load_setting(conn, "llm_prompt", default_prompt)
+    if "llm_model" not in st.session_state:
+        st.session_state.llm_model = load_setting(
+            conn, "llm_model", DEFAULT_LLM_MODEL
+        )
 
 
 _DEFAULT_LLM_PROMPT = (
@@ -58,44 +67,124 @@ _DEFAULT_LLM_PROMPT = (
 
 
 def render_settings_tab(conn: Any) -> None:
-    """Render the complete Settings tab: prices, monthly goal, danger zone."""
+    """Render the complete Settings tab."""
     today = date.today()
     year_month = today.isoformat()[:7]
 
     ensure_settings(conn)
-
-    _render_settings_form(conn, year_month)
+    _render_modality_grid(conn)
+    _render_llm_section(conn, year_month)
     _render_danger_zone()
 
 
+# ---------------------------------------------------------------------------
+# Modality configuration grid
+# ---------------------------------------------------------------------------
+
 @st.fragment
-def _render_settings_form(conn: Any, year_month: str) -> None:
-    """Fragment: isolated rerun — save doesn't freeze the whole page."""
-    prices = st.session_state.prices
+def _render_modality_grid(conn: Any) -> None:
+    """Fragment: per-modality price, exams/hour, and active toggle."""
+    all_mods = st.session_state.all_modalities
+
+    st.subheader(":material/medical_services: Modalidades")
+    st.caption(
+        "Configure o preço (R$) e a produtividade (exames/hora) de cada "
+        "modalidade. Marque **Ativo** para que apareça na barra lateral. "
+        "Modalidades sem preço ou produtividade não aparecem no dashboard."
+    )
+
+    # Header row
+    h_label, h_price, h_eph, h_active = st.columns([3, 2, 2, 1])
+    with h_label:
+        st.caption("**Modalidade**")
+    with h_price:
+        st.caption("**Preço (R$)**")
+    with h_eph:
+        st.caption("**Exames/h**")
+    with h_active:
+        st.caption("**Ativo**")
+
+    # Track changes in a form-like structure (but don't use st.form —
+    # we want individual saves to work without freezing the whole page).
+    updated: dict[str, tuple[float, float, bool]] = {}
+
+    for m in all_mods:
+        slug = m["slug"]
+        label = m["label"]
+        col_label, col_price, col_eph, col_active = st.columns([3, 2, 2, 1])
+
+        with col_label:
+            st.write(label)
+        with col_price:
+            price = st.number_input(
+                f"Preço {slug}",
+                min_value=0.0, step=0.50, format="%.2f",
+                value=float(m["price"]),
+                key=f"mod_price_{slug}",
+                label_visibility="collapsed",
+            )
+        with col_eph:
+            eph = st.number_input(
+                f"Exames/h {slug}",
+                min_value=0.0, step=0.5, format="%.1f",
+                value=float(m["exams_per_hour"]),
+                key=f"mod_eph_{slug}",
+                label_visibility="collapsed",
+            )
+        with col_active:
+            active = st.checkbox(
+                f"Ativo {slug}",
+                value=bool(m["active"]),
+                key=f"mod_active_{slug}",
+                label_visibility="collapsed",
+            )
+
+        changed = (
+            abs(price - float(m["price"])) > 0.001
+            or abs(eph - float(m["exams_per_hour"])) > 0.001
+            or active != bool(m["active"])
+        )
+        if changed:
+            updated[slug] = (price, eph, active)
+
+    if updated:
+        st.button(
+            ":material/save: Salvar modalidades", type="primary",
+            on_click=lambda: _save_modalities(conn, updated),
+        )
+    else:
+        st.caption("Nenhuma alteração pendente.")
+
+
+def _save_modalities(
+    conn: Any, updated: dict[str, tuple[float, float, bool]]
+) -> None:
+    """Persist updated modality rows to DB and refresh session state."""
+    for slug, (price, eph, active) in updated.items():
+        save_modality(conn, slug, price, eph, 1 if active else 0)
+
+    # Clear caches so sidebar/dashboards pick up changes
+    st.session_state.pop("historical_cache", None)
+    st.session_state.all_modalities = load_all_modalities(conn)
+    st.session_state.active_modalities = load_active_modalities(conn)
+    st.session_state.prices = {
+        m["slug"]: m["price"] for m in st.session_state.active_modalities
+    }
+    st.toast(":material/check_circle: Modalidades salvas! Recarregue para aplicar.")
+
+
+# ---------------------------------------------------------------------------
+# LLM section (goal + model + api key + prompt)
+# ---------------------------------------------------------------------------
+
+@st.fragment
+def _render_llm_section(conn: Any, year_month: str) -> None:
+    """Fragment: monthly goal, LLM model, API key, system prompt."""
     current_goal = st.session_state.goal
     current_name = st.session_state.get("user_name", "Galvani")
     current_api_key = st.session_state.get("api_key", "")
     current_prompt = st.session_state.get("llm_prompt", _DEFAULT_LLM_PROMPT)
-
-    st.subheader(":material/payments: Preços dos exames")
-    st.caption("Valores em reais (R$) por exame. Alterações entram em vigor imediatamente.")
-
-    col_rm, col_tc, col_rx = st.columns(3)
-    with col_rm:
-        rm = st.number_input(
-            "RM (R$)", min_value=0.01, step=0.01,
-            format="%.2f", value=prices["rm"], key="cfg_rm",
-        )
-    with col_tc:
-        tc = st.number_input(
-            "TC (R$)", min_value=0.01, step=0.01,
-            format="%.2f", value=prices["tc"], key="cfg_tc",
-        )
-    with col_rx:
-        rx = st.number_input(
-            "RX (R$)", min_value=0.01, step=0.50,
-            format="%.2f", value=prices["rx"], key="cfg_rx",
-        )
+    current_model = st.session_state.get("llm_model", DEFAULT_LLM_MODEL)
 
     st.subheader(":material/target: Meta mensal")
     goal = st.number_input(
@@ -113,6 +202,17 @@ def _render_settings_form(conn: Any, year_month: str) -> None:
     )
     st.caption("[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)")
 
+    llm_model = st.text_input(
+        "Modelo OpenRouter (slug completo)",
+        value=current_model,
+        key="cfg_llm_model",
+        placeholder="openai/gpt-oss-120b:free",
+    )
+    st.caption(
+        "Digite o slug exato do modelo como aparece no site do OpenRouter. "
+        "Ex: `google/gemini-2.5-flash`, `anthropic/claude-sonnet-4`."
+    )
+
     system_prompt = st.text_area(
         "Prompt da IA", value=current_prompt, height=200, key="cfg_prompt",
     )
@@ -120,45 +220,44 @@ def _render_settings_form(conn: Any, year_month: str) -> None:
 
     st.button(
         ":material/save: Salvar configurações", type="primary",
-        on_click=lambda: _save_settings(
-            conn, year_month, rm, tc, rx, goal,
-            user_name, api_key, system_prompt,
+        on_click=lambda: _save_llm_settings(
+            conn, year_month, goal, user_name, api_key, llm_model, system_prompt,
         ),
     )
 
 
-def _save_settings(
+def _save_llm_settings(
     conn: Any,
     year_month: str,
-    rm: float,
-    tc: float,
-    rx: float,
     goal: float,
     user_name: str,
     api_key: str,
+    llm_model: str,
     system_prompt: str,
 ) -> None:
-    """Persist settings to DB + session_state, then show toast."""
-    if rm <= 0 or tc <= 0 or rx <= 0:
-        st.error("Os preços devem ser maiores que zero.")
-        return
-    save_prices(conn, rm, tc, rx)
+    """Persist LLM settings to DB + session_state."""
     save_goal(conn, year_month, goal)
     save_setting(conn, "user_name", user_name)
     save_setting(conn, "api_key", api_key)
+    save_setting(conn, "llm_model", llm_model)
     save_setting(conn, "llm_prompt", system_prompt)
+
     st.session_state.pop("historical_cache", None)
-    st.session_state.prices = {"rm": rm, "tc": tc, "rx": rx}
     st.session_state.goal = goal
     st.session_state.user_name = user_name
     st.session_state.api_key = api_key
+    st.session_state.llm_model = llm_model
     st.session_state.llm_prompt = system_prompt
     st.toast(":material/check_circle: Configurações salvas! Recarregue para aplicar.")
 
 
+# ---------------------------------------------------------------------------
+# Danger zone
+# ---------------------------------------------------------------------------
+
 @st.fragment
 def _render_danger_zone() -> None:
-    """Fragment: isolated rerun scope. Uses on_click to avoid double-click bug."""
+    """Fragment: isolated rerun scope."""
     st.subheader(":material/warning: Zona de perigo")
 
     if "confirm_delete" not in st.session_state:
@@ -172,9 +271,7 @@ def _render_danger_zone() -> None:
     else:
         st.warning(
             "Tem certeza? **Esta ação não pode ser desfeita.** "
-            "Todos os dados de produção, preços e metas serão removidos. "
-            "Os valores padrão serão restaurados "
-            "(RM=R\\$35, TC=R\\$25, RX=R\\$4,50, meta=R\\$45.000)."
+            "Todos os dados de produção e configurações serão removidos."
         )
         col1, col2 = st.columns(2)
         with col1:
@@ -194,24 +291,25 @@ def _execute_delete() -> None:
     _delete_all_data()
     st.session_state.update(
         confirm_delete=False,
-        prices=dict(DEFAULT_PRICES),
+        prices={},
         goal=DEFAULT_GOAL,
+        all_modalities=[],
+        active_modalities=[],
+        llm_model=DEFAULT_LLM_MODEL,
     )
     st.session_state.pop("historical_cache", None)
     st.cache_data.clear()
     st.toast(":material/delete: Todos os dados foram removidos.")
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
 def _delete_all_data() -> None:
-    """Delete all rows from all 4 tables within a single transaction."""
+    """Delete all rows from all tables within a single transaction."""
     import sqlite3
     from contextlib import closing
 
     with closing(sqlite3.connect("data/telerrad.db")) as raw:
+        raw.execute("DELETE FROM daily_production_items")
+        raw.execute("DELETE FROM modalities")
         raw.execute("DELETE FROM daily_production")
         raw.execute("DELETE FROM exam_prices")
         raw.execute("DELETE FROM monthly_goals")

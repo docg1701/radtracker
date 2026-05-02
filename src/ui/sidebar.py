@@ -1,8 +1,8 @@
 """
-Sidebar data-entry form.
+Sidebar data-entry form — v2 dynamic modalities.
 
-Renders the app title, greeting, date picker, 3 modality inputs,
-and the save button. Handles UPSERT via db.upsert_daily().
+Renders the app title, greeting, date picker, dynamic modality inputs
+(based on st.session_state.active_modalities), and the save button.
 """
 
 from datetime import date
@@ -10,18 +10,22 @@ from typing import Any
 
 import streamlit as st
 
-from src.db import load_daily, upsert_daily
+from src.db import load_daily_items, upsert_daily_items
+from src.ui.settings import ensure_settings
 
 
 def render_sidebar(conn: Any) -> None:
     """
-    Render the complete sidebar: header, date picker, modality inputs, save button.
+    Render the complete sidebar: header, date picker, dynamic modality inputs, save.
 
     On save:
-      - Calls db.upsert_daily() with current form values.
-      - Shows a toast notification (insert or update).
+      - Calls db.upsert_daily_items() with current form values.
+      - Shows a toast notification.
       - Triggers st.rerun() to refresh the dashboard.
     """
+    ensure_settings(conn)
+    active_mods = st.session_state.active_modalities
+
     with st.sidebar:
         # Header
         st.markdown("**radtracker**")
@@ -37,20 +41,34 @@ def render_sidebar(conn: Any) -> None:
         )
         date_str = selected_date.isoformat()
 
-        # Pre-fill from existing data
-        existing = load_daily(conn, date_str)
-        default_rm = existing["rm_count"] if existing else 0
-        default_tc = existing["tc_count"] if existing else 0
-        default_rx = existing["rx_count"] if existing else 0
+        if not active_mods:
+            st.info(
+                "Nenhuma modalidade ativa. Configure os preços e a "
+                "produtividade na aba **:material/settings: Configuração**."
+            )
+            return
 
-        # Modality inputs (3 columns)
+        # Pre-fill from existing data
+        existing = load_daily_items(conn, date_str)
+
+        # Modality inputs in compact rows
+        values: dict[str, int] = {}
         cols = st.columns(3)
-        with cols[0]:
-            rm = st.number_input("RM", min_value=0, step=1, value=default_rm, key=f"rm_{date_str}")
-        with cols[1]:
-            tc = st.number_input("TC", min_value=0, step=1, value=default_tc, key=f"tc_{date_str}")
-        with cols[2]:
-            rx = st.number_input("RX", min_value=0, step=1, value=default_rx, key=f"rx_{date_str}")
+        col_idx = 0
+
+        for m in active_mods:
+            slug = m["slug"]
+            label = m["label"]
+            default_val = existing.get(slug, 0)
+
+            with cols[col_idx % 3]:
+                val = st.number_input(
+                    label, min_value=0, step=1,
+                    value=default_val,
+                    key=f"sidebar_{slug}_{date_str}",
+                )
+                values[slug] = val
+            col_idx += 1
 
         # Save button
         if st.button(
@@ -58,14 +76,14 @@ def render_sidebar(conn: Any) -> None:
             type="primary", width="stretch",
         ):
             with st.spinner("Salvando..."):
-                upsert_daily(conn, date_str, rm, tc, rx)
+                # Only save non-zero values
+                to_save = {s: c for s, c in values.items() if c > 0}
+                upsert_daily_items(conn, date_str, to_save)
+
             st.session_state.pop("historical_cache", None)
             formatted = selected_date.strftime("%d/%m")
-            if existing:
-                st.toast(f"Produção de {formatted} atualizada!", icon=":material/check_circle:")
-            else:
-                st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
+            st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
             st.rerun()
 
         # Footer
-        st.caption("radtracker v1.0 · local")
+        st.caption("radtracker v1.2 · local")

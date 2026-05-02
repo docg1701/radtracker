@@ -1,16 +1,22 @@
 """
-Analysis-tab chart factory functions — Sprint 4.
+Analysis-tab chart factory functions — v2 dynamic modalities.
 
-Moving averages, week-over-week comparison, and modality mix evolution.
+Moving averages, week-over-week comparison, modality mix evolution.
 Every function returns a plotly.graph_objects.Figure. No database access.
 """
 
 import calendar
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.chart_colors import CHART_COLORS, get_chart_text_color, hex_to_rgba
+from src.chart_colors import (
+    CHART_COLORS,
+    color_for_modality,
+    get_chart_text_color,
+    hex_to_rgba,
+)
 from src.formatting import MONTHS_PT
 
 # ---------------------------------------------------------------------------
@@ -20,13 +26,7 @@ from src.formatting import MONTHS_PT
 def build_moving_averages_chart(
     df: pd.DataFrame, year_month: str
 ) -> go.Figure:
-    """
-    Line chart with MA7 (teal solid fill) and MA30 (gray dashed) for one month.
-
-    Args:
-        df: DataFrame with 'date', 'ma7', 'ma30' columns.
-        year_month: "YYYY-MM" string.
-    """
+    """Line chart with MA7 and MA30 for one month."""
     year, month = int(year_month[:4]), int(year_month[5:7])
     days_in_month = calendar.monthrange(year, month)[1]
 
@@ -42,24 +42,20 @@ def build_moving_averages_chart(
         month_data[["date", "ma7", "ma30"]], on="date", how="left"
     )
 
-    fill_rgba = hex_to_rgba(CHART_COLORS["primary"], 0.1)
-
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
         x=merged["day_number"], y=merged["ma7"],
-        mode="lines",
-        name="MA7",
+        mode="lines", name="MA7",
         line=dict(color=CHART_COLORS["primary"], width=2),
         fill="tozeroy",
-        fillcolor=fill_rgba,
+        fillcolor=hex_to_rgba(CHART_COLORS["primary"], 0.1),
         hovertemplate="MA7 dia %{x}: R$ %{y:,.2f}<extra></extra>",
     ))
 
     fig.add_trace(go.Scatter(
         x=merged["day_number"], y=merged["ma30"],
-        mode="lines",
-        name="MA30",
+        mode="lines", name="MA30",
         line=dict(color=CHART_COLORS["muted"], width=1.5, dash="dash"),
         hovertemplate="MA30 dia %{x}: R$ %{y:,.2f}<extra></extra>",
     ))
@@ -73,16 +69,12 @@ def build_moving_averages_chart(
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
         xaxis=dict(
-            title=None,
-            tickvals=list(range(1, days_in_month + 1)),
-            showgrid=False,
-            fixedrange=True,
+            title=None, tickvals=list(range(1, days_in_month + 1)),
+            showgrid=False, fixedrange=True,
         ),
         yaxis=dict(
-            title=None,
-            tickprefix="R$ ",
-            showgrid=True,
-            gridcolor=CHART_COLORS["track"],
+            title=None, tickprefix="R$ ",
+            showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
 
@@ -90,73 +82,55 @@ def build_moving_averages_chart(
 
 
 # ---------------------------------------------------------------------------
-# Week-over-week grouped bar chart
+# Week-over-week grouped bar chart (dynamic)
 # ---------------------------------------------------------------------------
 
 def build_wow_comparison_chart(
-    weekly_data: list[dict], prices: dict[str, float]
+    weekly_data: list[dict],
+    df: pd.DataFrame,
+    active_modalities: list[dict[str, Any]],
 ) -> go.Figure:
     """
-    Grouped bar chart: Semana Anterior vs Semana Atual, 3 bars each (RM/TC/RX).
+    Grouped bar chart: Semana Anterior vs Semana Atual, per modality revenue.
 
-    Revenue = count × price. Previous week bars at 50% opacity.
-    Handles single-week edge case gracefully.
+    Revenue is computed from the full df since weekly_data from
+    compute_historical_stats v2 only has total_earnings.
     """
     if len(weekly_data) < 2:
-        week = weekly_data[0] if weekly_data else {}
-        rm_rev = week.get("rm_count", 0) * prices["rm"]
-        tc_rev = week.get("tc_count", 0) * prices["tc"]
-        rx_rev = week.get("rx_count", 0) * prices["rx"]
+        # Single week: show current week per modality
+        if weekly_data:
+            return _single_week_chart(df, active_modalities)
+        return go.Figure()
 
-        fig = go.Figure(data=[
-            go.Bar(
-                x=["RM", "TC", "RX"],
-                y=[rm_rev, tc_rev, rx_rev],
-                marker_color=[CHART_COLORS["rm"], CHART_COLORS["tc"], CHART_COLORS["rx"]],
-                name=week.get("week_label", "Semana"),
-                hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
-            )
-        ])
-        fig.update_layout(
-            title=dict(text="", font=dict(size=14)),
-            height=350,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=50, b=20),
-            yaxis=dict(
-                title=None, tickprefix="R$ ",
-                showgrid=True, gridcolor=CHART_COLORS["track"],
-            ),
-            xaxis=dict(title=None),
-        )
-        return fig
+    # Build date ranges for each week
+    labels: list[str] = []
+    prev_revs: list[float] = []
+    curr_revs: list[float] = []
+    mod_colors: list[str] = []
 
-    prev, curr = weekly_data[0], weekly_data[1]
+    for m in active_modalities:
+        slug = m["slug"]
+        labels.append(m["label"])
+        mod_colors.append(color_for_modality(slug))
+        price = float(m["price"])
 
-    def _rev(week: dict, mod: str) -> float:
-        return float(week.get(f"{mod}_count", 0)) * prices[mod]
-
-    modalities = ["rm", "tc", "rx"]
-    labels = ["RM", "TC", "RX"]
-    full_colors = [CHART_COLORS[m] for m in modalities]
-
-    prev_colors = [hex_to_rgba(c, 0.5) for c in full_colors]
+        # Revenue for this modality in previous week and current week
+        prev_rev = _weekly_modality_revenue(df, slug, price, -2)
+        curr_rev = _weekly_modality_revenue(df, slug, price, -1)
+        prev_revs.append(prev_rev)
+        curr_revs.append(curr_rev)
 
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=labels,
-        y=[_rev(prev, m) for m in modalities],
-        name="Semana Anterior",
-        marker_color=prev_colors,
+        x=labels, y=prev_revs, name="Semana Anterior",
+        marker_color=[hex_to_rgba(c, 0.5) for c in mod_colors],
         hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana Anterior</extra>",
     ))
 
     fig.add_trace(go.Bar(
-        x=labels,
-        y=[_rev(curr, m) for m in modalities],
-        name="Semana Atual",
-        marker_color=full_colors,
+        x=labels, y=curr_revs, name="Semana Atual",
+        marker_color=mod_colors,
         hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana Atual</extra>",
     ))
 
@@ -169,96 +143,153 @@ def build_wow_comparison_chart(
         barmode="group",
         legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
         xaxis=dict(title=None),
-        yaxis=dict(title=None, tickprefix="R$ ", showgrid=True, gridcolor=CHART_COLORS["track"]),
+        yaxis=dict(
+            title=None, tickprefix="R$ ",
+            showgrid=True, gridcolor=CHART_COLORS["track"],
+        ),
     )
 
     return fig
 
 
+def _weekly_modality_revenue(
+    df: pd.DataFrame, slug: str, price: float, week_offset: int,
+) -> float:
+    """Sum revenue for a modality in the N-th last complete week.
+
+    week_offset: -1 = most recent complete week, -2 = week before that.
+    Falls back to all data for current partial week if not enough weeks.
+    """
+    if df.empty or "date_dt" not in df.columns:
+        return 0.0
+
+    # Get week boundaries
+    today = pd.Timestamp.now().normalize()
+    # Last complete week: Monday to Sunday before this week
+    current_weekday = today.dayofweek  # Monday=0
+    last_sunday = today - pd.Timedelta(days=current_weekday + 1)
+    last_monday = last_sunday - pd.Timedelta(days=6)
+
+    # Shift back by week_offset
+    start = last_monday + pd.Timedelta(weeks=week_offset)
+    end = start + pd.Timedelta(days=6)
+
+    week_df = df[
+        (df["date_dt"] >= pd.Timestamp(start))
+        & (df["date_dt"] <= pd.Timestamp(end))
+    ]
+
+    count_col = slug
+    if count_col in week_df.columns:
+        return float(week_df[count_col].sum()) * price
+    return 0.0
+
+
+def _single_week_chart(
+    df: pd.DataFrame,
+    active_modalities: list[dict[str, Any]],
+) -> go.Figure:
+    """Single-week bar chart per modality."""
+    labels: list[str] = []
+    revs: list[float] = []
+    mod_colors: list[str] = []
+
+    for m in active_modalities:
+        slug = m["slug"]
+        price = float(m["price"])
+        labels.append(m["label"])
+        mod_colors.append(color_for_modality(slug))
+
+        count_col = slug
+        if count_col in df.columns:
+            revs.append(float(df[count_col].sum()) * price)
+        else:
+            revs.append(0.0)
+
+    fig = go.Figure(data=[
+        go.Bar(
+            x=labels, y=revs, marker_color=mod_colors,
+            name="Semana Atual",
+            hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
+        )
+    ])
+    fig.update_layout(
+        title=dict(text="", font=dict(size=14)),
+        height=350,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=20, r=20, t=50, b=20),
+        yaxis=dict(
+            title=None, tickprefix="R$ ",
+            showgrid=True, gridcolor=CHART_COLORS["track"],
+        ),
+        xaxis=dict(title=None),
+    )
+    return fig
+
+
 # ---------------------------------------------------------------------------
-# Modality mix evolution (stacked area)
+# Modality mix evolution (stacked area - dynamic)
 # ---------------------------------------------------------------------------
 
 def build_modality_mix_evolution(
-    mix_history: dict[str, dict[str, float]]
+    mix_history: dict[str, dict[str, float]],
+    active_modalities: list[dict[str, Any]],
 ) -> go.Figure:
     """
-    Stacked area chart showing RM/TC/RX revenue share evolution over months.
-    Single-month edge case renders a stacked bar instead.
+    Stacked area chart showing modality revenue share evolution over months.
+
+    Args:
+        mix_history: dict month→(slug→pct).
+        active_modalities: list of active modality dicts with slug, label.
     """
     months_sorted = sorted(mix_history.keys())
 
     month_labels: list[str] = []
     for ym in months_sorted:
-        y, m = int(ym[:4]), int(ym[5:7])
-        abbr = MONTHS_PT.get(m, f"M{m}")[:3]
+        y, month_num = int(ym[:4]), int(ym[5:7])
+        abbr = MONTHS_PT.get(month_num, f"M{month_num}")[:3]
         month_labels.append(f"{abbr}/{y % 100:02d}")
-
-    rm_vals = [mix_history[ym]["rm"] for ym in months_sorted]
-    tc_vals = [mix_history[ym]["tc"] for ym in months_sorted]
-    rx_vals = [mix_history[ym]["rx"] for ym in months_sorted]
 
     fig = go.Figure()
 
     if len(months_sorted) == 1:
-        # Single month → vertical stacked bar
-        fig.add_trace(go.Bar(
-            x=[month_labels[0]], y=[rm_vals[0]],
-            name="RM", marker_color=CHART_COLORS["rm"],
-        ))
-        fig.add_trace(go.Bar(
-            x=[month_labels[0]], y=[tc_vals[0]],
-            name="TC", marker_color=CHART_COLORS["tc"],
-        ))
-        fig.add_trace(go.Bar(
-            x=[month_labels[0]], y=[rx_vals[0]],
-            name="RX", marker_color=CHART_COLORS["rx"],
-        ))
+        # Single month → stacked bar
+        ym = months_sorted[0]
+        for m in active_modalities:
+            slug = m["slug"]
+            val = mix_history[ym].get(slug, 0.0)
+            fig.add_trace(go.Bar(
+                x=[month_labels[0]], y=[val],
+                name=m["label"], marker_color=color_for_modality(slug),
+            ))
         fig.update_layout(barmode="stack")
     else:
-        fig.add_trace(go.Scatter(
-            x=month_labels, y=rm_vals,
-            mode="lines",
-            name="RM",
-            line=dict(color=CHART_COLORS["rm"], width=1),
-            stackgroup="one",
-            fillcolor=hex_to_rgba(CHART_COLORS["rm"], 0.7),
-            hovertemplate="RM: %{y:.1f}%<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=month_labels, y=tc_vals,
-            mode="lines",
-            name="TC",
-            line=dict(color=CHART_COLORS["tc"], width=1),
-            stackgroup="one",
-            fillcolor=hex_to_rgba(CHART_COLORS["tc"], 0.7),
-            hovertemplate="TC: %{y:.1f}%<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=month_labels, y=rx_vals,
-            mode="lines",
-            name="RX",
-            line=dict(color=CHART_COLORS["rx"], width=1),
-            stackgroup="one",
-            fillcolor=hex_to_rgba(CHART_COLORS["rx"], 0.7),
-            hovertemplate="RX: %{y:.1f}%<extra></extra>",
-        ))
+        for m in active_modalities:
+            slug = m["slug"]
+            vals = [mix_history[ym].get(slug, 0.0) for ym in months_sorted]
+            fig.add_trace(go.Scatter(
+                x=month_labels, y=vals,
+                mode="lines",
+                name=m["label"],
+                line=dict(color=color_for_modality(slug), width=1),
+                stackgroup="one",
+                fillcolor=hex_to_rgba(color_for_modality(slug), 0.7),
+                hovertemplate=f"{m['label']}: %{{y:.1f}}%<extra></extra>",
+            ))
 
     fig.update_layout(
         title=dict(text="", font=dict(size=16)),
         height=350,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=20, r=20, t=50, b=50),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
         xaxis=dict(title=None),
         yaxis=dict(
-            title=None,
-            ticksuffix="%",
-            range=[0, 100],
-            showgrid=True,
-            gridcolor=CHART_COLORS["track"],
+            title=None, ticksuffix="%", range=[0, 100],
+            showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
 
@@ -266,23 +297,16 @@ def build_modality_mix_evolution(
 
 
 # ---------------------------------------------------------------------------
-# Monthly earnings bar chart (year overview)
+# Monthly earnings bar chart (year overview - unchanged)
 # ---------------------------------------------------------------------------
 
 def build_ytd_earnings_chart(
     df: pd.DataFrame, year_month: str, goal: float
 ) -> go.Figure:
-    """
-    Bar chart: earnings per month across the entire year to date.
-
-    Each bar = sum of daily earnings for that month.
-    Current month highlighted in primary teal, past months in muted.
-    Goal line as dashed horizontal reference.
-    """
+    """Bar chart: earnings per month across the year to date."""
     if df.empty:
         return go.Figure()
 
-    # Aggregate earnings by month
     df = df.copy()
     df["ym"] = df["date"].str[:7]
     monthly = df.groupby("ym", sort=False).agg(
@@ -292,8 +316,8 @@ def build_ytd_earnings_chart(
 
     month_labels: list[str] = []
     for ym in monthly["ym"]:
-        y, m = int(ym[:4]), int(ym[5:7])
-        abbr = MONTHS_PT.get(m, f"M{m}")[:3]
+        y, month_num = int(ym[:4]), int(ym[5:7])
+        abbr = MONTHS_PT.get(month_num, f"M{month_num}")[:3]
         month_labels.append(f"{abbr}/{y % 100:02d}")
 
     colors: list[str] = []
@@ -306,8 +330,7 @@ def build_ytd_earnings_chart(
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=month_labels,
-        y=monthly["total_earnings"],
+        x=month_labels, y=monthly["total_earnings"],
         marker_color=colors,
         hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
         text=[f"R$ {v:,.0f}".replace(",", ".") for v in monthly["total_earnings"]],
@@ -315,7 +338,6 @@ def build_ytd_earnings_chart(
         textfont=dict(size=11),
     ))
 
-    # Goal line
     fig.add_hline(
         y=goal, line_dash="dash", line_color=CHART_COLORS["neutral"],
         line_width=1.5,
@@ -332,7 +354,10 @@ def build_ytd_earnings_chart(
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=50, b=20),
         xaxis=dict(title=None, showgrid=False),
-        yaxis=dict(title=None, tickprefix="R$ ", showgrid=True, gridcolor=CHART_COLORS["track"]),
+        yaxis=dict(
+            title=None, tickprefix="R$ ",
+            showgrid=True, gridcolor=CHART_COLORS["track"],
+        ),
     )
 
     return fig

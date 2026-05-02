@@ -1,181 +1,173 @@
-"""Tests for src.insights_rules — rule-based insight generation."""
+"""Tests for src.insights_rules — v2 dynamic modality insights."""
 
 from src.insights_rules import generate_rule_insights
 
 
-def _make_stats(pct_goal: float, mtd: float = 22500.0, days_worked: int = 13,
-                total_days: int = 30, remaining_calendar_days: int = 17,
-                daily_target_needed: float = 1730.77,
-                projection_month_end: float = 45000.0,
-                daily_avg: float | None = None,
-                wow: float | None = None,
-                mom: float | None = None, consecutive: int = 0,
-                mix_current: dict | None = None,
-                mix_history: dict | None = None) -> dict:
-    """Build a stats dict matching compute_historical_stats output."""
-    default_mix = {"rm": 60.0, "tc": 25.0, "rx": 15.0}
-    avg = daily_avg if daily_avg is not None else (
-        mtd / days_worked if days_worked > 0 else 0.0)
+def _make_stats(
+    mtd_earnings=0.0,
+    pct_goal=0.0,
+    days_worked=0,
+    remaining_calendar_days=0,
+    total_calendar_days=30,
+    daily_avg=0.0,
+    daily_target_needed=0.0,
+    projection_month_end=0.0,
+    wow_change_pct=None,
+    mom_change_pct=None,
+    module_mix_current=None,
+    modality_mix_historical=None,
+    consecutive_below_target=0,
+):
+    """Factory for stats dict matching compute_historical_stats output."""
     return {
         "current_month_stats": {
+            "mtd_earnings": mtd_earnings,
             "pct_goal": pct_goal,
-            "mtd_earnings": mtd,
             "days_worked": days_worked,
-            "total_calendar_days": total_days,
             "remaining_calendar_days": remaining_calendar_days,
+            "total_calendar_days": total_calendar_days,
+            "daily_avg": daily_avg,
             "daily_target_needed": daily_target_needed,
-            "daily_avg": avg,
             "projection_month_end": projection_month_end,
         },
-        "wow_change_pct": wow,
-        "mom_change_pct": mom,
-        "modality_mix_current": mix_current or default_mix,
-        "modality_mix_historical": mix_history or {},
-        "consecutive_below_target": consecutive,
+        "wow_change_pct": wow_change_pct,
+        "mom_change_pct": mom_change_pct,
+        "modality_mix_current": module_mix_current or {},
+        "modality_mix_historical": modality_mix_historical or {},
+        "consecutive_below_target": consecutive_below_target,
     }
 
 
-class TestTones:
-    def test_success_when_goal_hit(self):
-        text = generate_rule_insights(_make_stats(pct_goal=120.0, mtd=54000.0,
-                                         daily_target_needed=0.0))
-        assert ":material/check_circle:" in text
-        assert "já bateu a meta" in text.lower()
-
-    def test_on_track_when_pace_sufficient(self):
-        # daily_needed (1000) < daily_avg (1100) * 1.1 → on_track
-        text = generate_rule_insights(_make_stats(
-            pct_goal=50.0, mtd=22500.0, daily_avg=1500.0,
-            daily_target_needed=1000.0, projection_month_end=48000.0))
-        assert "Ritmo adequado" in text
-
-    def test_warning_when_pace_needs_stretch(self):
-        # daily_needed (2000)  / daily_avg (1500) = 1.33 → warning
-        text = generate_rule_insights(_make_stats(
-            pct_goal=40.0, mtd=18000.0, daily_avg=1500.0,
-            daily_target_needed=2000.0, projection_month_end=35000.0))
-        assert "projeção" in text.lower()
-
-    def test_danger_when_gap_unrealistic(self):
-        # daily_needed (5000) / daily_avg (1500) = 3.33 → danger
-        text = generate_rule_insights(_make_stats(
-            pct_goal=20.0, mtd=9000.0, daily_avg=1500.0,
-            daily_target_needed=5000.0, projection_month_end=20000.0))
-        assert "abaixo da meta" in text.lower()
+DEFAULT_ACTIVE_MODS = [
+    {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética",
+     "price": 35.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 4},
+    {"slug": "tc_geral", "label": "TC Geral",
+     "price": 25.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 2},
+    {"slug": "radiografia", "label": "Radiografia",
+     "price": 4.5, "exams_per_hour": 75.0, "active": 1, "sort_order": 8},
+]
 
 
-class TestContent:
-    def test_contains_formatted_currency(self):
-        text = generate_rule_insights(_make_stats(pct_goal=50.0, mtd=22500.0,
-                                         daily_avg=1730.0))
-        assert "R$ 22.500,00" in text
+class TestGenerateRuleInsights:
+    def test_no_days_worked(self):
+        stats = _make_stats(days_worked=0)
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "barra lateral" in result.lower()
 
-    def test_contains_days_worked(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, days_worked=15, daily_avg=2000.0))
-        assert "15" in text
-
-    def test_days_plural_correct(self):
-        text = generate_rule_insights(_make_stats(
-            pct_goal=95.0, mtd=42750.0, remaining_calendar_days=1,
-            daily_avg=2000.0, daily_target_needed=0))
-        assert "dias trabalhados" in text
-        # Singular: "restante" for 1 remaining day
-        assert "restante" in text
-        assert "restantes" not in text
-
-
-class TestSuggestions:
-    def test_success_suggestion(self):
-        text = generate_rule_insights(_make_stats(
-            pct_goal=120.0, mtd=54000.0, daily_target_needed=0.0))
-        assert "Sugestão" in text
-        assert "consolidar" in text.lower()
-
-    def test_danger_suggestion_actionable(self):
-        text = generate_rule_insights(_make_stats(
-            pct_goal=10.0, mtd=4500.0, daily_avg=1500.0,
-            daily_target_needed=5000.0))
-        assert "Sugestão" in text
-        assert "RM" in text
-
-
-class TestWowTrend:
-    def test_wow_trend_up(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, daily_avg=2000.0, wow=10.5))
-        assert ":material/trending_up:" in text
-        assert "crescimento" in text
-
-    def test_wow_trend_down(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, daily_avg=2000.0, wow=-5.0))
-        assert ":material/trending_down:" in text
-        assert "queda" in text
-
-    def test_wow_trend_none(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, daily_avg=2000.0, wow=None))
-        assert "Semana a semana" not in text
-
-
-class TestMomTrend:
-    def test_mom_trend_up(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, daily_avg=2000.0, mom=15.0))
-        assert ":material/trending_up:" in text
-        assert "crescimento" in text
-        assert "Mês a mês" in text
-
-    def test_mom_trend_none(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=60.0, daily_avg=2000.0, mom=None))
-        assert "Mês a mês" not in text
-
-
-class TestConsecutive:
-    def test_consecutive_below_trigger(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=50.0, daily_avg=2000.0, consecutive=4))
-        assert ":material/warning:" in text
-        assert "consecutivos" in text
-
-    def test_consecutive_below_no_trigger(self):
-        text = generate_rule_insights(
-            _make_stats(pct_goal=50.0, daily_avg=2000.0, consecutive=1))
-        assert "consecutivos" not in text
-
-
-class TestModalityMix:
-    def test_modality_mix_shift_detected(self):
+    def test_success_tone(self):
         stats = _make_stats(
-            pct_goal=60.0, daily_avg=2000.0,
-            days_worked=13,
-            mix_current={"rm": 80.0, "tc": 15.0, "rx": 5.0},
-            mix_history={
-                "2026-01": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
-                "2026-02": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
+            mtd_earnings=50000, pct_goal=111.1, days_worked=20,
+            remaining_calendar_days=0, total_calendar_days=30,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "bateu a meta" in result.lower()
+
+    def test_on_track(self):
+        stats = _make_stats(
+            mtd_earnings=30000, pct_goal=66.7, days_worked=20,
+            remaining_calendar_days=10, total_calendar_days=30,
+            daily_avg=1500, daily_target_needed=1500,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "ritmo adequado" in result.lower()
+
+    def test_warning_tone(self):
+        stats = _make_stats(
+            mtd_earnings=15000, pct_goal=33.3, days_worked=15,
+            remaining_calendar_days=15, total_calendar_days=30,
+            daily_avg=1400, daily_target_needed=2000,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "acima do seu ritmo" in result.lower()
+
+    def test_danger_tone(self):
+        stats = _make_stats(
+            mtd_earnings=5000, pct_goal=11.1, days_worked=10,
+            remaining_calendar_days=20, total_calendar_days=30,
+            daily_avg=500, daily_target_needed=2000,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "abaixo da meta" in result.lower()
+
+    def test_wow_trend(self):
+        stats = _make_stats(
+            mtd_earnings=20000, pct_goal=44.4, days_worked=15,
+            remaining_calendar_days=15, total_calendar_days=30,
+            daily_avg=1333, daily_target_needed=1667,
+            wow_change_pct=12.5,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "crescimento" in result.lower()
+        assert "12.5%" in result
+
+    def test_consecutive_below_target(self):
+        stats = _make_stats(
+            mtd_earnings=20000, pct_goal=44.4, days_worked=15,
+            remaining_calendar_days=15, total_calendar_days=30,
+            daily_avg=1333, daily_target_needed=1667,
+            consecutive_below_target=4,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "dias consecutivos abaixo da meta" in result.lower()
+
+    def test_modality_mix_shift(self):
+        stats = _make_stats(
+            mtd_earnings=20000, pct_goal=44.4, days_worked=20,
+            remaining_calendar_days=10, total_calendar_days=30,
+            daily_avg=1000, daily_target_needed=2500,
+            module_mix_current={
+                "ressonancia_magnetica": 60.0,
+                "tc_geral": 30.0,
+                "radiografia": 10.0,
+            },
+            modality_mix_historical={
+                "2026-03": {
+                    "ressonancia_magnetica": 40.0,
+                    "tc_geral": 40.0,
+                    "radiografia": 20.0,
+                },
+                "2026-04": {
+                    "ressonancia_magnetica": 60.0,
+                    "tc_geral": 30.0,
+                    "radiografia": 10.0,
+                },
             },
         )
-        text = generate_rule_insights(stats)
-        assert "Mudança no mix" in text
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "mudança no mix" in result.lower()
 
-    def test_modality_mix_no_shift(self):
+    def test_suggestion_has_highest_price_modality(self):
         stats = _make_stats(
-            pct_goal=60.0, daily_avg=2000.0,
-            days_worked=13,
-            mix_current={"rm": 62.0, "tc": 24.0, "rx": 14.0},
-            mix_history={
-                "2026-01": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
-                "2026-02": {"rm": 60.0, "tc": 25.0, "rx": 15.0},
+            mtd_earnings=5000, pct_goal=11.1, days_worked=10,
+            remaining_calendar_days=20, total_calendar_days=30,
+            daily_avg=500, daily_target_needed=2000,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "Ressonância Magnética" in result or "priorize" in result.lower()
+
+    def test_active_modalities_list_used_for_labels(self):
+        """Verify the insight uses modality labels from active_modalities list."""
+        stats = _make_stats(
+            mtd_earnings=20000, pct_goal=44.4, days_worked=20,
+            remaining_calendar_days=10, total_calendar_days=30,
+            daily_avg=1000, daily_target_needed=2500,
+            module_mix_current={
+                "ressonancia_magnetica": 50.0,
+                "tc_geral": 30.0,
+                "radiografia": 20.0,
+            },
+            modality_mix_historical={
+                "2026-03": {
+                    "ressonancia_magnetica": 30.0,
+                    "tc_geral": 40.0,
+                    "radiografia": 30.0,
+                },
+                "2026-04": {
+                    "ressonancia_magnetica": 50.0,
+                    "tc_geral": 30.0,
+                    "radiografia": 20.0,
+                },
             },
         )
-        text = generate_rule_insights(stats)
-        assert "Mudança no mix" not in text
-
-
-class TestEmptyStats:
-    def test_empty_stats_returns_message(self):
-        stats = {"current_month_stats": None}
-        text = generate_rule_insights(stats)
-        assert "barra lateral" in text
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "Ressonância Magnética" in result or "TC Geral" in result

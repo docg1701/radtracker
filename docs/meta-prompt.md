@@ -6,7 +6,9 @@
 
 ## Goal
 
-You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. You will be modifying Python code in the `src/` tree, the Streamlit entry point `app.py`, the config `.streamlit/config.toml`, or the test suite in `tests/`.
+You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. Self-hosted deployment to a VPS is supported via Docker + Caddy + fail2ban, managed with Ansible playbooks (v1.1.0+).
+
+You will be modifying Python code in the `src/` tree, the Streamlit entry point `app.py`, the config `.streamlit/config.toml`, the test suite in `tests/`, Docker/deployment files at the project root, or Ansible playbooks in `ansible/`.
 
 ---
 
@@ -20,16 +22,23 @@ You are working on **radtracker**, a personal productivity dashboard for a teler
 | Data | **Pandas ≥2.0** | DataFrames for calculations and chart data |
 | HTTP | **httpx ≥0.27** | OpenRouter API calls only |
 | Extras | **streamlit-extras ≥1.5** | `skeleton`, `rain`, `star_rating`, `stoggle`, `cookie_manager` |
-| Package mgr | **uv** | `uv.lock` is authoritative; `pip install -r requirements.txt` also works |
+| Package mgr | **uv** | `uv.lock` is authoritative |
 | Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 96 tests, all passing |
 | Lint/fmt | **ruff** (E, F, I, UP rules, line-length 100) | Run: `uv run ruff check src/ tests/` |
 | Types | **mypy** (strict=false) | Run: `uv run mypy src/` |
+| **Deployment** | | |
+| Container | **Docker** (multi-stage build, non-root user) | `Dockerfile` + `docker-compose.yml` |
+| Reverse proxy | **Caddy 2** (BasicAuth + Let's Encrypt) | `Caddyfile`, Jinja2 template in `ansible/templates/` |
+| Automation | **Ansible** (5 playbooks, Vault encryption) | `ansible/` directory |
+| Security | **fail2ban** (401 detection) | Filter + jail in `deploy.yml` playbook |
+| Lint (deploy) | **ansible-lint**, **hadolint**, **yamllint** | `.ansible-lint.yml`, `.hadolint.yml`, `.yamllint.yml` |
 
 ---
 
 ## Key Files (Read these first for any task)
 
-1. **`app.py`** (65 lines) — Entry point, page config, DB boot, tab navigation
+### Application core (Python)
+1. **`app.py`** (73 lines) — Entry point, page config, DB boot, tab navigation
 2. **`src/db.py`** (163 lines) — All SQLite schema + CRUD; `st.connection("telerrad")` pattern
 3. **`src/calculations.py`** (380 lines) — Pure business logic (earnings, hours, MA, projections) + DB-dependent stats
 4. **`src/chart_colors.py`** (58 lines) — Central color palette; no inline hex anywhere else
@@ -39,12 +48,26 @@ You are working on **radtracker**, a personal productivity dashboard for a teler
 8. **`src/insights_rules.py`** (221 lines) — Rule-based Portuguese insight generator
 9. **`src/llm_client.py`** (193 lines) — OpenRouter `openai/gpt-oss-120b:free` client
 10. **`src/cookies.py`** (38 lines) — `cookie_manager` for tab persistence
-11. **`src/ui/sidebar.py`** (70 lines) — Date picker + 3 modality inputs + save
+11. **`src/ui/sidebar.py`** (71 lines) — Date picker + 3 modality inputs + save
 12. **`src/ui/today.py`** (206 lines) — KPI cards, donut, sparkline
 13. **`src/ui/month.py`** (194 lines) — Gauge, line chart, rhythm alert, celebration
 14. **`src/ui/analysis.py`** (225 lines) — Rule insights + LLM (fragment) + 4 analysis charts
 15. **`src/ui/settings.py`** (197 lines) — `ensure_settings()` bootstrap + config form + danger zone
 16. **`.streamlit/config.toml`** (60 lines) — All theme config: colors, fonts, dark mode, semantic colors
+
+### Deployment
+17. **`Dockerfile`** (~40 lines) — Multi-stage build (builder + runtime), non-root user (uid 1000)
+18. **`docker-compose.yml`** (~35 lines) — Caddy + Streamlit services, loopback-only port exposure
+19. **`Caddyfile`** (~13 lines) — Reverse proxy: BasicAuth, JSON access log, streamlit upstream
+20. **`.env.example`** — Template: DOMAIN + BASICAUTH_USERS (with `$$` escaping note)
+21. **`.dockerignore`** — Build context exclusions
+22. **`ansible/ansible.cfg`** — ForwardAgent, pipelining
+23. **`ansible/inventory.yml`** — Single host via `VPS_HOST` + `VPS_USER` env vars
+24. **`ansible/group_vars/all.yml`** — Vault-encrypted secrets + shared vars
+25. **`ansible/playbooks/deploy.yml`** — 10-step idempotent bootstrap + deploy pipeline
+26. **`ansible/templates/Caddyfile.j2`** — LAN vs internet mode template
+27. **`ansible/templates/.env.j2`** — `.env` template with `$` → `$$` escaping
+28. **`docs/deployment.md`** — Complete deployment guide
 
 **For tests:** `tests/conftest.py` defines `FakeConnection` (SQLite `:memory:` emulation), `conn` fixture, `default_prices` fixture. Each `test_*.py` corresponds 1:1 to a `src/` module.
 
@@ -84,9 +107,11 @@ Analysis tab adds: `historical_cache`, `llm_insight_text`, `llm_insight_pending`
 - **No `st.divider()`** — use natural spacing or section headers
 - **No emojis as functional icons** — use Material icons exclusively; emojis only for celebration rain
 - **No `st.form` in sidebar** — it breaks date-dependent pre-fill (forms suppress widget-driven reruns)
-- **No `.env` file** — API key is stored in DB `user_settings` table, configured in UI
+- **No `.env` file in the application** — API key is stored in DB `user_settings` table, configured in UI
 - **Portuguese locale for all user-facing text** — UI labels, tooltips, chart annotations, insights
 - **No database access in chart modules** — `src/charts.py` and `src/charts_analysis.py` accept data as parameters only
+- **Deployment: Streamlit on loopback only** — `127.0.0.1:8501` in docker-compose, never exposed externally
+- **Dockerfile: non-root user** — container runs as `streamlit` (uid 1000), not root
 
 ### Style conventions
 - **Functions: 4–20 lines.** Split if longer.
@@ -100,6 +125,17 @@ Analysis tab adds: `historical_cache`, `llm_insight_text`, `llm_insight_pending`
 - **Charts:** all colors from `CHART_COLORS` dict in `src/chart_colors.py` — no inline hex values.
 - **Currency:** use `fmt_brl()` from `src/formatting.py`; it uses `Decimal.quantize(ROUND_HALF_UP)`.
 - **Markdown safety:** wrap BRL strings in `md_escape()` before passing to `st.markdown`.
+
+### Deployment conventions
+- **`$` in `BASICAUTH_USERS`:** must be escaped as `$$` in `.env` (Docker env_file parser)
+  - The `.env.j2` Ansible template handles this automatically with `regex_replace('\\$', '$$')`
+  - When editing `.env.example` or `.env` manually, double all `$` characters in the bcrypt hash
+- **Ansible secrets:** use `ansible-vault encrypt_string` for sensitive values (`deployment_mode`, `basicauth_users`)
+  - Embed `!vault |` blocks directly in `all.yml` — no separate vault file
+- **Playbook idempotency:** All playbooks must be safe to re-run without data loss
+  - `data/` is bind-mounted, never touched by git operations or rebuilds
+  - Container strategy: `recreate: always` (ensures fresh config on every deploy)
+- **fail2ban whitelist:** Always include RFC1918 + loopback ranges in jail config to prevent admin lockout
 
 ### Color palette reference
 ```python
@@ -136,6 +172,8 @@ Before considering any task done:
 4. **New functions have tests** — add to the appropriate `tests/test_*.py` file
 5. **New public functions have docstrings** — intent + one usage example
 6. **No dead code** — check with `rg`/`grep` for unused imports, functions, variables
+7. **For deployment changes:** verify Ansible playbooks still pass `ansible-lint` and playbook syntax check
+8. **For Dockerfile changes:** verify `hadolint` passes
 
 ---
 
@@ -148,11 +186,16 @@ uv run pytest tests/ -v
 # Coverage report
 uv run pytest tests/ -v --cov=src --cov-report=term-missing
 
-# Linting
+# Linting (Python)
 uv run ruff check src/ tests/
 
 # Type checking
 uv run mypy src/
+
+# Linting (deployment files)
+ansible-lint ansible/                    # Ansible playbooks
+hadolint Dockerfile                      # Dockerfile
+yamllint .                               # All YAML files (respects .yamllint.yml ignores)
 
 # Run the app (manual spot-check)
 uv run streamlit run app.py
@@ -167,7 +210,7 @@ uv run streamlit run app.py
   - A change affects multiple tabs or the core data flow
   - You need to introduce a new dependency not already in `pyproject.toml`
   - You're unsure whether a design decision is intentional (e.g., why `st.radio` over `st.tabs`)
-  - The request involves deployment, hosting, or environment config beyond local dev
+  - Changing `.streamlit/config.toml` theme values (has visual impact across all tabs)
 - **Proceed without asking** when:
   - Adding tests for existing logic
   - Fixing a bug with clear reproduction
@@ -175,6 +218,9 @@ uv run streamlit run app.py
   - Adding a new chart factory (in `charts.py` or `charts_analysis.py`)
   - Improving docstrings, type annotations, or error messages
   - Refactoring within a single module (no API changes)
+  - Adding or updating Ansible playbooks following existing patterns
+  - Updating Dockerfile dependencies (must sync with `pyproject.toml`)
+  - Editing `docs/deployment.md` for clarity or accuracy
 
 ---
 
@@ -186,16 +232,21 @@ uv run streamlit run app.py
 - **Progress gauge uses teal monochrome gradient** (not red/amber/green) — this is a deliberate aesthetic choice
 - **No `st.divider()` in the app** — removed intentionally; use spacing and section headers
 - **Chart modules have no DB access** — they receive pre-computed data as parameters
+- **Streamlit bound to loopback only** — Caddy is the sole public-facing endpoint; do not expose 8501 externally
+- **Ansible secrets in `all.yml`** — encrypted inline via `ansible-vault encrypt_string`; do not create separate vault files or `.env`-based secret loading
+- **`requirements.txt` has been removed** — `pyproject.toml` + `uv.lock` are the only canonical dependency sources
 
 ---
 
 ## Assumptions
 
-- Single user, local SQLite, no concurrency
+- Single user, local SQLite, no concurrency at the application layer
 - Portuguese locale for all user-facing text
 - Cal.com-inspired monochrome design aesthetic
 - The `uv` package manager is installed and is the standard toolchain
 - `data/telerrad.db` contains actual production data (Jan–Apr 2026); tests use `:memory:` databases
+- Deployment target is a clean Debian 12+ or Ubuntu 22.04+ VPS
+- SSH agent forwarding is used for private GitHub repo access during deployment
 
 ---
 
@@ -208,4 +259,12 @@ uv run pytest tests/ -v          # verify tests pass
 uv run streamlit run app.py      # run the app
 ```
 
-Read `README.md` for end-user setup instructions. Read `docs/context.md` for exhaustive module-by-module detail. Read `docs/plan.md` for the sprint history and what was done in each phase.
+For deployment:
+```bash
+export VPS_HOST=10.10.10.209
+export VPS_USER=galvani
+ansible-galaxy collection install -r ansible/requirements.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vault-pass
+```
+
+Read `README.md` for end-user setup instructions. Read `docs/context.md` for exhaustive module-by-module detail. Read `docs/deployment.md` for the complete deployment guide.

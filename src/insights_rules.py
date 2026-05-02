@@ -1,7 +1,7 @@
 """
-Rule-based insights engine for radtracker — Sprint 4.
+Rule-based insights engine for radtracker — v2 dynamic modalities.
 
-Pure function: dict in, Portuguese markdown string out.
+Pure function: stats dict + active_modalities → Portuguese markdown string.
 Zero database or external dependencies.
 """
 
@@ -10,21 +10,22 @@ from typing import Any
 from src.formatting import fmt_brl
 
 
-def generate_rule_insights(stats: dict[str, Any]) -> str:
+def generate_rule_insights(
+    stats: dict[str, Any],
+    active_modalities: list[dict[str, Any]],
+) -> str:
     """
     Generate Portuguese-language insights from historical statistics.
 
     Tone is determined by whether the current pace can realistically
     hit the goal, not just by a fixed pct_goal threshold.
 
-    Also checks WoW/MoM trends, modality mix shifts, and
-    consecutive below-target days.
-
     Args:
         stats: Dict from compute_historical_stats() with keys:
             current_month_stats, wow_change_pct, mom_change_pct,
             modality_mix_current, modality_mix_historical,
             consecutive_below_target.
+        active_modalities: List of active modality dicts (slug, label, price).
 
     Returns:
         Markdown-formatted Portuguese insight string.
@@ -47,9 +48,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
     projection = current.get("projection_month_end", 0.0)
     goal = (mtd / pct * 100) if pct > 0 else 0.0
 
-    # ── Tone: can the current pace hit the goal? ──
-    # When days_worked is small (< 5), daily_needed vs daily_avg
-    # ratio is unstable — fall back to linear-expected-progress logic.
+    # ── Tone ──
     if remaining == 0:
         tone = "success" if pct >= 100 else "danger"
     elif daily_needed <= 0:
@@ -62,7 +61,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
         elif daily_avg > 0:
             tone = "danger"
         else:
-            tone = "on_track"  # days_worked >= 5 with no daily_avg is impossible
+            tone = "on_track"
     else:
         expected_pct = (days_worked / total_days) * 100
         if pct >= expected_pct * 1.1:
@@ -76,28 +75,24 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
 
     lines: list[str] = []
 
-    # ── Plural-aware helpers ──
     def _dia(n: int) -> str:
         return "dia" if n == 1 else "dias"
 
     def _restar(n: int) -> str:
         return "Resta" if n == 1 else "Restam"
 
-    def _restante(n: int) -> str:
-        return "restante" if n == 1 else "restantes"
-
-    # ── Opening paragraph ──
+    # ── Opening ──
     lines.append(
         f"**{pct:.0f}%** da meta ({fmt_brl(mtd)} de {fmt_brl(goal)}) "
-        f"em **{days_worked}** {_dia(days_worked)} trabalhados. "
+        f"em **{days_worked}** {_dia(days_worked)} trabalhados."
     )
 
-    # ── Remaining-days projection line ──
+    # ── Projection ──
     if remaining > 0:
         if tone == "success":
             lines.append(
                 f"Com apenas **{remaining}** {_dia(remaining)} "
-                f"{_restante(remaining)} e faturamento de "
+                f"{_restar(remaining).lower()} e faturamento de "
                 f"{fmt_brl(mtd)}, faltam "
                 f"**{fmt_brl(max(0, goal - mtd))}**. "
                 f"Sua projeção é fechar em "
@@ -134,7 +129,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
                 f"— **{fmt_brl(missing)}** abaixo da meta."
             )
 
-    # ── Tone-based assessment ──
+    # ── Tone assessment ──
     if tone == "success":
         lines.append(
             "\n:material/check_circle: **Você já bateu a meta!** "
@@ -181,7 +176,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             f"em relação ao mês anterior."
         )
 
-    # ── Modality mix shift ──
+    # ── Modality mix shift (dynamic) ──
     mix_current = stats.get("modality_mix_current", {})
     mix_history = stats.get("modality_mix_historical", {})
     if days_worked > 0 and mix_history and len(mix_history) >= 2:
@@ -189,21 +184,24 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
         current_ym = max(months_sorted)
         past_months = [m for m in months_sorted if m != current_ym]
         if past_months:
-            avg_mix: dict[str, float] = {"rm": 0.0, "tc": 0.0, "rx": 0.0}
-            for m in past_months:
-                for mod in ("rm", "tc", "rx"):
-                    avg_mix[mod] += mix_history[m][mod]
-            for mod in avg_mix:
-                avg_mix[mod] /= len(past_months)
+            slug_to_label = {m["slug"]: m["label"] for m in active_modalities}
+            avg_mix: dict[str, float] = {}
+            all_slugs = set()
+            for mh in mix_history.values():
+                all_slugs.update(mh.keys())
+            for slug in all_slugs:
+                vals = [mix_history[pm].get(slug, 0.0) for pm in past_months]
+                avg_mix[slug] = sum(vals) / len(vals) if vals else 0.0
 
             shifts: list[str] = []
-            for mod, label in (("rm", "RM"), ("tc", "TC"), ("rx", "RX")):
-                diff = mix_current.get(mod, 0.0) - avg_mix[mod]
+            for slug in all_slugs:
+                diff = mix_current.get(slug, 0.0) - avg_mix.get(slug, 0.0)
                 if abs(diff) > 10:
                     dir_word = "aumento" if diff > 0 else "redução"
+                    label = slug_to_label.get(slug, slug)
                     shifts.append(
                         f"{label}: {dir_word} de {abs(diff):.1f} p.p. "
-                        f"(média histórica {avg_mix[mod]:.1f}%)"
+                        f"(média histórica {avg_mix[slug]:.1f}%)"
                     )
             if shifts:
                 lines.append(
@@ -220,7 +218,7 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             f"revisar a carga de trabalho."
         )
 
-    # ── Suggestions (context-aware) ──
+    # ── Suggestions ──
     if tone == "success":
         lines.append(
             "\n:material/lightbulb: **Sugestão:** O momento é de "
@@ -234,13 +232,16 @@ def generate_rule_insights(stats: dict[str, Any]) -> str:
             f"**{fmt_brl(daily_avg)}**, você fecha com folga."
         )
     elif tone in ("warning", "danger"):
+        # Find highest-paying modality
+        highest = max(active_modalities, key=lambda m: m["price"]) if active_modalities else None
+        highest_label = highest["label"] if highest else "exames de maior valor"
         lines.append(
-            "\n:material/lightbulb: **Sugestão:** Para melhorar o "
-            "faturamento, priorize exames de **RM** "
-            "(maior remuneração). Se a demanda não permitir, "
-            "considere ajustar a meta na aba "
-            "**:material/settings: Configuração** para refletir "
-            "a realidade atual."
+            f"\n:material/lightbulb: **Sugestão:** Para melhorar o "
+            f"faturamento, priorize **{highest_label}** "
+            f"(maior remuneração). Se a demanda não permitir, "
+            f"considere ajustar a meta na aba "
+            f"**:material/settings: Configuração** para refletir "
+            f"a realidade atual."
         )
 
     return "\n".join(lines)

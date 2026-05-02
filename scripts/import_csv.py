@@ -29,6 +29,24 @@ from datetime import datetime
 DB_PATH = "data/telerrad.db"
 CSV_DIR = "temp"
 
+# Mapping: v1 modality → v2 slug
+V1_TO_V2_SLUG: dict[str, str] = {
+    "rm": "ressonancia_magnetica",
+    "tc": "tc_geral",
+    "ag": "tc_geral",
+    "tt": "tc_geral",
+    "rx": "radiografia",
+}
+
+# Per-modality multipliers (tt = 2× regular tc)
+MODALITY_MULTIPLIER: dict[str, int] = {
+    "rm": 1,
+    "tc": 1,
+    "ag": 1,
+    "tt": 2,
+    "rx": 1,
+}
+
 
 def parse_csv(filepath: str) -> dict[str, dict[str, int]]:
     """Parse one CSV file, return {date_str: {"rm": n, "tc": n, "ag": n, "tt": n, "rx": n}}."""
@@ -143,6 +161,23 @@ def export_markdown(all_data: dict[str, dict[str, int]]) -> str:
     return "\n".join(lines)
 
 
+def _normalize_v2(raw_counts: dict[str, int]) -> dict[str, int]:
+    """Convert raw v1 modality counts to v2 slug→count with multipliers.
+
+    Example:
+        >>> _normalize_v2({"tc": 5, "ag": 3, "tt": 2, "rx": 10})
+        {'tc_geral': 12, 'radiografia': 10}
+    """
+    result: dict[str, int] = {}
+    for mod, count in raw_counts.items():
+        slug = V1_TO_V2_SLUG.get(mod)
+        if slug is None:
+            continue
+        multiplier = MODALITY_MULTIPLIER.get(mod, 1)
+        result[slug] = result.get(slug, 0) + count * multiplier
+    return result
+
+
 def main() -> None:
     csv_files = sorted(glob.glob(os.path.join(CSV_DIR, "*.csv")))
     if not csv_files:
@@ -159,13 +194,24 @@ def main() -> None:
             months[_infer_month(f)]["radiplan"] = f
 
     all_normalized: dict[str, dict[str, int]] = {}
+    all_raw_v2: dict[str, dict[str, int]] = {}  # date → slug→count for v2
 
     for year_month, sources in sorted(months.items()):
         assemed = parse_csv(sources.get("assemed", "")) if "assemed" in sources else {}
         radiplan = parse_csv(sources.get("radiplan", "")) if "radiplan" in sources else {}
         combined = combine_sources(assemed, radiplan)
+
+        # v1 normalization
         normalized = normalize(combined)
         all_normalized.update(normalized)
+
+        # v2: accumulate raw counts per slug
+        for date_str, raw_counts in combined.items():
+            v2_counts = _normalize_v2(raw_counts)
+            if date_str not in all_raw_v2:
+                all_raw_v2[date_str] = {}
+            for slug, count in v2_counts.items():
+                all_raw_v2[date_str][slug] = all_raw_v2[date_str].get(slug, 0) + count
 
     if not all_normalized:
         print("Nenhum dado encontrado nos CSVs.")
@@ -186,16 +232,32 @@ def main() -> None:
         f.write(md)
     print(f"Markdown salvo em: {md_path}")
 
-    # ── Import into SQLite ──
+    # ── Import into SQLite (v1 + v2 tables) ──
     db = sqlite3.connect(DB_PATH)
     cur = db.cursor()
     inserted = 0
     updated = 0
 
     for date_str, counts in sorted(all_normalized.items()):
+        # v1: write to daily_production
         cur.execute("SELECT COUNT(*) FROM daily_production WHERE date = ?", (date_str,))
         exists = cur.fetchone()[0] > 0
         upsert_daily(cur, date_str, counts["rm_count"], counts["tc_count"], counts["rx_count"])
+
+        # v2: write to daily_production_items (normalize per slug)
+        v2_counts = all_raw_v2.get(date_str, {})
+        for slug, count in v2_counts.items():
+            cur.execute(
+                """
+                INSERT INTO daily_production_items (date, modality_slug, count, updated_at)
+                VALUES (?, ?, ?, datetime('now','localtime'))
+                ON CONFLICT(date, modality_slug) DO UPDATE SET
+                    count = excluded.count,
+                    updated_at = datetime('now','localtime')
+                """,
+                (date_str, slug, count),
+            )
+
         if exists:
             updated += 1
         else:

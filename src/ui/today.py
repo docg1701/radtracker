@@ -1,7 +1,7 @@
 """
 Today tab — KPI cards, modality donut, and sparkline.
 
-Renders the "Hoje" tab per DESIGN_SPEC §4.1, §4.1a, §4.5, §4.6.
+v2: dynamic modalities from st.session_state.active_modalities.
 """
 
 from datetime import date
@@ -12,51 +12,48 @@ import streamlit as st
 from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
-    add_earnings_column,
     compute_daily_stats,
-    compute_mtd_earnings,
+    compute_monthly_stats,
 )
 from src.charts import build_daily_sparkline, build_modality_donut
-from src.db import load_month
+from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
 from src.ui.settings import ensure_settings
 
 
 def render_today_tab(conn: Any) -> None:
-    """
-    Render the complete "Hoje" tab: KPI row, donut chart, sparkline.
-
-    Displays an empty-state card when no data exists for today.
-    """
+    """Render the complete "Hoje" tab."""
     today = date.today()
     today_str = today.isoformat()
-    year_month = today_str[:7]  # "2026-04"
+    year_month = today_str[:7]
 
-    # Load settings from session state (cached from DB on boot)
     ensure_settings(conn)
-    prices = st.session_state.prices
-    monthly_goal = st.session_state.goal
+    active_mods = st.session_state.active_modalities
+    goal = st.session_state.goal
 
-    # Compute daily stats
-    stats = compute_daily_stats(conn, today_str, prices)
+    if not active_mods:
+        _render_empty_state("Nenhuma modalidade ativa. Configure na aba Configuração.")
+        return
 
-    # Empty state: no data exists for today
+    stats = compute_daily_stats(conn, today_str, active_mods)
+
     if not stats["has_data"]:
-        _render_empty_state()
+        _render_empty_state(
+            "Comece registrando sua produção de hoje na **barra lateral**."
+        )
         return
 
     # ── KPI Row ──
-    _render_kpi_row(stats, prices, monthly_goal, conn, year_month)
+    _render_kpi_row(stats, goal, conn, year_month, active_mods)
 
-    # ── Donut + Sparkline side-by-side ──
-    spark = _build_sparkline_figure(conn, prices, year_month)
+    # ── Donut + Sparkline ──
+    spark = _build_sparkline_figure(conn, year_month, active_mods)
 
     st.subheader(":material/dashboard: Visão geral")
-
     col_left, col_right = st.columns(2)
     with col_left:
         donut = build_modality_donut(
-            stats["rm_count"], stats["tc_count"], stats["rx_count"]
+            stats["modality_counts"], stats["modality_labels"]
         )
         st.plotly_chart(donut, width="stretch")
     with col_right:
@@ -64,44 +61,38 @@ def render_today_tab(conn: Any) -> None:
             st.plotly_chart(spark, width="stretch")
 
     # ── Raw data toggle ──
-    today_data = {
-        "Data": today_str,
-        "RM": stats["rm_count"],
-        "TC": stats["tc_count"],
-        "RX": stats["rx_count"],
-        "Faturamento": fmt_brl(stats["earnings_today"]),
-        "Horas": f"{stats['estimated_hours']:.1f}h",
-    }
-    raw_text = "\n".join(f"{k}: {v}" for k, v in today_data.items())
-    stoggle("Ver dados brutos", raw_text)
+    raw_lines = [f"Data: {today_str}"]
+    for slug, count in stats["modality_counts"].items():
+        label = stats["modality_labels"].get(slug, slug)
+        raw_lines.append(f"{label}: {count}")
+    raw_lines.append(f"Faturamento: {fmt_brl(stats['earnings_today'])}")
+    raw_lines.append(f"Horas: {stats['estimated_hours']:.1f}h")
+    stoggle("Ver dados brutos", "\n".join(raw_lines))
 
 
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _render_empty_state() -> None:
+def _render_empty_state(message: str) -> None:
     """Render the friendly empty-state card."""
     _, col2, _ = st.columns([1, 2, 1])
     with col2:
         with st.container(border=True):
             st.markdown(":material/content_paste:", text_alignment="center")
             st.subheader("Nenhum registro ainda")
-            st.markdown(
-                "Comece registrando sua produção de hoje "
-                "na **barra lateral**."
-            )
+            st.markdown(message)
             st.caption("Os dados aparecerão aqui assim que você salvar.")
 
 
 def _render_kpi_row(
     stats: dict[str, Any],
-    prices: dict[str, float],
-    monthly_goal: float,
+    goal: float,
     conn: Any,
     year_month: str,
+    active_mods: list[dict[str, Any]],
 ) -> None:
-    """Render the 4 KPI metric cards in st.columns(4)."""
+    """Render the 4 KPI metric cards."""
     k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
 
     # ── Card 1: Faturamento Hoje ──
@@ -110,25 +101,26 @@ def _render_kpi_row(
             earnings = stats["earnings_today"]
             if stats["delta_pct"] is not None:
                 delta_str = f"{stats['delta_pct']:+.1f}% vs ontem"
-                delta_color: Literal["normal", "off"] = "normal"
             else:
                 delta_str = "— sem dados de ontem"
-                delta_color = "off"
 
             st.metric(
                 label=":material/payments: Faturamento hoje",
                 value=fmt_brl(earnings),
                 delta=delta_str,
-                delta_color=delta_color,
+                delta_color="normal" if stats["delta_pct"] is not None else "off",
             )
 
     # ── Card 2: Exames Hoje ──
     with k2:
         with st.container(border=True, height="stretch"):
             total = stats["exam_count_today"]
-            pills = _build_pill_indicators(
-                stats["rm_count"], stats["tc_count"], stats["rx_count"]
-            )
+            parts = []
+            for slug, count in sorted(stats["modality_counts"].items()):
+                label = stats["modality_labels"].get(slug, slug)
+                parts.append(f"{label} {count}")
+            pills = "  ·  ".join(parts) if parts else "—"
+
             st.metric(
                 label=":material/content_paste: Exames hoje",
                 value=str(total),
@@ -151,14 +143,16 @@ def _render_kpi_row(
     # ── Card 4: Meta Mensal ──
     with k4:
         with st.container(border=True, height="stretch"):
-            month_df = load_month(conn, year_month)
-            mtd = compute_mtd_earnings(month_df, prices)
-            pct = (mtd / monthly_goal * 100) if monthly_goal > 0 else 0.0
-            badge_color: Literal["green", "orange"] = "green" if pct >= 50 else "orange"
+            month_stats = compute_monthly_stats(conn, year_month, goal, active_mods)
+            mtd = month_stats["mtd_earnings"]
+            pct = (mtd / goal * 100) if goal > 0 else 0.0
+            badge_color: Literal["green", "orange"] = (
+                "green" if pct >= 50 else "orange"
+            )
             st.metric(
                 label=":material/target: Meta mensal",
                 value=f"{pct:.0f}%",
-                delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(monthly_goal)}"),
+                delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(goal)}"),
                 delta_color="off",
             )
             st.badge(
@@ -169,41 +163,50 @@ def _render_kpi_row(
 
 
 def _build_sparkline_figure(
-    conn: Any, prices: dict[str, float], year_month: str
+    conn: Any, year_month: str, active_mods: list[dict[str, Any]],
 ):
-    """Load recent 7 days and build the sparkline chart figure.
+    """Load recent 7 days of earnings and build sparkline."""
+    from src.calculations import _build_lookups
 
-    Returns plotly Figure or None if insufficient data.
-    """
-    current_df = load_month(conn, year_month)
+    prices, _ = _build_lookups(active_mods)
 
-    # If early in the month (<7 days), pull from previous month too
-    if len(current_df) < 7:
+    current_items = load_month_items(conn, year_month)
+
+    # Compute daily earnings from items
+    if current_items.empty:
+        return None
+
+    daily = _daily_earnings_from_items(current_items, prices)
+    if daily.empty:
+        return None
+
+    # If <7 days in current month, pull from previous month
+    if len(daily) < 7:
         y, m = int(year_month[:4]), int(year_month[5:7])
         if m == 1:
             prev_ym = f"{y - 1}-12"
         else:
             prev_ym = f"{y}-{m - 1:02d}"
-        prev_df = load_month(conn, prev_ym)
-        all_days = pd.concat([prev_df, current_df], ignore_index=True)
-    else:
-        all_days = current_df
+        prev_items = load_month_items(conn, prev_ym)
+        if not prev_items.empty:
+            prev_daily = _daily_earnings_from_items(prev_items, prices)
+            daily = pd.concat([prev_daily, daily], ignore_index=True)
 
-    if all_days.empty:
-        return None
+    daily = daily.sort_values("date").tail(7)
 
-    # Compute earnings per day, keep last 7
-    all_days = add_earnings_column(all_days, prices)
-    all_days = all_days.sort_values("date").tail(7)
-
-    if len(all_days) >= 1:
-        return build_daily_sparkline(all_days)
+    if len(daily) >= 1:
+        return build_daily_sparkline(daily)
     return None
 
 
-def _build_pill_indicators(rm: int, tc: int, rx: int) -> str:
-    """Build modality indicators as plain text (st.metric delta = markdown, not HTML)."""
-    return f"RM {rm}  ·  TC {tc}  ·  RX {rx}"
-
-
-
+def _daily_earnings_from_items(
+    items_df: pd.DataFrame, prices: dict[str, float]
+) -> pd.DataFrame:
+    """Sum per-modality revenue by date → earnings column."""
+    items_df = items_df.copy()
+    items_df["revenue"] = items_df.apply(
+        lambda r: int(r["count"]) * prices.get(str(r["modality_slug"]), 0.0),
+        axis=1,
+    )
+    daily = items_df.groupby("date", as_index=False).agg(earnings=("revenue", "sum"))
+    return daily

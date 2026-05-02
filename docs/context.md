@@ -1,8 +1,8 @@
 # radtracker — Comprehensive Project Context
 
-**Generated:** 2026-05-01
-**Version:** v1.0.3 (tagged), 4 tagged releases (v1.0.0 → v1.0.3)
-**Test status:** 96 passed, 0 failed (2026-05-01)
+**Generated:** 2026-05-02
+**Version:** v1.1.1 (tagged), 7 tagged releases (v1.0.0 → v1.1.1)
+**Test status:** 96 passed, 0 failed (2026-05-02)
 
 ---
 
@@ -10,7 +10,9 @@
 
 **radtracker** is a personal productivity dashboard for a teleradiology physician. It tracks daily exam counts across three modalities (RM, TC, RX), converts them into earnings in Brazilian Real (BRL), monitors progress toward monthly revenue goals, and generates analytical insights — both rule-based and AI-driven (GPT-OSS 120B via OpenRouter free tier).
 
-The app is a **Streamlit single-page dashboard** with local SQLite persistence. Designed as a single-user, local-only tool — no authentication, no multi-tenancy, no deployment concerns.
+The app is a **Streamlit single-page dashboard** with local SQLite persistence. Designed as a single-user, local-only tool for development use — no authentication, no multi-tenancy at the application layer.
+
+**Self-hosted deployment** is supported via Docker + Caddy (reverse proxy with BasicAuth + automatic HTTPS) + fail2ban intrusion prevention, managed with Ansible playbooks (v1.1.0+).
 
 **Target user:** A single radiologist (default name: "Galvani", configurable in settings).
 
@@ -25,6 +27,11 @@ The app is a **Streamlit single-page dashboard** with local SQLite persistence. 
 ```
 radtracker/
 ├── app.py                  # Streamlit entry point, navigation, session init
+├── Dockerfile              # Multi-stage Docker build (builder + runtime, non-root user)
+├── docker-compose.yml      # Caddy + Streamlit services, loopback-only port exposure
+├── Caddyfile               # Reverse proxy config: BasicAuth, JSON logging, streamlit upstream
+├── .env.example            # Template: DOMAIN + BASICAUTH_USERS (use with Ansible .env.j2)
+├── .dockerignore           # Exclude secrets, data, git, caddy dirs, tests from build context
 ├── src/
 │   ├── __init__.py         # Empty package marker
 │   ├── db.py               # SQLite schema + CRUD (4 tables)
@@ -43,6 +50,21 @@ radtracker/
 │       ├── month.py        # "Mês Atual" tab — gauge, line chart, rhythm alert
 │       ├── analysis.py     # "Análise" tab — insights, LLM, 4 charts
 │       └── settings.py     # "Config" tab — prices, goal, API key, prompt
+├── ansible/                # Self-hosted deployment automation
+│   ├── ansible.cfg         # ForwardAgent, pipelining
+│   ├── inventory.yml       # VPS_HOST + VPS_USER via env vars
+│   ├── requirements.yml    # community.docker collection
+│   ├── group_vars/
+│   │   └── all.yml         # Shared vars (deployment_mode, domain, basicauth_users — Vault-encrypted)
+│   ├── templates/
+│   │   ├── Caddyfile.j2    # Caddy template (LAN or internet mode)
+│   │   └── .env.j2         # Docker env_file template ($ → $$ escaping)
+│   └── playbooks/
+│       ├── deploy.yml      # Bootstrap + deploy (idempotent, 10 steps)
+│       ├── update.yml      # Git reset + rebuild (preserves data/)
+│       ├── health.yml      # Container health, Streamlit endpoint, fail2ban
+│       ├── backup.yml      # SQLite dump via docker exec + integrity check
+│       └── cleanup.yml     # Full VPS reset (Docker, fail2ban, project, prerequisites)
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py         # FakeConnection + conn/default_prices fixtures
@@ -52,7 +74,8 @@ radtracker/
 │   ├── test_formatting.py    # 9 tests — BRL formatting, month constants
 │   ├── test_insights.py      # 17 tests — tone, content, trends, edge cases
 │   └── test_llm_client.py    # 12 tests — success, errors, prompt building
-├── scripts/import_csv.py  # CSV import tool for legacy data (assemed + radiplan)
+├── scripts/
+│   └── import_csv.py       # CSV import tool for legacy data (assemed + radiplan)
 ├── data/                   # SQLite DB + imported data markdown (gitignored)
 │   ├── .gitkeep
 │   ├── telerrad.db         # Main database (gitignored)
@@ -60,17 +83,18 @@ radtracker/
 ├── docs/
 │   ├── context.md          # This file
 │   ├── meta-prompt.md      # LLM session handoff contract
+│   ├── deployment.md       # Ansible deployment guide (v1.1.0+)
 │   ├── DESIGN.md           # Cal.com design system reference
 │   ├── plan.md             # Sprint phases 0–5 implementation plan (all Done)
 │   ├── streamlit_extras_guide.md  # Catalog of 56 streamlit-extras components
 │   └── streamlit_pro_tips.md      # 25+ Streamlit best practices from co-founder
 ├── .streamlit/config.toml  # Theme, fonts, dark mode, chart colors, semantic colors
+├── .ansible-lint.yml       # Ansible lint config (skip no-relative-paths, ignore-errors, command-instead-of-module)
+├── .hadolint.yml           # Dockerfile lint config (ignore DL3008, DL3013, DL3042, DL3059)
+├── .yamllint.yml           # YAML lint config (2-space indent, disable line-length)
 ├── .gitignore
 ├── pyproject.toml          # Project metadata + deps (uv-managed)
-├── uv.lock                 # Locked dependency versions
-├── requirements.txt        # Legacy requirements (pyproject.toml is authoritative)
-├── .env                    # No longer used (API key moved to DB in Phase 3)
-└── README.md               # Usage, install, AI setup instructions
+└── uv.lock                 # Locked dependency versions
 ```
 
 ### 2.2 Data Flow
@@ -167,7 +191,7 @@ All query functions pass `ttl=0` — no Streamlit result caching (real-time data
 
 ## 4. Key Modules — Detailed Analysis
 
-### 4.1 `app.py` (Entry Point, 53 lines)
+### 4.1 `app.py` (Entry Point, 73 lines)
 
 - **Line 20:** `st.set_page_config(page_title="radtracker", page_icon=":material/monitor_heart:", layout="wide", initial_sidebar_state="auto")` — MUST be first Streamlit command
 - **Lines 27–28:** DB boot: `conn = get_connection(); init_db(conn)` — idempotent
@@ -304,14 +328,14 @@ All accept data as parameters; zero DB access:
 - **4 tabs:** `:material/today: Hoje` | `:material/calendar_month: Mês Atual` | `:material/trending_up: Análise` | `:material/settings: Configuração`
 - **Persistence:** tab index saved to browser cookie `radtracker_last_tab`
 
-### 5.2 Sidebar (`src/ui/sidebar.py`, 70 lines)
+### 5.2 Sidebar (`src/ui/sidebar.py`, 71 lines)
 - Header: "**radtracker**" + greeting "Olá, {user_name}."
 - Date picker (`max_value=date.today()`, format `DD/MM/YYYY`)
 - 3 modality `st.number_input` in `st.columns(3)` — keyed by date string for pre-fill
 - Pre-fill: loads existing data for selected date, shows current counts as default values
 - "Salvar produção" button — `type="primary"`, spinner on save, toast on success, then `st.rerun()`
 - **Not using `st.form`** — intentional decision to keep date-dependent pre-fill working (forms suppress widget-driven reruns)
-- Footer: `st.caption("radtracker v1.0 · local")`
+- Footer: `st.caption("radtracker v1.0 · local")` — note: version string not yet updated to v1.1.1
 
 ### 5.3 "Hoje" Tab (`src/ui/today.py`, 206 lines)
 
@@ -436,6 +460,14 @@ Full `[theme.dark]` block: `#101010` background, `#1A1A1A` secondary, `#E5E7EB` 
 **mypy** (pyproject.toml): python_version=3.12, strict=false, ignore_missing_imports=true, warn_unused_configs=true
 **Package manager:** `uv` with `uv.lock`
 
+### 7.4 Linter Configs (for deployment-layer files)
+
+| Tool | Config File | Purpose |
+|------|-----------|---------|
+| `ansible-lint` | `.ansible-lint.yml` | Skip no-relative-paths, ignore-errors, command-instead-of-module |
+| `hadolint` | `.hadolint.yml` | Ignore DL3008 (apt pinning), DL3013 (pip pinning), DL3042 (--no-cache-dir), DL3059 (multi-stage concision) |
+| `yamllint` | `.yamllint.yml` | 2-space indent, disable line-length, ignore ansible/templates/ |
+
 ---
 
 ## 8. Data Model Summary
@@ -461,9 +493,9 @@ Full `[theme.dark]` block: `#101010` background, `#1A1A1A` secondary, `#E5E7EB` 
 
 ## 9. Test Coverage
 
-### 9.1 Status (2026-05-01)
-**96 passed, 0 failed** (was 95/1 — the `test_historical_consecutive_below_target` timing issue resolved).
-Run: `uv run pytest tests/ -v` (1.68s)
+### 9.1 Status (2026-05-02)
+**96 passed, 0 failed** in 1.72s.
+Run: `uv run pytest tests/ -v`
 
 ### 9.2 Module-Level Coverage
 
@@ -502,10 +534,101 @@ Self-contained utility for importing legacy production data:
 
 ---
 
-## 11. Current State & Known Issues
+## 11. Deployment Infrastructure (v1.1.0+)
 
-### 11.1 Completed Sprint Phases
-All 5 phases of the visual/UX overhaul (from `docs/plan.md`) are ✅ **Done**:
+Self-hosted deployment to a VPS via Docker + Caddy + fail2ban, managed with Ansible.
+
+### 11.1 Architecture
+
+```
+Browser → Caddy (:80/:443) → Streamlit (:8501 loopback)
+                ↓
+          BasicAuth + Let's Encrypt (auto TLS)
+          fail2ban watches /var/log/caddy/access.log for 401s
+```
+
+**Two modes:**
+- **LAN mode:** Caddy on `:80` with plain HTTP, no TLS. DOMAIN = VPS IP.
+- **Internet mode:** Real domain, Caddy auto-provisions Let's Encrypt certificates.
+
+**Security layers:**
+1. Caddy BasicAuth on all routes (username + bcrypt password hash)
+2. Streamlit only on loopback (127.0.0.1:8501) — never exposed externally
+3. fail2ban blocks IPs after 5 failed auth attempts in 10 minutes (1-hour ban)
+4. fail2ban whitelists local/RFC1918 networks to prevent admin lockout
+5. Non-root container user (uid 1000)
+
+### 11.2 Docker
+
+**`Dockerfile`** — Multi-stage build:
+- **Stage 1 (builder):** `python:3.12-slim`, installs `uv`, pins production deps explicitly
+- **Stage 2 (runtime):** Copies venv, creates `streamlit` user (uid 1000), runs as non-root
+- Healthcheck via `/_stcore/health`
+- SQLite data is bind-mounted at `/app/data` (not baked into image)
+
+**`docker-compose.yml`** — Two services:
+- **`streamlit`**: Build from Dockerfile, `127.0.0.1:8501:8501`, mem_limit 512MB, cpus 1.0
+- **`caddy`**: `caddy:2-alpine`, ports 80 + 443, mounts Caddyfile, persistent data/config/log dirs
+- Both share `radtracker` bridge network
+- Container strategy: `recreate: always` (ensures fresh containers on every deploy)
+
+**`.dockerignore`** — Excludes `.env`, `.git`, `data/`, `backups/`, Caddy runtime dirs, `tests/`, `docs/`, dev artifacts, `ansible/`, `scripts/`
+
+### 11.3 Caddy
+
+**`Caddyfile`** — Reverse proxy with:
+- JSON-formatted access log at `/var/log/caddy/access.log` (consumed by fail2ban)
+- `basic_auth *` on all routes using `{$BASICAUTH_USERS}` from `.env`
+- `reverse_proxy streamlit:8501` to the internal Docker network
+- Domain placeholder `{$DOMAIN:localhost}` defaults to `localhost` if unset
+
+### 11.4 Ansible
+
+All deployment automation lives in `ansible/`.
+
+**`inventory.yml`** — Single host `radtracker_vps`, configured via env vars `VPS_HOST` + `VPS_USER`.
+
+**`ansible.cfg`** — Enables SSH agent forwarding (`ForwardAgent=yes`) for private repo clone, pipelining for speed.
+
+**`group_vars/all.yml`** — Shared variables:
+- `radtracker_dir`, `radtracker_data_dir`, `radtracker_backup_dir` — VPS paths
+- `deployment_mode` — `"lan"` or `"internet"` (Vault-encrypted)
+- `domain` — DNS domain (internet mode only)
+- `github_repo`, `github_branch` — clone target
+- `basicauth_users` — `"username bcrypt_hash"` string (Vault-encrypted)
+- `backup_retention_days` — 30-day rotation
+
+**Vault encryption:** Sensitive values (`deployment_mode`, `basicauth_users`) are encrypted via `ansible-vault encrypt_string` and embedded directly in `all.yml`. The plaintext values in `all.yml` (paths, domain, repo) are not encrypted and can be committed.
+
+**Playbooks (5):**
+
+| Playbook | Purpose | Key characteristic |
+|----------|---------|-------------------|
+| `deploy.yml` | Bootstrap + deploy | 10-step idempotent pipeline (packages → Docker → clone → template → fail2ban → compose up → health check) |
+| `update.yml` | Zero-downtime update | `git fetch` + `reset --hard` (only tracked files), re-template, rebuild, recreate |
+| `health.yml` | Health verification | 9 assertions: container existence, running, healthy, Streamlit 200, Caddy 401, fail2ban active |
+| `backup.yml` | SQLite backup | `docker exec` sqlite3 `.backup` → `docker cp` → integrity check → rotation |
+| `cleanup.yml` | Full VPS reset | Removes containers, prunes Docker, uninstalls Docker + fail2ban + prerequisites + project dir |
+
+**Templates (2):**
+- `Caddyfile.j2` — Toggles between LAN mode (IP-based) and internet mode (domain-based)
+- `.env.j2` — Generates `.env` with `$` → `$$` escaping for Docker's env_file parser, uses `ansible_facts.default_ipv4.address` for LAN mode
+
+**Idempotency:** All playbooks are safe to re-run. `deploy.yml` can be run repeatedly without data loss.
+
+### 11.5 fail2ban
+
+- Filter: `radtracker-caddy.conf` — regex matches Caddy JSON log lines with `"status": 401`
+- Jail: `radtracker.conf` — watches `caddy_logs/access.log`, max 5 retries in 600s, 3600s ban
+- Whitelist: `local.conf` — ignores 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 (prevents LAN lockout)
+- Debian 13 compatibility: Uses `ansible_python_interpreter: /usr/bin/python3` to avoid discovery warnings
+
+---
+
+## 12. Current State & Known Issues
+
+### 12.1 Completed Sprint Phases
+All 5 phases of the visual/UX overhaul (from the sprint plan) are ✅ **Done**:
 - **Phase 0:** Localization fixes, RX step, remove dividers, hide deploy
 - **Phase 1:** Cal.com monochrome theme, Inter + Manrope, dark mode
 - **Phase 2:** Bordered KPI cards, stretch heights, donut resizing, responsive sidebar
@@ -513,30 +636,45 @@ All 5 phases of the visual/UX overhaul (from `docs/plan.md`) are ✅ **Done**:
 - **Phase 4:** Teal gradient progress gauge, consistent colors, dark mode chart adaptation
 - **Phase 5:** Celebration rain, star rating, stoggle raw data, cookie persistence
 
-### 11.2 Known Issues
-1. **`requirements.txt` is stale** — includes `python-dotenv` which is no longer used (API key moved to DB). Authoritative deps are in `pyproject.toml` + `uv.lock`.
-2. **No UI-level tests (0%)** — chart and UI modules have no test coverage by design; they require a Streamlit runtime.
-3. **Single-user assumption** — no authentication, no concurrent write protection, no deployment considerations.
+**Post-phase 5 (v1.1.0–v1.1.1):**
+- ✅ Docker containerization (multi-stage build, non-root user, health checks)
+- ✅ Caddy reverse proxy (BasicAuth, Let's Encrypt, JSON access logging)
+- ✅ fail2ban intrusion prevention (401 detection, whitelist, jail)
+- ✅ Ansible automation (5 playbooks, 2 templates, Vault encryption, idempotent)
+- ✅ Deployment documentation (`docs/deployment.md`)
+- ✅ Linter configs for YAML, Dockerfile, Ansible (`.yamllint.yml`, `.hadolint.yml`, `.ansible-lint.yml`)
+- ✅ `requirements.txt` removed (was stale; `pyproject.toml` is authoritative)
+- ✅ Debian 13 compatibility (ansible_python_interpreter fix, GPG keyring modern method)
 
-### 11.3 Critical Design Decisions
+### 12.2 Known Issues
+1. **Sidebar footer shows wrong version** — `st.caption("radtracker v1.0 · local")` in `src/ui/sidebar.py` L70; should say v1.1.1.
+2. **No UI-level tests (0%)** — chart and UI modules have no test coverage by design; they require a Streamlit runtime.
+3. **Single-user assumption** — no authentication, no concurrent write protection at the application layer (Caddy BasicAuth provides transport-layer auth in deployment).
+
+### 12.3 Critical Design Decisions
 - **No `st.form` in sidebar** — using a form would break date-dependent pre-fill since form widgets don't rerun on value change. Sidebar uses imperative save button.
 - **API key stored in DB, not `.env`** — eliminates external file dependency. Configured entirely within the UI.
 - **`st.radio` for tab navigation** (not `st.tabs`) — Material icon syntax works correctly in radio labels.
 - **Cookie persistence for tabs** (not URL params) — simpler for a local single-user app.
+- **Streamlit on loopback only** — never exposed externally; Caddy is the sole public-facing endpoint.
+- **Vault-encrypted secrets** — `deployment_mode` and `basicauth_users` are encrypted directly in `all.yml` with `ansible-vault encrypt_string`. No separate vault file needed.
+- **Container recreate strategy** — `recreate: always` in docker_compose_v2 ensures fresh containers on every deploy, avoiding stale-config issues.
 
-### 11.4 Constraints
+### 12.4 Constraints
 - **Python ≥ 3.12**
 - **Streamlit ≥ 1.54** (for `container(border=...)`, `st.badge`, Material icon syntax in config)
 - **SQLite only** — no migration path planned
 - **Portuguese locale** — all UI text, tooltips, chart labels, and insights in pt-BR
+- **Docker for deployment** — Docker Engine + Compose plugin required on VPS
+- **VPS OS:** Debian 12+ or Ubuntu 22.04+ (clean)
 
 ---
 
-## 12. Key File Reference
+## 13. Key File Reference
 
 | File | Lines | Key Lines | Purpose |
 |------|-------|-----------|---------|
-| `app.py` | 65 | L20–24, L34–39 | Page config, tab navigation |
+| `app.py` | 73 | L20–24, L34–39 | Page config, tab navigation |
 | `src/db.py` | 163 | L14–16 (DEFAULT_PRICES), L23–28 (get_connection), L31–56 (init_db) | DB connection + schema |
 | `src/calculations.py` | 380 | L20–24 (PRODUCTIVITY), L40–53 (compute_earnings), L170–230 (monthly stats), L236–380 (historical stats) | Business logic |
 | `src/chart_colors.py` | 58 | L10–20 (hex_to_rgba), L22–43 (CHART_COLORS), L46–57 (get_chart_text_color) | Color system |
@@ -546,11 +684,16 @@ All 5 phases of the visual/UX overhaul (from `docs/plan.md`) are ✅ **Done**:
 | `src/insights_rules.py` | 221 | L21–120 (tone determination), L122–221 (insight generation) | Rule-based analysis |
 | `src/llm_client.py` | 193 | L17–21 (LLMUnavailableError), L22–23 (config), L70–180 (class LLMClient), L30–67 (USER_PROMPT_TEMPLATE), L140–180 (_enrich_stats) | OpenRouter LLM integration |
 | `src/cookies.py` | 38 | L6–11 (_get_manager), L14–20 (get_last_tab_index), L23–29 (set_last_tab_index) | Tab cookie persistence |
-| `src/ui/sidebar.py` | 70 | L6–70 | Data entry form |
+| `src/ui/sidebar.py` | 71 | L6–70 | Data entry form |
 | `src/ui/today.py` | 206 | L25–66 (render_today_tab), L69–130 (KPI row), L132–175 (sparkline) | Today dashboard |
 | `src/ui/month.py` | 194 | L32–95 (render_month_tab), L98–170 (KPI + rhythm alert), L172–194 (celebration) | Month dashboard |
 | `src/ui/analysis.py` | 225 | L38–120 (render_analysis_tab), L122–170 (empty state), L172–225 (AI fragment section) | Analysis + AI |
 | `src/ui/settings.py` | 197 | L25–41 (ensure_settings), L54–100 (render_settings_tab), L102–160 (save + delete) | Config |
 | `.streamlit/config.toml` | 60 | Full theme config | Colors, fonts, dark mode |
+| `Dockerfile` | 40 | L1–17 (builder stage), L20–38 (runtime stage) | Docker image build |
+| `docker-compose.yml` | 35 | L1–23 (caddy service), L25–38 (streamlit service) | Container orchestration |
+| `Caddyfile` | 13 | Full reverse proxy + BasicAuth + logging config | Web server config |
+| `ansible/playbooks/deploy.yml` | 130 | Full 10-step bootstrap + deploy pipeline | Deployment automation |
+| `ansible/group_vars/all.yml` | 26 | Vault-encrypted secrets + shared vars | Deployment configuration |
 | `tests/conftest.py` | 67 | L10–33 (DB_CREATE_SQL), L36–69 (FakeConnection), L72–85 (conn fixture) | Test infrastructure |
 | `scripts/import_csv.py` | 157 | L16–19 (DB_PATH, CSV_DIR), L23–49 (parse_csv), L63–83 (combine_sources), L86–100 (normalize), L148–157 (main) | CSV import |
