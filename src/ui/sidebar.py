@@ -77,9 +77,8 @@ def render_sidebar(conn: Any) -> None:
             type="primary", width="stretch",
         ):
             with st.spinner("Salvando..."):
-                # Only save non-zero values
-                to_save = {s: c for s, c in values.items() if c > 0}
-                upsert_daily_items(conn, date_str, to_save)
+                # Send all values — zeros will be deleted, non-zeros upserted
+                upsert_daily_items(conn, date_str, values)
 
             st.session_state.pop("historical_cache", None)
             formatted = selected_date.strftime("%d/%m")

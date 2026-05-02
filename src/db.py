@@ -197,17 +197,26 @@ def upsert_daily_items(conn: Any, date_str: str, items: dict[str, int]) -> None:
         return
     with conn.connect() as db_conn:
         for slug, count in items.items():
-            db_conn.execute(
-                sa.text("""
-                    INSERT INTO daily_production_items
-                        (date, modality_slug, count, updated_at)
-                    VALUES (:date, :slug, :count, datetime('now','localtime'))
-                    ON CONFLICT(date, modality_slug) DO UPDATE SET
-                        count = excluded.count,
-                        updated_at = datetime('now','localtime')
-                """),
-                {"date": date_str, "slug": slug, "count": count},
-            )
+            if count == 0:
+                db_conn.execute(
+                    sa.text(
+                        "DELETE FROM daily_production_items "
+                        "WHERE date = :date AND modality_slug = :slug"
+                    ),
+                    {"date": date_str, "slug": slug},
+                )
+            else:
+                db_conn.execute(
+                    sa.text("""
+                        INSERT INTO daily_production_items
+                            (date, modality_slug, count, updated_at)
+                        VALUES (:date, :slug, :count, datetime('now','localtime'))
+                        ON CONFLICT(date, modality_slug) DO UPDATE SET
+                            count = excluded.count,
+                            updated_at = datetime('now','localtime')
+                    """),
+                    {"date": date_str, "slug": slug, "count": count},
+                )
         db_conn.commit()
 
 

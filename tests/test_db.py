@@ -157,14 +157,25 @@ class TestUpsertDailyItems:
         items = load_daily_items(conn, "2026-05-02")
         assert items == {}
 
-    def test_zero_count_skipped(self, conn):
-        """Only non-zero items are passed to upsert_daily_items."""
+    def test_zero_count_deletes_row(self, conn):
+        """Setting count to 0 removes the row from the database."""
+        init_db(conn)
+        # Insert first
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 6})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {"tc_geral": 6}
+
+        # Set to zero — row should be deleted
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 0})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {}
+
+    def test_zero_count_on_nonexistent_noop(self, conn):
+        """DELETE on non-existent row is a no-op."""
         init_db(conn)
         upsert_daily_items(conn, "2026-05-02", {"tc_geral": 0})
         items = load_daily_items(conn, "2026-05-02")
-        # Zero counts are not inserted by the caller (sidebar filters them),
-        # but even if passed, the function inserts them as 0.
-        assert items == {"tc_geral": 0}
+        assert items == {}
 
 
 class TestLoadDailyItems:
