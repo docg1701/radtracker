@@ -112,6 +112,7 @@
         mode: "0700"
       delegate_to: localhost
       run_once: true
+      become: false
 
     - name: Fetch templates from VPS clone
       ansible.builtin.fetch:
@@ -143,6 +144,7 @@
         state: absent
       delegate_to: localhost
       run_once: true
+      become: false
 
     - name: Ensure data directory has correct ownership (uid 1000)
       ansible.builtin.file:
