@@ -209,8 +209,8 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
         placeholder="openai/gpt-oss-120b:free",
     )
     st.caption(
-        "Digite o slug exato do modelo como aparece no site do OpenRouter. "
-        "Ex: `google/gemini-2.5-flash`, `anthropic/claude-sonnet-4`."
+        "Digite o slug exato do modelo como aparece no site do OpenRouter "
+        "(google/gemini-2.5-flash, anthropic/claude-sonnet-4)."
     )
     if llm_model and "/" not in llm_model:
         st.warning(

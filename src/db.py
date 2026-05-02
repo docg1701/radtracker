@@ -140,7 +140,7 @@ def load_all_modalities(conn: Any) -> list[dict[str, Any]]:
     """
     df = conn.query(
         "SELECT slug, label, price, exams_per_hour, active, sort_order "
-        "FROM modalities ORDER BY sort_order",
+        "FROM modalities ORDER BY label COLLATE NOCASE",
         ttl=0,
     )
     return df.to_dict("records")
@@ -155,7 +155,7 @@ def load_active_modalities(conn: Any) -> list[dict[str, Any]]:
         "SELECT slug, label, price, exams_per_hour, active, sort_order "
         "FROM modalities "
         "WHERE active = 1 AND price > 0 AND exams_per_hour > 0 "
-        "ORDER BY sort_order",
+        "ORDER BY label COLLATE NOCASE",
         ttl=0,
     )
     return df.to_dict("records")

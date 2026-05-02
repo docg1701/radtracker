@@ -69,9 +69,9 @@ class TestLoadAllModalities:
         init_db(conn)
         mods = load_all_modalities(conn)
         assert len(mods) == 11
-        # Verify sort_order is preserved
-        orders = [m["sort_order"] for m in mods]
-        assert orders == sorted(orders)
+        # Verify alphabetical order by label (case-insensitive)
+        labels = [m["label"].lower() for m in mods]
+        assert labels == sorted(labels)
 
 
 class TestLoadActiveModalities:
