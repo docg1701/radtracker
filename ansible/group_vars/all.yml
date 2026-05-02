@@ -1,4 +1,7 @@
 ---
+# Avoid interpreter discovery warning on Debian 13 (python3.13)
+ansible_python_interpreter: /usr/bin/python3
+
 # Project root on VPS (in the ansible_user's home directory)
 radtracker_dir: "/home/{{ ansible_user }}/radtracker"
 radtracker_data_dir: "{{ radtracker_dir }}/data"

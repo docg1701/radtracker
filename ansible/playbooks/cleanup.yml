@@ -4,6 +4,11 @@
   become: true
 
   tasks:
+    - name: Ensure python3-requests is available (needed for docker_prune)
+      ansible.builtin.apt:
+        name: python3-requests
+        state: present
+
     - name: Stop and remove containers
       community.docker.docker_compose_v2:
         project_src: "{{ radtracker_dir }}"
@@ -76,6 +81,7 @@
           - gnupg
           - git
           - sqlite3
+          - python3-requests
         state: absent
         purge: true
 
