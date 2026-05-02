@@ -1,4 +1,4 @@
-# Guia de Deploy — radtracker v1.1.0
+# Guia de Deploy — radtracker v1.1.1
 
 ## Pré-requisitos
 
@@ -66,7 +66,7 @@ ansible-vault decrypt_string --vault-id @prompt  # ou usar --vault-password-file
 ### 1.2 Gerar hash da senha
 
 ```bash
-docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "suasenha"
+docker run --rm caddy:2-alpine caddy hash-password --plaintext "suasenha"
 # Exemplo de saída: $2a$14$DMUrdcPgJtAUJ8qo...
 ```
 
@@ -102,7 +102,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vau
 ```
 
 O playbook executa em ordem:
-1. Instala pacotes base (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`)
+1. Instala pacotes base (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 2. Adiciona repositório Docker (Ubuntu ou Debian, detectado automaticamente)
 3. Instala Docker Engine + Compose plugin
 4. Clona repositório privado via SSH agent forwarding
@@ -125,15 +125,16 @@ Verifica:
 - Container `radtracker`: existe, running, healthy
 - Endpoint Streamlit: `/_stcore/health` → 200
 - Container `caddy`: existe, running
-- Caddy servindo: `http://localhost/` → 401 (BasicAuth ativo)
+- Caddy servindo: `https://localhost/` → 401 (BasicAuth ativo)
 - fail2ban: active
 
 ## 4. Acesso
 
 **Modo LAN:**
 ```
-http://10.10.10.209
+https://10.10.10.209
 ```
+(HTTPS com certificado autoassinado — aceitar aviso de segurança no primeiro acesso)
 
 **Modo internet:**
 ```
@@ -177,7 +178,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --ask-va
 - Remove Docker (pacotes, GPG key, repositório APT)
 - Remove fail2ban (jail, filter, pacote)
 - Remove diretório do projeto
-- Remove pré-requisitos (git, curl, sqlite3, etc.)
+- Remove pré-requisitos (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 - `apt autoremove` + `apt autoclean`
 
 VPS volta ao estado original — pronto pra um novo bootstrap + deploy.
@@ -230,7 +231,7 @@ sudo systemctl stop nginx apache2   # parar servidores conflitantes
 
 ```bash
 # Gerar novo hash
-docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "novasenha"
+docker run --rm caddy:2-alpine caddy hash-password --plaintext "novasenha"
 
 # Editar all.yml — criptografar novo valor
 ansible-vault encrypt_string "galvani \$2a\$14\$NOVO_HASH" --name basicauth_users

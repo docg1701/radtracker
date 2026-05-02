@@ -15,7 +15,7 @@ Use these when you need more depth:
 |------|------|
 | `README.md` | Setup, usage, directory structure |
 | `docs/context.md` | Exhaustive module-by-module detail, data flow |
-| `docs/plan.md` | Sprint history, completed phases |
+| `docs/deployment.md` | Ansible deployment guide |
 | `docs/DESIGN.md` | Cal.com design system reference |
 
 ---
@@ -107,18 +107,5 @@ must pass, not just Python ones.
 
 ## Implementation tracking
 
-Every `docs/plan.md` must include a tracking table:
-
-```markdown
-| Phase | Task | Worker | Review | Done |
-|-------|------|--------|--------|------|
-| 1     | Dockerfile + .dockerignore | — | — | ⬜ |
-| 1     | Caddyfile | — | — | ⬜ |
-| 2     | Deploy playbook | — | — | ⬜ |
-```
-
-- **Phase**: Phase number
-- **Task**: Short, specific description
-- **Worker**: Agent or subagent that implemented it
-- **Review**: Agent or subagent that reviewed it
-- **Done**: `⬜` (pending) → `✅` (complete)
+Use `docs/deployment.md` for deployment workflow. For feature work, create tracking
+checklists inline in the relevant issue or PR.
