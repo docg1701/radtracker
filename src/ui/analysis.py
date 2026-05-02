@@ -155,7 +155,7 @@ def _render_ai_section(
         return
 
     # Show current model
-    st.caption(f"Modelo: `{llm_model}`")
+    st.caption(f"Modelo: {llm_model}")
 
     st.caption(
         "Exemplos: 'Qual dia foi mais produtivo?', "
