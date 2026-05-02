@@ -53,19 +53,46 @@
         state: started
         enabled: true
 
-    - name: Clone or reset repository (preserves untracked files)
-      ansible.builtin.shell:
-        cmd: |
-          if [ -d "{{ radtracker_dir }}/.git" ]; then
-            cd "{{ radtracker_dir }}"
-            git fetch origin {{ github_branch }}
-            git reset --hard origin/{{ github_branch }}
-          else
-            git clone --branch {{ github_branch }} {{ github_repo }} {{ radtracker_dir }}
-          fi
-      environment:
-        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
-      changed_when: false  # tracked by compose build below
+    - name: Generate deploy key for GitHub access
+      community.crypto.openssh_keypair:
+        path: "{{ deploy_key_path }}"
+        type: ed25519
+        comment: "radtracker-deploy"
+      become: false
+
+    - name: Read deploy public key
+      ansible.builtin.slurp:
+        src: "{{ deploy_key_path }}.pub"
+      register: pubkey_content
+      become: false
+
+    - name: Register deploy key with GitHub
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/docg1701/radtracker/keys"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ github_pat }}"
+          Accept: "application/vnd.github+json"
+        body:
+          title: "radtracker-vps"
+          key: "{{ pubkey_content.content | b64decode }}"
+          read_only: true
+        body_format: json
+        status_code: [201, 422]
+      register: deploy_key_result
+      no_log: true
+      become: false
+      changed_when: deploy_key_result.status == 201
+
+    - name: Clone or update repository via deploy key
+      ansible.builtin.git:
+        repo: "{{ github_repo }}"
+        dest: "{{ radtracker_dir }}"
+        version: "{{ github_branch }}"
+        key_file: "{{ deploy_key_path }}"
+        accept_hostkey: true
+        force: true
+        update: true
       become: false
 
     - name: Create persistent directories (preserved across deploys)

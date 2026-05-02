@@ -20,9 +20,23 @@ deployment_mode: !vault |
 # Domain (only used in internet mode)
 domain: radtracker.example.com
 
-# GitHub private repository (SSH URL for agent-forwarding auth)
+# GitHub private repository (SSH URL)
 github_repo: git@github.com:docg1701/radtracker.git
 github_branch: master
+
+# GitHub Personal Access Token (classic) with 'repo' scope
+# Used to register the deploy key via API. Encrypt with:
+#   ansible-vault encrypt_string "ghp_YOUR_TOKEN" --name github_pat
+github_pat: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          33633639383630313838643962663136666566376361323566353065316331356165376661616336
+          3139393762626135656632616231363838386364623432630a346634376438666635326434396261
+          30623532653065653030393163633963626138363630663538616538653138613036643939303362
+          3933633264383662370a383931626166653364383330306464623766666236623735613565323361
+          36336162343239393634366536643364373833326336393861336238653032356432
+
+# Path to SSH deploy key generated on VPS for GitHub access
+deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"
 
 # BasicAuth: generate with: docker run --rm caddy:2.9-alpine caddy hash-password --plaintext "password"
 # Format: "username bcrypt_hash" (space-separated)

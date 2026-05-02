@@ -4,15 +4,15 @@
   become: true
 
   tasks:
-    - name: Fetch and reset to remote branch (preserves untracked files)
-      ansible.builtin.shell:
-        cmd: |
-          cd "{{ radtracker_dir }}"
-          git fetch origin {{ github_branch }}
-          git reset --hard origin/{{ github_branch }}
-      environment:
-        GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new
-      changed_when: false  # tracked by compose build below
+    - name: Update repository via deploy key
+      ansible.builtin.git:
+        repo: "{{ github_repo }}"
+        dest: "{{ radtracker_dir }}"
+        version: "{{ github_branch }}"
+        key_file: "{{ deploy_key_path }}"
+        accept_hostkey: true
+        force: true
+        update: true
       become: false
 
     - name: Template latest Caddyfile

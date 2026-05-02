@@ -1,125 +1,176 @@
-# Plano: Modalidades Dinâmicas + LLM Configurável
+# Plano: Deploy Key SSH no Ansible (substitui ForwardAgent)
 
 **Data:** 2026-05-02
-**Escopo:** Substituir 3 modalidades hardcoded (RM/TC/RX) por 11 dinâmicas + permitir escolha do modelo OpenRouter via slug.
+**Problema:** O `git fetch`/`git clone` falha silenciosamente nos playbooks Ansible porque o `SSH_AUTH_SOCK` não é propagado em shells não-interativos, mesmo com `ForwardAgent=yes`. O repositório é privado e o usuário prefere acesso SSH.
+
+**Solução:** Gerar uma chave SSH `ed25519` no VPS, registrá-la como deploy key no GitHub via API (usando PAT criptografado no Vault), e usar o módulo nativo `ansible.builtin.git` com `key_file`.
 
 ---
 
-## 1. Schema do Banco (migração v1 → v2)
+## Objetivo
 
-### Novas tabelas
+Eliminar a dependência de `ssh-agent` forwarding nos playbooks `deploy.yml` e `update.yml`, substituindo por autenticação baseada em deploy key SSH gerenciada automaticamente.
 
-**`modalities`** — catálogo de modalidades:
-```sql
-CREATE TABLE IF NOT EXISTS modalities (
-    slug            TEXT PRIMARY KEY,
-    label           TEXT NOT NULL,
-    price           REAL NOT NULL DEFAULT 0.0,
-    exams_per_hour  REAL NOT NULL DEFAULT 0.0,
-    active          INTEGER NOT NULL DEFAULT 0,  -- 0=inativo, 1=ativo
-    sort_order      INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-);
+---
+
+## Tarefas (ordem de execução)
+
+### 1. Adicionar `github_pat` criptografado ao Vault
+- **Arquivo:** `ansible/group_vars/all.yml`
+- **Ação:** Adicionar variável `github_pat` criptografada com `ansible-vault encrypt_string`
+- **Requisito:** O PAT deve ser um token GitHub classic com escopo `repo` (para acessar repo privado e gerenciar deploy keys)
+- **Idempotente:** Não se aplica (variável estática)
+- **Verificação:** `ansible-vault view ansible/group_vars/all.yml` deve mostrar o valor descriptografado
+
+### 2. Adicionar variável para caminho da deploy key
+- **Arquivo:** `ansible/group_vars/all.yml`
+- **Ação:** Adicionar `deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"`
+- **Verificação:** Variável disponível nos playbooks
+
+### 3. Gerar par de chaves SSH no VPS (idempotente)
+- **Arquivo:** `ansible/playbooks/deploy.yml`
+- **Ação:** Adicionar task usando `community.crypto.openssh_keypair` antes do clone:
+  ```yaml
+  - name: Generate deploy key for GitHub access
+    community.crypto.openssh_keypair:
+      path: "{{ deploy_key_path }}"
+      type: ed25519
+      comment: "radtracker-deploy-{{ inventory_hostname }}"
+      force: false  # nunca sobrescreve chave existente
+    become: false
+  ```
+- **Idempotente:** Sim — `force: false` preserva chave existente
+- **Verificação:** Segunda execução deve retornar `ok` (não `changed`)
+
+### 4. Registrar chave pública como deploy key no GitHub
+- **Arquivo:** `ansible/playbooks/deploy.yml`
+- **Ação:** Adicionar task após geração da chave:
+  ```yaml
+  - name: Register deploy key with GitHub
+    ansible.builtin.uri:
+      url: "https://api.github.com/repos/docg1701/radtracker/keys"
+      method: POST
+      headers:
+        Authorization: "Bearer {{ github_pat }}"
+        Accept: "application/vnd.github+json"
+      body:
+        title: "radtracker-vps"
+        key: "{{ lookup('file', deploy_key_path + '.pub') }}"
+        read_only: true
+      body_format: json
+      status_code: [201, 422]
+    register: deploy_key_result
+    become: false
+    changed_when: deploy_key_result.status == 201
+  ```
+- **Tratamento de erro:** `status_code: [201, 422]` — 422 = key já existe (idempotente), 201 = criada
+- **Atenção:** `lookup('file')` lê do controlador local, não do VPS. A chave pública precisa ser lida do VPS. Solução: usar `ansible.builtin.slurp` antes para ler o arquivo remoto:
+  ```yaml
+  - name: Read deploy public key
+    ansible.builtin.slurp:
+      src: "{{ deploy_key_path }}.pub"
+    register: pubkey_content
+    become: false
+  ```
+  E usar `{{ pubkey_content.content | b64decode }}` no body.
+
+### 5. Substituir `shell: git clone/fetch` por `ansible.builtin.git` no deploy.yml
+- **Arquivo:** `ansible/playbooks/deploy.yml`
+- **Ação:** Remover task "Clone or reset repository" (shell) e substituir por:
+  ```yaml
+  - name: Clone or update repository via deploy key
+    ansible.builtin.git:
+      repo: "{{ github_repo }}"
+      dest: "{{ radtracker_dir }}"
+      version: "{{ github_branch }}"
+      key_file: "{{ deploy_key_path }}"
+      accept_hostkey: true
+      force: yes
+      update: yes
+    become: false
+    register: git_result
+  ```
+- **Vantagens:** `update: yes` + `force: yes` faz fetch+reset automaticamente, igual ao shell antigo
+- **Verificação:** Deploy limpo (sem diretório) e re-deploy (com diretório existente) devem ambos funcionar
+
+### 6. Substituir `shell: git fetch` por `ansible.builtin.git` no update.yml
+- **Arquivo:** `ansible/playbooks/update.yml`
+- **Ação:** Remover task "Fetch and reset" (shell) e substituir por:
+  ```yaml
+  - name: Update repository via deploy key
+    ansible.builtin.git:
+      repo: "{{ github_repo }}"
+      dest: "{{ radtracker_dir }}"
+      version: "{{ github_branch }}"
+      key_file: "{{ deploy_key_path }}"
+      accept_hostkey: true
+      force: yes
+      update: yes
+    become: false
+  ```
+- **Verificação:** `git log` no VPS deve mostrar o commit mais recente após update
+
+### 7. Limpar `ansible.cfg`
+- **Arquivo:** `ansible/ansible.cfg`
+- **Ação:** Remover `ssh_args = -o ForwardAgent=yes` da seção `[ssh_connection]`
+- **Justificativa:** Não é mais necessário e dá falsa impressão de que funciona
+
+### 8. Atualizar `docs/deployment.md`
+- **Arquivo:** `docs/deployment.md`
+- **Alterações necessárias:**
+  - Seção "Pré-requisitos": remover "Chave SSH carregada no agente"
+  - Seção "1.1 Secrets": adicionar instrução para criar `github_pat`
+  - Seção "2. Deploy inicial": atualizar passo 4 (era "SSH agent forwarding", agora "deploy key gerada automaticamente")
+  - Seção "Solução de problemas": remover seção "SSH agent não funciona", adicionar "Deploy key não registra"
+  - Adicionar nota sobre como criar o PAT no GitHub (Settings → Developer settings → Personal access tokens → Tokens (classic))
+
+---
+
+## Ordem de dependências
+
+```
+1 (github_pat no vault)
+  └─> 4 (registrar deploy key no GitHub)
+        └─> 5, 6 (usar deploy key no git clone/fetch)
+2 (variável deploy_key_path)
+  └─> 3, 4, 5, 6
+3 (gerar chave)
+  └─> 4 (registrar chave)
+7 (limpar ansible.cfg) — independente
+8 (atualizar docs) — após tudo implementado
 ```
 
-**`daily_production_items`** — produção normalizada:
-```sql
-CREATE TABLE IF NOT EXISTS daily_production_items (
-    date            TEXT NOT NULL,
-    modality_slug   TEXT NOT NULL,
-    count           INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (date, modality_slug),
-    FOREIGN KEY (modality_slug) REFERENCES modalities(slug)
-);
-```
+---
 
-**Nova setting:** `llm_model` em `user_settings` (default: `"openai/gpt-oss-120b:free"`)
+## Riscos
 
-### Seed inicial (11 modalidades, todas inativas com price=0)
-
-| slug | label | sort_order |
-|------|-------|------------|
-| tc_abdome_total | TC de Abdome Total | 1 |
-| tc_geral | TC Geral | 2 |
-| angiotomografia | Angiotomografia | 3 |
-| ressonancia_magnetica | Ressonância Magnética | 4 |
-| ultrassonografia | Ultrassonografia | 5 |
-| dopplervelocimetria | Dopplervelocimetria | 6 |
-| mamografia | Mamografia | 7 |
-| radiografia | Radiografia | 8 |
-| radiografia_contrastada | Radiografia Contrastada | 9 |
-| ultrassom_morfologico | Ultrassom Morfológico | 10 |
-| densitometria | Densitometria | 11 |
-
-### Migração de dados v1
-
-- Se `daily_production` tem dados e `daily_production_items` está vazio:
-  - RM → `ressonancia_magnetica`
-  - TC → `tc_geral`
-  - RX → `radiografia`
-- Copiar preços do `exam_prices` mais recente para as 3 modalidades migradas
-- Marcar as 3 como `active=1`
+| Risco | Mitigação |
+|-------|-----------|
+| PAT expirado ou revogado | Documentar no deployment.md como renovar |
+| Deploy key já existe com outro título | `status_code: 422` tratado como ok |
+| `community.crypto.openssh_keypair` não instalado | Já deve estar disponível (parte do `community.crypto`); verificar `requirements.yml` |
+| `become: false` no git module causa erro de permissão | Testar: o diretório `radtracker_dir` é owned pelo ansible_user |
+| Conflito com chave SSH existente no VPS | `force: false` preserva chaves existentes; deploy key vive em arquivo separado |
 
 ---
 
-## 2. Arquivos a modificar (ordem de dependência)
-
-### Fase 1 — Fundação (DB + Cores)
-1. **`src/chart_colors.py`** — 3 → 13 cores (11 modalidades + primary + muted)
-2. **`src/db.py`** — novas tabelas, seed, migração, CRUD para `modalities` e `daily_production_items`
-
-### Fase 2 — Lógica de negócio
-3. **`src/calculations.py`** — funções genéricas aceitando lista de modalidades
-4. **`src/formatting.py`** — sem mudanças (já é genérico)
-5. **`src/llm_client.py`** — `model` vindo de `st.session_state.llm_model` em vez de constante
-
-### Fase 3 — Charts
-6. **`src/charts.py`** — donut/sparkline/gauge dinâmicos
-7. **`src/charts_analysis.py`** — MA/WoW/mix/bar dinâmicos
-8. **`src/insights_rules.py`** — análise dinâmica por modalidade
-
-### Fase 4 — UI
-9. **`src/ui/settings.py`** — config de modalidades (preço + exams/hora) + campo slug LLM
-10. **`src/ui/sidebar.py`** — inputs dinâmicos baseados em modalidades ativas
-11. **`src/ui/today.py`** — KPIs dinâmicos
-12. **`src/ui/month.py`** — visão mensal dinâmica
-13. **`src/ui/analysis.py`** — análise dinâmica
-
-### Fase 5 — Testes
-14. **`tests/conftest.py`** — novas fixtures
-15. **`tests/test_db.py`** — testes para modalities + daily_production_items
-16. **`tests/test_calculations.py`** — atualizar para API dinâmica
-17. **Demais tests** — atualizar conforme necessário
-
----
-
-## 3. Regra de visibilidade
-
-Uma modalidade aparece na **sidebar** e nos **dashboards** se e somente se:
-- `active = 1` E
-- `price > 0` E
-- `exams_per_hour > 0`
-
-Na aba **Configuração**, TODAS as 11 modalidades sempre aparecem (para configurar).
-
----
-
-## 4. LLM Model
-
-- Novo campo na aba Configuração: `"Modelo OpenRouter"` (text input)
-- Placeholder: `openai/gpt-oss-120b:free`
-- Salvo em `user_settings` com key `llm_model`
-- `LLMClient` usa `st.session_state.llm_model` em vez da constante `_MODEL`
-
----
-
-## 5. Validação
+## Validação pós-implementação
 
 ```bash
-uv run pytest tests/ -v
-uv run ruff check src/ tests/
-uv run mypy src/
+# 1. Verificar vault
+ansible-vault view ansible/group_vars/all.yml --vault-password-file ansible/.vault_pass | grep github_pat
+
+# 2. Deploy limpo
+VPS_HOST=10.10.10.209 VPS_USER=galvani ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
+
+# 3. Verificar git log no VPS
+ssh galvani@10.10.10.209 "cd ~/radtracker && git log --oneline -3"
+
+# 4. Update
+VPS_HOST=10.10.10.209 VPS_USER=galvani ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml --vault-password-file ansible/.vault_pass
+
+# 5. Verificar que update trouxe código novo
+ssh galvani@10.10.10.209 "cd ~/radtracker && git log --oneline -3"
+
+# 6. Idempotência: rodar deploy.yml de novo, deve retornar 0 changed
 ```

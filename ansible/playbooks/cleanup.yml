@@ -73,6 +73,18 @@
         path: "{{ radtracker_dir }}"
         state: absent
 
+    - name: Remove deploy key files
+      ansible.builtin.file:
+        path: "{{ deploy_key_path }}"
+        state: absent
+      become: false
+
+    - name: Remove deploy key public file
+      ansible.builtin.file:
+        path: "{{ deploy_key_path }}.pub"
+        state: absent
+      become: false
+
     - name: Remove bootstrap prerequisites
       ansible.builtin.apt:
         name:

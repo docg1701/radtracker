@@ -1,10 +1,10 @@
-# Guia de Deploy — radtracker v1.1.1
+# Guia de Deploy — radtracker v1.2.0
 
 ## Pré-requisitos
 
 - VPS com **Debian 12+ ou Ubuntu 22.04+** limpo
 - Acesso SSH como usuário regular com `sudo`
-- Chave SSH carregada no agente (`ssh-add -l`)
+- Token de acesso GitHub (Personal Access Token classic) com escopo `repo`
 - Domínio com DNS tipo A apontando pro IP do VPS (modo internet)
 - IP ou hostname acessível na rede local (modo LAN)
 
@@ -12,9 +12,9 @@
 
 ```
 ansible/
-├── ansible.cfg                  # ForwardAgent, pipelining
+├── ansible.cfg                  # Pipelining, host key check disabled
 ├── inventory.yml                # VPS_HOST + VPS_USER via env vars
-├── requirements.yml             # community.docker collection
+├── requirements.yml             # community.docker + community.crypto collections
 ├── group_vars/
 │   └── all.yml                  # Variáveis compartilhadas (valores sensíveis criptografados com Vault)
 ├── templates/
@@ -32,7 +32,7 @@ ansible/
 
 ### 1.1 Secrets (Ansible Vault encrypt_string)
 
-Valores sensíveis (`deployment_mode`, `basicauth_users`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
+Valores sensíveis (`deployment_mode`, `basicauth_users`, `github_pat`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
 
 ```bash
 # Criptografar um valor
@@ -40,6 +40,9 @@ ansible-vault encrypt_string "lan" --name deployment_mode
 # Copiar o output (!vault | ...) e colar no all.yml
 
 ansible-vault encrypt_string "galvani \$2a\$14\$HASH_AQUI" --name basicauth_users
+# Copiar o output e colar no all.yml
+
+ansible-vault encrypt_string "ghp_SEU_TOKEN_AQUI" --name github_pat
 # Copiar o output e colar no all.yml
 ```
 
@@ -54,6 +57,10 @@ deployment_mode: !vault |
 basicauth_users: !vault |
       $ANSIBLE_VAULT;1.1;AES256
       ...
+github_pat: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
+deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"
 ```
 
 **Nota:** O arquivo `all.yml` pode ser commitado — apenas os valores marcados com `!vault` estão criptografados.
@@ -63,7 +70,25 @@ Para editar valores criptografados:
 ansible-vault decrypt_string --vault-id @prompt  # ou usar --vault-password-file
 ```
 
-### 1.2 Gerar hash da senha
+### 1.2 Criar token de acesso GitHub (PAT)
+
+O PAT é usado uma única vez: para registrar a chave SSH do VPS como deploy key no repositório.
+
+1. Acesse [GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)](https://github.com/settings/tokens)
+2. Clique **Generate new token (classic)**
+3. Nome: `radtracker-deploy`
+4. Expiração: conforme sua política (recomendado 90 dias)
+5. Escopo: **repo** (acesso a repositórios privados + gerenciar deploy keys)
+6. Copie o token gerado (ex: `ghp_xxxx`)
+7. Criptografe com:
+   ```bash
+   ansible-vault encrypt_string "ghp_xxxx" --name github_pat
+   ```
+8. Substitua o bloco `github_pat: !vault |` no `all.yml` pelo output
+
+**Nota:** Após o registro da deploy key, o PAT pode expirar sem impacto — a autenticação git passa a usar a chave SSH.
+
+### 1.3 Gerar hash da senha
 
 ```bash
 docker run --rm caddy:2-alpine caddy hash-password --plaintext "suasenha"
@@ -94,18 +119,18 @@ export VPS_USER=galvani             # usuário SSH
 ## 2. Deploy inicial
 
 ```bash
-# Instalar collection (uma vez)
+# Instalar collections (uma vez)
 ansible-galaxy collection install -r ansible/requirements.yml
 
-# Deployar
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vault-pass
+# Deployar (usa --vault-password-file para evitar prompt interativo)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
 
 O playbook executa em ordem:
 1. Instala pacotes base (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 2. Adiciona repositório Docker (Ubuntu ou Debian, detectado automaticamente)
 3. Instala Docker Engine + Compose plugin
-4. Clona repositório privado via SSH agent forwarding
+4. Gera chave SSH ed25519 no VPS e registra como deploy key no GitHub (usa `github_pat` do Vault)
 5. Cria diretórios persistentes (`data/`, `backups/`, `caddy_logs/`)
 6. Gera `Caddyfile` e `.env` a partir dos templates
 7. Ajusta permissões (`chown 1000:1000` no `data/`)
@@ -118,7 +143,7 @@ O playbook executa em ordem:
 ## 3. Verificação
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --vault-password-file ansible/.vault_pass
 ```
 
 Verifica:
@@ -146,10 +171,10 @@ Autenticação: HTTP Basic Auth (usuário e senha configurados no `all.yml`, val
 ## 5. Atualização
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml --vault-password-file ansible/.vault_pass
 ```
 
-- Faz `git fetch` + `reset --hard` (só toca arquivos trackeados)
+- Atualiza repositório via deploy key SSH (`git` module)
 - Regenera `Caddyfile` e `.env`
 - Rebuilda imagem e recria container
 - Aguarda health check
@@ -159,7 +184,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml --ask-vau
 ## 6. Backup
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --vault-password-file ansible/.vault_pass
 ```
 
 - Cria `.backup` dentro do container com `sqlite3`
@@ -170,7 +195,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --ask-vau
 ## 7. Limpeza
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --vault-password-file ansible/.vault_pass
 ```
 
 - Para e remove containers
@@ -187,12 +212,29 @@ Remove radtracker, Docker, fail2ban e todos os pré-requisitos instalados. VPS v
 
 ## Solução de problemas
 
-### SSH agent não funciona
+### Deploy key não registra no GitHub
+
+Se o deploy falhar na tarefa "Register deploy key with GitHub":
 
 ```bash
-ssh-add -l                     # verificar se chave está carregada
-ssh-add ~/.ssh/id_ed25519      # carregar se necessário
-ssh -o ForwardAgent=yes galvani@VPS 'ssh -T git@github.com'  # testar forward
+# 1. Verificar se o github_pat está válido (não expirado)
+ansible-vault view ansible/group_vars/all.yml --vault-password-file ansible/.vault_pass | grep github_pat
+
+# 2. Testar o PAT manualmente:
+curl -H "Authorization: Bearer SEU_PAT" https://api.github.com/repos/docg1701/radtracker/keys
+
+# 3. Se o PAT expirou, gerar novo em https://github.com/settings/tokens
+#    e re-criptografar:
+ansible-vault encrypt_string "ghp_NOVO_TOKEN" --name github_pat
+#    Substituir o bloco no all.yml
+
+# 4. Se a chave já existe mas corrompeu, removê-la manualmente:
+#    Acesse https://github.com/docg1701/radtracker/settings/keys
+#    Delete "radtracker-vps" e re-rode deploy.yml
+
+# 5. Para re-gerar a chave SSH no VPS (force):
+ssh galvani@VPS "rm ~/.ssh/radtracker_deploy*"
+# Re-rodar deploy.yml — a task openssh_keypair recria a chave
 ```
 
 ### fail2ban não inicia
@@ -238,5 +280,5 @@ ansible-vault encrypt_string "galvani \$2a\$14\$NOVO_HASH" --name basicauth_user
 # Substituir o bloco !vault existente no all.yml pelo novo output
 
 # Re-deployar
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
