@@ -1,6 +1,5 @@
 {% if deployment_mode == "lan" %}
 :80, :443 {
-    tls internal
 {% else %}
 {{ domain }} {
 {% endif %}
