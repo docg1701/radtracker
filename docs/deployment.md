@@ -95,7 +95,7 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext "suasenha"
 # Exemplo de saída: $2a$14$DMUrdcPgJtAUJ8qo...
 ```
 
-### 1.3 Modo internet — domínio
+### 1.4 Modo internet — domínio
 
 No `all.yml`, edite o valor criptografado de `deployment_mode`:
 
@@ -109,12 +109,23 @@ E editar `all.yml`:
 domain: radtracker.exemplo.com
 ```
 
-### 1.4 Ambiente
+### 1.5 Ambiente
 
 ```bash
 export VPS_HOST=10.10.10.209        # IP do VPS
 export VPS_USER=galvani             # usuário SSH
 ```
+
+### 1.6 Arquivo de senha do Vault
+
+Crie um arquivo com a senha do Ansible Vault (já está no `.gitignore`):
+
+```bash
+echo -n "sua_senha_vault" > ansible/.vault_pass
+chmod 600 ansible/.vault_pass
+```
+
+Isso evita o prompt interativo de senha em todos os comandos abaixo.
 
 ## 2. Deploy inicial
 
