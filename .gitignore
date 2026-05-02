@@ -39,3 +39,4 @@ Thumbs.db
 dist/
 *.egg-info/
 temp/
+ansible/.vault_pass
