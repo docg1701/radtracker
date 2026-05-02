@@ -126,6 +126,14 @@
             dest: /etc/fail2ban/jail.d/radtracker.conf
             mode: "0644"
 
+        - name: Whitelist local network in fail2ban (prevent admin lockout)
+          ansible.builtin.copy:
+            content: |
+              [DEFAULT]
+              ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+            dest: /etc/fail2ban/jail.d/local.conf
+            mode: "0644"
+
     - name: Create Caddy access log file (fail2ban requires it)
       ansible.builtin.file:
         path: "{{ radtracker_dir }}/caddy_logs/access.log"
