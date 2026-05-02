@@ -1,5 +1,5 @@
 {% if deployment_mode == "lan" %}
-:80, :443 {
+{{ ansible_default_ipv4.address | default('localhost') }} {
 {% else %}
 {{ domain }} {
 {% endif %}
