@@ -628,6 +628,8 @@ v1.1.0 used SSH agent forwarding (`ForwardAgent=yes`). v1.2.0 replaces this with
 
 **Idempotency:** The deploy key task has `changed_when: deploy_key_result.status == 201`. Status 422 (key already exists) is treated as ok — no change.
 
+**Naming convention:** Each key's GitHub title uses `"radtracker-vps-{{ ansible_host }}"` — a unique suffix per VPS based on its IP/hostname (set via `VPS_HOST`). This prevents collisions when multiple VPS instances run the same playbook: each registers its own key under a distinct name, and 422 responses on re-runs correctly signal idempotent no-ops rather than silently mismatched key pairs.
+
 ### 11.3 Docker
 
 **`Dockerfile`** — Multi-stage build:

@@ -241,7 +241,8 @@ ansible-vault encrypt_string "ghp_NOVO_TOKEN" --name github_pat
 
 # 4. Se a chave já existe mas corrompeu, removê-la manualmente:
 #    Acesse https://github.com/docg1701/radtracker/settings/keys
-#    Delete "radtracker-vps" e re-rode deploy.yml
+#    Delete "radtracker-vps-<IP>" (ou qualquer chave radtracker-vps-* obsoleta) e re-rode deploy.yml
+#    Cada VPS registra sua própria chave com nome único baseado no ansible_host (o IP do VPS)
 
 # 5. Para re-gerar a chave SSH no VPS (force):
 ssh galvani@VPS "rm ~/.ssh/radtracker_deploy*"

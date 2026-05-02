@@ -74,7 +74,7 @@
           Authorization: "Bearer {{ github_pat }}"
           Accept: "application/vnd.github+json"
         body:
-          title: "radtracker-vps"
+          title: "radtracker-vps-{{ ansible_host }}"
           key: "{{ pubkey_content.content | b64decode }}"
           read_only: true
         body_format: json
