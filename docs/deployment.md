@@ -143,7 +143,7 @@ O playbook executa em ordem:
 3. Instala Docker Engine + Compose plugin
 4. Gera chave SSH ed25519 no VPS e registra como deploy key no GitHub (usa `github_pat` do Vault)
 5. Cria diretórios persistentes (`data/`, `backups/`, `caddy_logs/`)
-6. Gera `Caddyfile` e `.env` a partir dos templates
+6. Busca templates do clone VPS, gera `Caddyfile` e `.env` a partir deles
 7. Ajusta permissões (`chown 1000:1000` no `data/`)
 8. Instala e configura fail2ban (filtro de 401, jail, cria `access.log`)
 9. Builda imagem e sobe containers (`docker compose up --build`)
@@ -186,7 +186,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml --vault-p
 ```
 
 - Atualiza repositório via deploy key SSH (`git` module)
-- Regenera `Caddyfile` e `.env`
+- Regenera `Caddyfile` e `.env` a partir dos templates do clone VPS
 - Rebuilda imagem e recria container
 - Aguarda health check
 

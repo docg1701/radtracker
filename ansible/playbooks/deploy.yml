@@ -105,17 +105,44 @@
         - "{{ radtracker_backup_dir }}"
         - "{{ radtracker_dir }}/caddy_logs"
 
-    - name: Template Caddyfile
+    - name: Create local temp directory for fetched templates
+      ansible.builtin.file:
+        path: "/tmp/radtracker_fetched_templates"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Fetch templates from VPS clone
+      ansible.builtin.fetch:
+        src: "{{ radtracker_dir }}/ansible/templates/{{ item }}"
+        dest: "/tmp/radtracker_fetched_templates/{{ item }}"
+        flat: true
+      loop:
+        - Caddyfile.j2
+        - .env.j2
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: Template Caddyfile from fetched copy
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/Caddyfile.j2"
+        src: "/tmp/radtracker_fetched_templates/Caddyfile.j2"
         dest: "{{ radtracker_dir }}/Caddyfile"
         mode: "0644"
 
-    - name: Template .env file
+    - name: Template .env from fetched copy
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/.env.j2"
+        src: "/tmp/radtracker_fetched_templates/.env.j2"
         dest: "{{ radtracker_dir }}/.env"
         mode: "0600"
+
+    - name: Clean up local temp files
+      ansible.builtin.file:
+        path: "/tmp/radtracker_fetched_templates"
+        state: absent
+      delegate_to: localhost
+      run_once: true
 
     - name: Ensure data directory has correct ownership (uid 1000)
       ansible.builtin.file:

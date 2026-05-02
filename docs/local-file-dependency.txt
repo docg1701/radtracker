@@ -1,0 +1,12 @@
+Problema: dependência de arquivos locais no deploy com Ansible
+
+Quando um playbook usa `lookup('file', playbook_dir + '/../scripts/restore-stage.sh')`,
+o Ansible lê o arquivo do sistema de arquivos do PC de desenvolvimento (control
+node), não do VPS de destino. Isso prende o deploy à máquina local: se o PC for
+formatado, trocado, ou se o clone do repositório estiver desatualizado, o
+playbook falha com "arquivo não encontrado" ou executa uma versão incorreta do
+script. A solução é o VPS clonar o repositório diretamente do GitHub via chave
+SSH (deploy key) e o playbook ler os arquivos do clone no próprio VPS, usando
+`data_src` ou `slurp`. Assim, qualquer máquina com Ansible e a senha do vault
+consegue fazer o deploy, e o VPS sempre usa a versão mais recente dos scripts
+que está no GitHub.
