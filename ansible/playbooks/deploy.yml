@@ -98,6 +98,23 @@
 
     - name: Install and configure fail2ban
       block:
+        - name: Create fail2ban config directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: "0755"
+          loop:
+            - /etc/fail2ban/filter.d
+            - /etc/fail2ban/jail.d
+
+        - name: Whitelist local network in fail2ban (prevent admin lockout)
+          ansible.builtin.copy:
+            content: |
+              [DEFAULT]
+              ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+            dest: /etc/fail2ban/jail.d/local.conf
+            mode: "0644"
+
         - name: Install fail2ban
           ansible.builtin.apt:
             name: fail2ban
@@ -124,14 +141,6 @@
               findtime = 600
               bantime = 3600
             dest: /etc/fail2ban/jail.d/radtracker.conf
-            mode: "0644"
-
-        - name: Whitelist local network in fail2ban (prevent admin lockout)
-          ansible.builtin.copy:
-            content: |
-              [DEFAULT]
-              ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-            dest: /etc/fail2ban/jail.d/local.conf
             mode: "0644"
 
     - name: Create Caddy access log file (fail2ban requires it)
