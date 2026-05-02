@@ -1,5 +1,9 @@
+{
+    default_sni {$DOMAIN:localhost}
+}
+
 {% if deployment_mode == "lan" %}
-{{ ansible_default_ipv4.address | default('localhost') }} {
+{$DOMAIN:localhost} {
 {% else %}
 {{ domain }} {
 {% endif %}
