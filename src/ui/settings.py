@@ -94,24 +94,28 @@ def _render_modality_grid(conn: Any) -> None:
     )
 
     # Header row
-    h_label, h_price, h_eph, h_active = st.columns([3, 2, 2, 1])
+    h_label, h_price, h_eph, h_color, h_active = st.columns([2.5, 2, 2, 0.8, 0.8])
     with h_label:
         st.caption("**Modalidade**")
     with h_price:
         st.caption("**Preço (R$)**")
     with h_eph:
         st.caption("**Exames/h**")
+    with h_color:
+        st.caption("**Cor**")
     with h_active:
         st.caption("**Ativo**")
 
     # Track changes in a form-like structure (but don't use st.form —
     # we want individual saves to work without freezing the whole page).
-    updated: dict[str, tuple[float, float, bool]] = {}
+    updated: dict[str, tuple[float, float, bool, str]] = {}
 
     for m in all_mods:
         slug = m["slug"]
         label = m["label"]
-        col_label, col_price, col_eph, col_active = st.columns([3, 2, 2, 1])
+        col_label, col_price, col_eph, col_color, col_active = (
+            st.columns([2.5, 2, 2, 0.8, 0.8])
+        )
 
         with col_label:
             st.write(label)
@@ -131,6 +135,13 @@ def _render_modality_grid(conn: Any) -> None:
                 key=f"mod_eph_{slug}",
                 label_visibility="collapsed",
             )
+        with col_color:
+            color = st.color_picker(
+                f"Cor {slug}",
+                value=str(m.get("color", "#64748B")),
+                key=f"mod_color_{slug}",
+                label_visibility="collapsed",
+            )
         with col_active:
             active = st.checkbox(
                 f"Ativo {slug}",
@@ -143,9 +154,10 @@ def _render_modality_grid(conn: Any) -> None:
             abs(price - float(m["price"])) > 0.001
             or abs(eph - float(m["exams_per_hour"])) > 0.001
             or active != bool(m["active"])
+            or color != str(m.get("color", "#64748B"))
         )
         if changed:
-            updated[slug] = (price, eph, active)
+            updated[slug] = (price, eph, active, color)
 
     if updated:
         st.button(
@@ -157,11 +169,11 @@ def _render_modality_grid(conn: Any) -> None:
 
 
 def _save_modalities(
-    conn: Any, updated: dict[str, tuple[float, float, bool]]
+    conn: Any, updated: dict[str, tuple[float, float, bool, str]]
 ) -> None:
     """Persist updated modality rows to DB and refresh session state."""
-    for slug, (price, eph, active) in updated.items():
-        save_modality(conn, slug, price, eph, 1 if active else 0)
+    for slug, (price, eph, active, color) in updated.items():
+        save_modality(conn, slug, price, eph, 1 if active else 0, color=color)
 
     # Clear caches so sidebar/dashboards pick up changes
     st.session_state.pop("historical_cache", None)

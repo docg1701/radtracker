@@ -13,6 +13,8 @@ import pandas as pd
 import sqlalchemy as sa
 import streamlit as st
 
+from src.chart_colors import MODALITY_COLORS
+
 DEFAULT_PRICES: dict[str, float] = {
     "ressonancia_magnetica": 35.0,
     "tc_geral": 25.0,
@@ -23,17 +25,28 @@ DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b:free"
 
 # ── Predefined modality catalog (11 items) ──
 _MODALITY_SEED: list[dict[str, Any]] = [
-    {"slug": "tc_abdome_total", "label": "TC de Abdome Total", "sort_order": 1},
-    {"slug": "tc_geral", "label": "TC Geral", "sort_order": 2},
-    {"slug": "angiotomografia", "label": "Angiotomografia", "sort_order": 3},
-    {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética", "sort_order": 4},
-    {"slug": "ultrassonografia", "label": "Ultrassonografia", "sort_order": 5},
-    {"slug": "dopplervelocimetria", "label": "Dopplervelocimetria", "sort_order": 6},
-    {"slug": "mamografia", "label": "Mamografia", "sort_order": 7},
-    {"slug": "radiografia", "label": "Radiografia", "sort_order": 8},
-    {"slug": "radiografia_contrastada", "label": "Radiografia Contrastada", "sort_order": 9},
-    {"slug": "ultrassom_morfologico", "label": "Ultrassom Morfológico", "sort_order": 10},
-    {"slug": "densitometria", "label": "Densitometria", "sort_order": 11},
+    {"slug": "tc_abdome_total", "label": "TC de Abdome Total", "sort_order": 1,
+     "color": MODALITY_COLORS["tc_abdome_total"]},
+    {"slug": "tc_geral", "label": "TC Geral", "sort_order": 2,
+     "color": MODALITY_COLORS["tc_geral"]},
+    {"slug": "angiotomografia", "label": "Angiotomografia", "sort_order": 3,
+     "color": MODALITY_COLORS["angiotomografia"]},
+    {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética", "sort_order": 4,
+     "color": MODALITY_COLORS["ressonancia_magnetica"]},
+    {"slug": "ultrassonografia", "label": "Ultrassonografia", "sort_order": 5,
+     "color": MODALITY_COLORS["ultrassonografia"]},
+    {"slug": "dopplervelocimetria", "label": "Dopplervelocimetria", "sort_order": 6,
+     "color": MODALITY_COLORS["dopplervelocimetria"]},
+    {"slug": "mamografia", "label": "Mamografia", "sort_order": 7,
+     "color": MODALITY_COLORS["mamografia"]},
+    {"slug": "radiografia", "label": "Radiografia", "sort_order": 8,
+     "color": MODALITY_COLORS["radiografia"]},
+    {"slug": "radiografia_contrastada", "label": "Radiografia Contrastada", "sort_order": 9,
+     "color": MODALITY_COLORS["radiografia_contrastada"]},
+    {"slug": "ultrassom_morfologico", "label": "Ultrassom Morfológico", "sort_order": 10,
+     "color": MODALITY_COLORS["ultrassom_morfologico"]},
+    {"slug": "densitometria", "label": "Densitometria", "sort_order": 11,
+     "color": MODALITY_COLORS["densitometria"]},
 ]
 
 
@@ -125,6 +138,8 @@ def init_db(conn: Any) -> None:
 
     # Seed modalities if table is empty
     _seed_modalities(conn)
+    # Add color column if missing (migration)
+    _add_color_column(conn)
     # Run v1→v2 migration if needed
     _migrate_v1_to_v2(conn)
 
@@ -136,10 +151,10 @@ def init_db(conn: Any) -> None:
 def load_all_modalities(conn: Any) -> list[dict[str, Any]]:
     """Return all 11 modalities ordered by sort_order. Always 11 rows.
 
-    Each dict: slug, label, price, exams_per_hour, active, sort_order.
+    Each dict: slug, label, price, exams_per_hour, active, sort_order, color.
     """
     df = conn.query(
-        "SELECT slug, label, price, exams_per_hour, active, sort_order "
+        "SELECT slug, label, price, exams_per_hour, active, sort_order, color "
         "FROM modalities ORDER BY label COLLATE NOCASE",
         ttl=0,
     )
@@ -152,7 +167,7 @@ def load_active_modalities(conn: Any) -> list[dict[str, Any]]:
     These appear in sidebar and dashboards.
     """
     df = conn.query(
-        "SELECT slug, label, price, exams_per_hour, active, sort_order "
+        "SELECT slug, label, price, exams_per_hour, active, sort_order, color "
         "FROM modalities "
         "WHERE active = 1 AND price > 0 AND exams_per_hour > 0 "
         "ORDER BY label COLLATE NOCASE",
@@ -162,20 +177,31 @@ def load_active_modalities(conn: Any) -> list[dict[str, Any]]:
 
 
 def save_modality(
-    conn: Any, slug: str, price: float, exams_per_hour: float, active: int
+    conn: Any, slug: str, price: float, exams_per_hour: float, active: int,
+    color: str | None = None,
 ) -> None:
-    """Update price, exams_per_hour, and active flag for a single modality."""
+    """Update price, exams_per_hour, active flag, and optionally color.
+
+    When color is None (default), the color column is left unchanged
+    for backward compatibility with existing callers.
+    """
+    set_clauses = [
+        "price = :price",
+        "exams_per_hour = :eph",
+        "active = :active",
+        "updated_at = datetime('now','localtime')",
+    ]
+    params: dict[str, Any] = {
+        "slug": slug, "price": price, "eph": exams_per_hour, "active": active,
+    }
+    if color is not None:
+        set_clauses.append("color = :color")
+        params["color"] = color
+
     with conn.connect() as db_conn:
         db_conn.execute(
-            sa.text("""
-                UPDATE modalities
-                SET price = :price,
-                    exams_per_hour = :eph,
-                    active = :active,
-                    updated_at = datetime('now','localtime')
-                WHERE slug = :slug
-            """),
-            {"slug": slug, "price": price, "eph": exams_per_hour, "active": active},
+            sa.text(f"UPDATE modalities SET {', '.join(set_clauses)} WHERE slug = :slug"),
+            params,
         )
         db_conn.commit()
 
@@ -392,10 +418,35 @@ def _seed_modalities(conn: Any) -> None:
             db_conn.execute(
                 sa.text("""
                     INSERT OR IGNORE INTO modalities
-                        (slug, label, price, exams_per_hour, active, sort_order)
-                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order)
+                        (slug, label, price, exams_per_hour, active, sort_order, color)
+                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
                 """),
-                {"slug": m["slug"], "label": m["label"], "sort_order": m["sort_order"]},
+                {"slug": m["slug"], "label": m["label"], "sort_order": m["sort_order"],
+                 "color": m["color"]},
+            )
+        db_conn.commit()
+
+
+def _add_color_column(conn: Any) -> None:
+    """Add color column to modalities if it doesn't exist, then backfill defaults.
+
+    Uses PRAGMA table_info to check column existence before ALTER TABLE.
+    Backfills per-modality default colors from MODALITY_COLORS.
+    """
+    columns_df = conn.query("PRAGMA table_info(modalities)", ttl=0)
+    existing_cols = set(columns_df["name"].tolist())
+    if "color" in existing_cols:
+        return  # Already migrated, nothing to do
+
+    with conn.connect() as db_conn:
+        db_conn.execute(
+            sa.text("ALTER TABLE modalities ADD COLUMN color TEXT NOT NULL DEFAULT '#64748B'"),
+        )
+        # Backfill default colors for known modalities
+        for slug, color in MODALITY_COLORS.items():
+            db_conn.execute(
+                sa.text("UPDATE modalities SET color = :color WHERE slug = :slug"),
+                {"slug": slug, "color": color},
             )
         db_conn.commit()
 

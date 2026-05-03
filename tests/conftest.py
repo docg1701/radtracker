@@ -39,6 +39,7 @@ DB_CREATE_SQL = [
         price           REAL NOT NULL DEFAULT 0.0,
         exams_per_hour  REAL NOT NULL DEFAULT 0.0,
         active          INTEGER NOT NULL DEFAULT 0,
+        color           TEXT NOT NULL DEFAULT '#64748B',
         sort_order      INTEGER NOT NULL DEFAULT 0,
         created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
         updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -130,9 +131,12 @@ def active_modalities():
     """Return a list of 3 active modality dicts (like from load_active_modalities)."""
     return [
         {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética",
-         "price": 35.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 4},
+         "price": 35.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 4,
+         "color": "#7C3AED"},
         {"slug": "tc_geral", "label": "TC Geral",
-         "price": 25.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 2},
+         "price": 25.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 2,
+         "color": "#6366F1"},
         {"slug": "radiografia", "label": "Radiografia",
-         "price": 4.5, "exams_per_hour": 75.0, "active": 1, "sort_order": 8},
+         "price": 4.5, "exams_per_hour": 75.0, "active": 1, "sort_order": 8,
+         "color": "#2563EB"},
     ]

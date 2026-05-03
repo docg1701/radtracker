@@ -43,7 +43,7 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 1. **`app.py`** (73 lines) — Entry point, page config, DB boot, tab navigation
 2. **`src/db.py`** (476 lines) — All SQLite schema (v1+v2) + CRUD; `st.connection("telerrad")` pattern; 11-modality seed + auto-migration
 3. **`src/calculations.py`** (445 lines) — Pure business logic (earnings, hours, MA, projections) + DB-dependent stats; dynamic modality-aware
-4. **`src/chart_colors.py`** (84 lines) — Central color palette (11 modalities + legacy aliases) + `color_for_modality()`; no inline hex anywhere else
+4. **`src/chart_colors.py`** (92 lines) — Central color palette (11 modalities + legacy aliases) + `color_for_modality()` with optional DB lookup
 5. **`src/charts.py`** (366 lines) — Plotly factories for Today and Month tabs (dynamic modalities)
 6. **`src/charts_analysis.py`** (363 lines) — Plotly factories for Analysis tab (dynamic modalities)
 7. **`src/formatting.py`** (53 lines) — `fmt_brl()` BRL currency, `md_escape()`, `MONTHS_PT`
@@ -80,7 +80,7 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 
 ### v2 tables (primary)
 
-- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 11 modalities on `init_db()`.
+- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `color` (TEXT, default `#64748B`), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 11 modalities on `init_db()`. Colors are customizable per-modality via Settings tab `st.color_picker`.
 - **`daily_production_items`** — `date` (TEXT), `modality_slug` (TEXT), `count` (INTEGER), `created_at`, `updated_at`. PK: `(date, modality_slug)`. FK → `modalities(slug)`.
 
 ### v1 tables (kept for migration)
@@ -101,7 +101,7 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 |----------|-----------|-------|
 | `load_all_modalities(conn)` | Read | Returns all 11 modalities, ordered by label |
 | `load_active_modalities(conn)` | Read | Returns modalities where `active=1 AND price>0 AND exams_per_hour>0` |
-| `save_modality(conn, slug, price, eph, active)` | Write | Updates single modality |
+| `save_modality(conn, slug, price, eph, active, color=None)` | Write | Updates single modality; `color` optional for backward compat |
 | `upsert_daily_items(conn, date_str, items)` | Write | Inserts/updates dict of slug→count; zero counts → DELETE |
 | `load_daily_items(conn, date_str)` | Read | Returns dict slug→count |
 | `load_month_items(conn, year_month)` | Read | DataFrame with date, modality_slug, count |
@@ -182,7 +182,11 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
   - SSH agent forwarding (`ForwardAgent`) is no longer required
   - `github_pat` (Vault-encrypted) is used once to register the key; can expire afterwards
 
-### Color palette reference
+### Color palette reference (customizable)
+
+Modality colors are stored in the `modalities` table (`color` column) and default
+to the palette below. Users can override any color via the Settings tab — chart
+factories read the DB-stored color via `color_for_modality(slug, modalities)`.
 ```python
 MODALITY_COLORS = {
     "radiografia": "#2563EB",              # Blue-600

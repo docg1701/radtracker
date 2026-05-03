@@ -54,7 +54,8 @@ def render_today_tab(conn: Any) -> None:
     col_left, col_right = st.columns(2)
     with col_left:
         bar_chart = build_modality_bar(
-            stats["modality_counts"], stats["modality_labels"]
+            stats["modality_counts"], stats["modality_labels"],
+            modalities=st.session_state.active_modalities,
         )
         st.plotly_chart(bar_chart, width="stretch")
     with col_right:

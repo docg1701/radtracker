@@ -111,7 +111,7 @@ def build_wow_comparison_chart(
     for m in active_modalities:
         slug = m["slug"]
         labels.append(m["label"])
-        mod_colors.append(color_for_modality(slug))
+        mod_colors.append(color_for_modality(slug, active_modalities))
         price = float(m["price"])
 
         # Revenue for this modality in previous week and current week
@@ -198,7 +198,7 @@ def _single_week_chart(
         slug = m["slug"]
         price = float(m["price"])
         labels.append(m["label"])
-        mod_colors.append(color_for_modality(slug))
+        mod_colors.append(color_for_modality(slug, active_modalities))
 
         count_col = slug
         if count_col in df.columns:
@@ -261,7 +261,7 @@ def build_modality_mix_evolution(
             val = mix_history[ym].get(slug, 0.0)
             fig.add_trace(go.Bar(
                 x=[month_labels[0]], y=[val],
-                name=m["label"], marker_color=color_for_modality(slug),
+                name=m["label"], marker_color=color_for_modality(slug, active_modalities),
             ))
         fig.update_layout(barmode="stack")
     else:
@@ -272,9 +272,9 @@ def build_modality_mix_evolution(
                 x=month_labels, y=vals,
                 mode="lines",
                 name=m["label"],
-                line=dict(color=color_for_modality(slug), width=1),
+                line=dict(color=color_for_modality(slug, active_modalities), width=1),
                 stackgroup="one",
-                fillcolor=hex_to_rgba(color_for_modality(slug), 0.7),
+                fillcolor=hex_to_rgba(color_for_modality(slug, active_modalities), 0.7),
                 hovertemplate=f"{m['label']}: %{{y:.1f}}%<extra></extra>",
             ))
 

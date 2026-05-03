@@ -33,15 +33,24 @@ MODALITY_COLORS: dict[str, str] = {
 }
 
 
-def color_for_modality(slug: str) -> str:
-    """Return the fixed color for a modality slug; fallback to Slate-500.
+def color_for_modality(slug: str, modalities: list[dict] | None = None) -> str:
+    """Return the color for a modality slug; fallback to Slate-500.
+
+    When modalities (from DB) is provided, uses DB-stored color if available,
+    falling back to the hardcoded palette.
 
     Example:
         >>> color_for_modality("ressonancia_magnetica")
         '#7C3AED'
+        >>> color_for_modality("radiografia", [{"slug": "radiografia", "color": "#FF0000"}])
+        '#FF0000'
         >>> color_for_modality("desconhecido")
         '#64748B'
     """
+    if modalities is not None:
+        for m in modalities:
+            if m["slug"] == slug:
+                return m.get("color", MODALITY_COLORS.get(slug, "#64748B"))
     return MODALITY_COLORS.get(slug, "#64748B")
 
 

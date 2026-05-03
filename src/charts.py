@@ -28,6 +28,7 @@ from src.formatting import MONTHS_PT
 def build_modality_bar(
     counts: dict[str, int],
     labels_lookup: dict[str, str],
+    modalities: list[dict[str, Any]] | None = None,
 ) -> go.Figure:
     """
     Build a horizontal bar chart showing exam count by modality.
@@ -50,7 +51,7 @@ def build_modality_bar(
         if count > 0:
             display_labels.append(labels_lookup.get(slug, slug))
             values.append(count)
-            bar_colors.append(color_for_modality(slug))
+            bar_colors.append(color_for_modality(slug, modalities))
 
     if not values:
         display_labels = ["—"]
@@ -102,6 +103,7 @@ def build_modality_bar(
 def build_modality_donut(
     counts: dict[str, int],
     labels_lookup: dict[str, str],
+    modalities: list[dict[str, Any]] | None = None,
 ) -> go.Figure:
     """
     Build a donut chart showing exam count by modality.
@@ -123,7 +125,7 @@ def build_modality_donut(
             slugs.append(slug)
             values.append(count)
             display_labels.append(labels_lookup.get(slug, slug))
-            slice_colors.append(color_for_modality(slug))
+            slice_colors.append(color_for_modality(slug, modalities))
 
     if not values:
         values = [0]
@@ -399,7 +401,7 @@ def build_monthly_modality_donut(
             slugs.append(slug)
             values.append(val)
             display_labels.append(labels_lookup.get(slug, slug))
-            slice_colors.append(color_for_modality(slug))
+            slice_colors.append(color_for_modality(slug, active_modalities))
 
     if not values:
         values = [0]

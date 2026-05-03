@@ -66,3 +66,18 @@ class TestModalityColors:
 
     def test_color_for_modality_unknown_fallback(self):
         assert color_for_modality("desconhecido") == "#64748B"
+
+    def test_color_for_modality_with_lookup(self):
+        """Lookup param overrides hardcoded color."""
+        mods = [{"slug": "radiografia", "color": "#FF0000"}]
+        assert color_for_modality("radiografia", mods) == "#FF0000"
+
+    def test_color_for_modality_with_lookup_fallback(self):
+        """Unknown slug in lookup falls back to #64748B."""
+        mods = [{"slug": "radiografia", "color": "#FF0000"}]
+        assert color_for_modality("desconhecido", mods) == "#64748B"
+
+    def test_color_for_modality_lookup_missing_color_key(self):
+        """Lookup entry without 'color' key falls back to hardcoded palette."""
+        mods = [{"slug": "tc_geral"}]
+        assert color_for_modality("tc_geral", mods) == MODALITY_COLORS["tc_geral"]

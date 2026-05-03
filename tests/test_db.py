@@ -407,3 +407,42 @@ class TestMigration:
         rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
         assert rm["price"] == DEFAULT_PRICES["ressonancia_magnetica"]
         assert rm["exams_per_hour"] == 7.5
+
+
+class TestModalityColor:
+    def test_save_modality_with_color(self, seeded_conn):
+        """Save custom color, load back, verify it persisted."""
+        save_modality(seeded_conn, "radiografia", 4.5, 75.0, 1, color="#FF0000")
+        mods = load_all_modalities(seeded_conn)
+        rx = next(m for m in mods if m["slug"] == "radiografia")
+        assert rx["color"] == "#FF0000"
+        # Other modalities should still have their default colors
+        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
+        assert rm["color"] == "#7C3AED"
+
+    def test_seed_modalities_has_color(self, conn):
+        """After seeding, every modality has a non-default color from the palette."""
+        from src.db import _add_color_column, _seed_modalities
+        _seed_modalities(conn)
+        _add_color_column(conn)
+        all_mods = load_all_modalities(conn)
+        assert len(all_mods) == 11
+        for m in all_mods:
+            assert "color" in m
+            # Each modality should have a real palette color (not the generic fallback)
+            assert m["color"] != "#64748B", f"{m['slug']} should not have fallback color"
+            assert m["color"].startswith("#")
+            assert len(m["color"]) == 7
+
+    def test_save_modality_without_color_does_not_overwrite(self, seeded_conn):
+        """Calling save_modality without color leaves existing color unchanged."""
+        # First set a custom color
+        save_modality(seeded_conn, "tc_geral", 25.0, 7.5, 1, color="#111111")
+        # Then update without color
+        save_modality(seeded_conn, "tc_geral", 30.0, 8.0, 1)
+        mods = load_all_modalities(seeded_conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["price"] == 30.0
+        assert tc["exams_per_hour"] == 8.0
+        # Color should survive unchanged
+        assert tc["color"] == "#111111"
