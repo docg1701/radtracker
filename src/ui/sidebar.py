@@ -86,4 +86,4 @@ def render_sidebar(conn: Any) -> None:
             st.rerun()
 
         # Footer
-        st.caption("radtracker v1.2 · local")
+        st.caption("radtracker v1.3 · local")
