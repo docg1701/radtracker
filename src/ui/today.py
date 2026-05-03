@@ -16,7 +16,7 @@ from src.calculations import (
     compute_daily_stats,
     compute_monthly_stats,
 )
-from src.charts import build_daily_sparkline, build_modality_donut
+from src.charts import build_daily_sparkline, build_modality_bar
 from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
 from src.ui.settings import ensure_settings
@@ -53,10 +53,10 @@ def render_today_tab(conn: Any) -> None:
     st.subheader(":material/dashboard: Visão geral")
     col_left, col_right = st.columns(2)
     with col_left:
-        donut = build_modality_donut(
+        bar_chart = build_modality_bar(
             stats["modality_counts"], stats["modality_labels"]
         )
-        st.plotly_chart(donut, width="stretch")
+        st.plotly_chart(bar_chart, width="stretch")
     with col_right:
         if spark is not None:
             st.plotly_chart(spark, width="stretch")

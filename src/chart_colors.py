@@ -17,19 +17,19 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-# Modalidade → cor fixa (11 modalidades, palette distinta e colorblind-safe)
+# Modalidade → cor fixa (11 modalidades, paleta fria com boa separação)
 MODALITY_COLORS: dict[str, str] = {
-    "tc_abdome_total": "#2563EB",          # Blue-600
-    "tc_geral": "#D97706",                 # Amber-600
-    "angiotomografia": "#0891B2",          # Cyan-600
-    "ressonancia_magnetica": "#DC2626",    # Red-600
-    "ultrassonografia": "#7C3AED",         # Violet-600
-    "dopplervelocimetria": "#059669",      # Emerald-600
-    "mamografia": "#DB2777",               # Pink-600
-    "radiografia": "#CA8A04",              # Yellow-600
-    "radiografia_contrastada": "#9333EA",  # Purple-600
-    "ultrassom_morfologico": "#0D9488",    # Teal-600
-    "densitometria": "#EA580C",            # Orange-600
+    "radiografia": "#2563EB",              # Blue-600
+    "tc_geral": "#6366F1",                 # Indigo-500
+    "tc_abdome_total": "#0891B2",          # Cyan-600
+    "ressonancia_magnetica": "#7C3AED",    # Violet-600
+    "angiotomografia": "#0D9488",           # Teal-600
+    "ultrassonografia": "#A855F7",          # Purple-500
+    "dopplervelocimetria": "#059669",       # Emerald-600
+    "radiografia_contrastada": "#475569",   # Slate-600
+    "ultrassom_morfologico": "#0EA5E9",     # Sky-500
+    "mamografia": "#BE123C",                # Rose-700
+    "densitometria": "#A16207",             # Amber-700
 }
 
 
@@ -38,7 +38,7 @@ def color_for_modality(slug: str) -> str:
 
     Example:
         >>> color_for_modality("ressonancia_magnetica")
-        '#DC2626'
+        '#7C3AED'
         >>> color_for_modality("desconhecido")
         '#64748B'
     """

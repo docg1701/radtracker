@@ -21,8 +21,83 @@ from src.chart_colors import (
 from src.formatting import MONTHS_PT
 
 # ---------------------------------------------------------------------------
-# Modality donut chart (dynamic)
+# Modality bar chart (dynamic)
 # ---------------------------------------------------------------------------
+
+
+def build_modality_bar(
+    counts: dict[str, int],
+    labels_lookup: dict[str, str],
+) -> go.Figure:
+    """
+    Build a horizontal bar chart showing exam count by modality.
+
+    Args:
+        counts: dict slug→count (only positive counts).
+        labels_lookup: dict slug→display label.
+
+    Returns:
+        Plotly Figure — horizontal bars, per-modality colors, Portuguese labels.
+
+    Example:
+        >>> fig = build_modality_bar({"tc_geral": 5, "radiografia": 20}, labels)
+    """
+    display_labels: list[str] = []
+    values: list[int] = []
+    bar_colors: list[str] = []
+
+    for slug, count in counts.items():
+        if count > 0:
+            display_labels.append(labels_lookup.get(slug, slug))
+            values.append(count)
+            bar_colors.append(color_for_modality(slug))
+
+    if not values:
+        display_labels = ["—"]
+        values = [0]
+        bar_colors = [CHART_COLORS["muted"]]
+
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=values,
+                y=display_labels,
+                orientation="h",
+                marker=dict(color=bar_colors),
+                text=values,
+                textposition="outside",
+                textfont=dict(size=13),
+                hovertemplate="%{y}: %{x} exames<extra></extra>",
+            )
+        ]
+    )
+
+    fig.update_layout(
+        title=dict(text="Distribuição por Modalidade", font=dict(size=16)),
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=30, t=40, b=10),
+        xaxis=dict(
+            title=None,
+            showgrid=True,
+            gridcolor=CHART_COLORS["track"],
+            fixedrange=True,
+        ),
+        yaxis=dict(
+            title=None,
+            categoryorder="total ascending",
+            fixedrange=True,
+        ),
+    )
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Modality donut chart (dynamic) — kept for backward compatibility
+# ---------------------------------------------------------------------------
+
 
 def build_modality_donut(
     counts: dict[str, int],
