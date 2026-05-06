@@ -431,6 +431,14 @@ def test_generate_stream_yields_tokens():
 - [ ] Remover `@st.fragment` (só existia em `_render_ai_section`)
 - [ ] **NÃO** atualizar `cookies.py` — bounds check em `app.py` já trata o shift de índices
 
+### Fase 4.5: Correções pós-revisão
+- [ ] **Remover atalho para Chat IA na aba Análise** — a função `_render_ai_section()`
+  foi removida por completo; zero deadcode. Nenhum link ou botão apontando
+  para a aba Chat permanece na aba Análise.
+- [ ] **Aumentar histórico máximo de 5 para 15 pares** — `_MAX_MESSAGE_PAIRS = 15`
+  (31 mensagens: 1 system + 15 user + 15 assistant). Modelo com amplo contexto
+  (≥128k tokens). Descartar pares antigos FIFO.
+
 ### Fase 5: Testes manuais + qualidade
 - [ ] `uv run streamlit run app.py` — testar fluxo completo
 - [ ] Abrir Chat IA → relatório inicial aparece em streaming
@@ -450,7 +458,7 @@ def test_generate_stream_yields_tokens():
 | SSE parsing quebrado por formato inesperado | Média | Alto | `try/except` por linha; `delta.content` null tratado; `[DONE]` com whitespace aceito; `data.get("choices", [{}])` seguro |
 | `st.write_stream()` não funciona com generator customizado | Baixa | Médio | Streamlit ≥1.54 documenta suporte. Fallback: acumular tokens e exibir de uma vez |
 | Stats desatualizados entre mensagens | Baixa | Baixo | Aceitável para a sessão. Botão "Novo relatório" resolve |
-| Histórico muito longo → token limit excedido | Média | Médio | **Regra concreta:** system prompt + últimas 10 mensagens (5 pares). Assumir modelo ≥32k tokens. Descartar pares antigos FIFO |
+| Histórico muito longo → token limit excedido | Média | Médio | **Regra concreta:** system prompt + últimas 30 mensagens (15 pares). Assumir modelo com amplo contexto. Descartar pares antigos FIFO |
 | Conexão cai durante streaming (ConnectError/NetworkError) | Média | Alto | `except httpx.HTTPError` amplo em `generate_stream()`; `try/except` no `st.write_stream()` renderiza erro inline |
 | Conflito com `st.rerun()` ao processar streaming | Alta | Alto | Usar `@st.fragment` para isolar o chat do resto da página |
 | Cookie de aba com índice antigo no upgrade v1.4→v1.5 | Baixa | Baixo | `app.py` tem bounds check (`0 <= idx < len(TAB_LABELS)`); não quebra. Documentar no release notes |
@@ -475,8 +483,8 @@ def test_generate_stream_yields_tokens():
 - Aba Chat: índice 3 (Análise é 2, Configuração é 4)
 - Prompt inicial max_tokens: 800 (igual ao one-shot atual)
 - Streaming timeout: 30s (httpx connect + read combinados; vs 15s do não-streaming)
-- Histórico máximo: 11 mensagens enviadas ao modelo (1 system + 5 pares user+assistant). Acima disso, descarta pares mais antigos (FIFO)
-- Modelo mínimo recomendado: 32k tokens de contexto (cabe system prompt ~1k + 5 pares ~8k + resposta ~1k)
+- Histórico máximo: 31 mensagens enviadas ao modelo (1 system + 15 pares user+assistant). Acima disso, descarta pares mais antigos (FIFO)
+- Modelo com amplo contexto (≥128k tokens recomendado para histórico longo)
 - SSE parser: ignora linhas que não começam com `data: `, ignora `[DONE]`, ignora JSON inválido
 - Nome do módulo: `src/ui/chat.py` (consistente com `src/ui/analysis.py`, `src/ui/settings.py`)
 - Função entry point: `render_chat_tab(conn)` (consistente com `render_analysis_tab(conn)`)
