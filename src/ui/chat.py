@@ -34,10 +34,10 @@ def render_chat_tab(conn: Any) -> None:
     st.html("""
     <style>
         [data-testid="stChatMessageAvatarAssistant"] {
-            background-color: #A7F3D0 !important;
+            background-color: #34D399 !important;
         }
         [data-testid="stChatMessageAvatarUser"] {
-            background-color: #BFDBFE !important;
+            background-color: #60A5FA !important;
         }
     </style>
     """)
