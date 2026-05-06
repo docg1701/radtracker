@@ -219,7 +219,7 @@ def _render_modality_grid(conn: Any) -> None:
             st.rerun()
     else:
         col_label, col_price, col_eph, col_color, col_save, col_cancel = st.columns(
-            [2.5, 1.5, 1.5, 1, 1, 1]
+            [3.0, 2.0, 2.0, 0.4, 0.3, 0.3]
         )
 
         with col_label:
