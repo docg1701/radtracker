@@ -109,7 +109,7 @@ def _render_modality_grid(conn: Any) -> None:
 
     # Header row — extra column for delete button
     h_label, h_price, h_eph, h_color, h_active, h_del = st.columns(
-        [2.5, 1.5, 1.5, 0.8, 0.8, 0.7]
+        [2.5, 1.5, 1.5, 0.8, 0.5, 0.7]
     )
     with h_label:
         st.caption("**Modalidade**")
@@ -131,7 +131,7 @@ def _render_modality_grid(conn: Any) -> None:
         slug = m["slug"]
         label = m["label"]
         col_label, col_price, col_eph, col_color, col_active, col_del = st.columns(
-            [2.5, 1.5, 1.5, 0.8, 0.8, 0.7]
+            [2.5, 1.5, 1.5, 0.8, 0.5, 0.7]
         )
 
         with col_label:
@@ -141,7 +141,6 @@ def _render_modality_grid(conn: Any) -> None:
                 key=f"mod_label_{slug}",
                 label_visibility="collapsed",
             )
-            st.caption(f"Slug: {slug}")
         with col_price:
             price = st.number_input(
                 f"Preço {slug}",
@@ -174,7 +173,7 @@ def _render_modality_grid(conn: Any) -> None:
             )
         with col_del:
             if st.button(
-                "🗑️", key=f"mod_del_btn_{slug}",
+                ":material/delete:", key=f"mod_del_btn_{slug}",
                 help=f"Remover {label}",
             ):
                 st.session_state.confirm_delete_slug = slug
@@ -214,12 +213,12 @@ def _render_modality_grid(conn: Any) -> None:
         st.caption("Nenhuma alteração pendente.")
 
     # ── Add new modality section ──
-    st.divider()
     if not st.session_state.get("new_modality_pending", False):
-        if st.button("➕ Adicionar modalidade", type="secondary"):
+        if st.button(":material/add: Adicionar modalidade", type="secondary"):
             st.session_state.new_modality_pending = True
             st.rerun()
     else:
+        st.divider()
         st.caption("**Nova modalidade**")
         col_label, col_price, col_eph, col_color, col_save, col_cancel = st.columns(
             [2.5, 1.5, 1.5, 1, 1, 1]
@@ -256,7 +255,7 @@ def _render_modality_grid(conn: Any) -> None:
 
         with col_save:
             if st.button(
-                "💾 Salvar", key="mod_new_save", type="primary",
+                ":material/save: Salvar", key="mod_new_save", type="primary",
                 disabled=not new_label,
             ):
                 new_slug = slugify(new_label)
@@ -266,7 +265,7 @@ def _render_modality_grid(conn: Any) -> None:
                 if success:
                     _reload_modalities(conn)
                     st.session_state.new_modality_pending = False
-                    st.toast(f"✅ {new_label} adicionada!")
+                    st.toast(f":material/check_circle: {new_label} adicionada!")
                     st.rerun()
                 else:
                     st.warning(
