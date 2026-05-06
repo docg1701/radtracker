@@ -253,7 +253,7 @@ def _render_modality_grid(conn: Any) -> None:
 
         with col_save:
             if st.button(
-                ":material/save: Salvar", key="mod_new_save", type="primary",
+                ":material/save:", key="mod_new_save", type="primary",
                 disabled=not new_label,
             ):
                 new_slug = slugify(new_label)
@@ -270,7 +270,7 @@ def _render_modality_grid(conn: Any) -> None:
                         f"Slug '{new_slug}' já existe. Escolha outro nome."
                     )
         with col_cancel:
-            if st.button("Cancelar", key="mod_new_cancel"):
+            if st.button(":material/close:", key="mod_new_cancel"):
                 st.session_state.new_modality_pending = False
                 for key in ("mod_new_label", "mod_new_price", "mod_new_eph", "mod_new_color"):
                     st.session_state.pop(key, None)
