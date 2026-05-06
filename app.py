@@ -13,6 +13,7 @@ import streamlit as st
 from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
+from src.ui.chat import render_chat_tab
 from src.ui.month import render_month_tab
 from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
@@ -38,6 +39,7 @@ TAB_LABELS = [
     ":material/today: Hoje",
     ":material/calendar_month: Mês Atual",
     ":material/trending_up: Análise",
+    ":material/smart_toy: Chat IA",
     ":material/settings: Configuração",
 ]
 
@@ -69,5 +71,7 @@ elif selected_idx == 1:
     render_month_tab(conn)
 elif selected_idx == 2:
     render_analysis_tab(conn)
+elif selected_idx == 3:
+    render_chat_tab(conn)
 else:
     render_settings_tab(conn)
