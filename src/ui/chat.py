@@ -214,8 +214,9 @@ def _stream_response(api_key: str, llm_model: str) -> None:
         )
         llm = LLMClient(api_key, model=llm_model)
         stream = llm.generate_stream(st.session_state.messages)
+        safe_stream = (token.replace("$", "\\$") for token in stream)
         try:
-            response = st.write_stream(stream)
+            response = st.write_stream(safe_stream)
             placeholder.empty()
         except LLMUnavailableError:
             placeholder.empty()
@@ -263,25 +264,15 @@ def _render_suggestion_chips() -> None:
 
 
 def _render_action_buttons() -> None:
-    """Render Novo relatório and Limpar chat buttons."""
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button(
-            ":material/bar_chart: Novo relatório",
-            type="secondary",
-            key="chat_new_report",
-        ):
-            st.session_state.messages = []
-            st.session_state.pop("historical_cache", None)
-            st.rerun()
-    with col2:
-        if st.button(
-            ":material/delete: Limpar chat",
-            type="secondary",
-            key="chat_clear",
-        ):
-            st.session_state.messages = []
-            st.rerun()
+    """Render Novo chat button."""
+    if st.button(
+        ":material/refresh: Novo chat",
+        type="secondary",
+        key="chat_new",
+    ):
+        st.session_state.messages = []
+        st.session_state.pop("historical_cache", None)
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
