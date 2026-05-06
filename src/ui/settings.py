@@ -109,7 +109,7 @@ def _render_modality_grid(conn: Any) -> None:
 
     # Header row — extra column for delete button
     h_label, h_price, h_eph, h_color, h_active, h_del = st.columns(
-        [2.8, 1.8, 1.8, 0.6, 0.5, 0.5]
+        [3.0, 2.0, 2.0, 0.4, 0.3, 0.3]
     )
     with h_label:
         st.caption("**Modalidade**")
@@ -131,7 +131,7 @@ def _render_modality_grid(conn: Any) -> None:
         slug = m["slug"]
         label = m["label"]
         col_label, col_price, col_eph, col_color, col_active, col_del = st.columns(
-            [2.8, 1.8, 1.8, 0.6, 0.5, 0.5]
+            [3.0, 2.0, 2.0, 0.4, 0.3, 0.3]
         )
 
         with col_label:
