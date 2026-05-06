@@ -118,15 +118,9 @@ def _render_modality_grid(conn: Any) -> None:
     with h_eph:
         st.caption("**Exames/h**")
     with h_color:
-        st.html(
-            "<p style='text-align:center;font-size:0.875rem;"
-            "color:rgba(250,250,250,0.6)'><strong>Cor</strong></p>"
-        )
+        st.caption("**Cor**")
     with h_active:
-        st.html(
-            "<p style='text-align:center;font-size:0.875rem;"
-            "color:rgba(250,250,250,0.6)'><strong>Ativo</strong></p>"
-        )
+        st.caption("**Ativo**")
     with h_del:
         st.caption("")
 
