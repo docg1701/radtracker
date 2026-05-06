@@ -24,7 +24,7 @@ Substituir o botão one-shot "Perguntar à IA" por uma interface de chat complet
 
 | # | Funcionalidade | Descrição |
 |---|---------------|-----------|
-| 1 | Chat UI | Nova aba "💬 Chat IA" com `st.chat_message` + `st.chat_input` |
+| 1 | Chat UI | Nova aba ":material/smart_toy: Chat IA" com `st.chat_message` + `st.chat_input` |
 | 2 | Streaming SSE | `st.write_stream()` exibe tokens conforme chegam do OpenRouter |
 | 3 | RAG (context injection) | Stats do `compute_historical_stats()` injetados no system prompt |
 | 4 | Histórico da conversa | Persistido em `st.session_state.messages` durante a sessão |
@@ -47,7 +47,7 @@ Substituir o botão one-shot "Perguntar à IA" por uma interface de chat complet
 
 | Arquivo | Mudança |
 |---------|---------|
-| `app.py` | Adicionar 5ª aba "💬 Chat IA" na navegação |
+| `app.py` | Adicionar 5ª aba ":material/smart_toy: Chat IA" na navegação |
 | `src/ui/chat.py` | **NOVO** — módulo completo da interface de chat |
 | `src/llm_client.py` | Adicionar `generate_stream()`, refatorar `generate()` para reusar lógica |
 | `tests/test_llm_client.py` | Testes para `generate_stream()` com mock SSE |
@@ -66,7 +66,7 @@ Substituir o botão one-shot "Perguntar à IA" por uma interface de chat complet
 
 ## Design detalhado
 
-### 1. Nova aba "💬 Chat IA"
+### 1. Nova aba ":material/smart_toy: Chat IA"
 
 **app.py** — Adicionar 5ª aba:
 
@@ -75,7 +75,7 @@ TAB_LABELS = [
     ":material/today: Hoje",
     ":material/calendar_month: Mês Atual",
     ":material/trending_up: Análise",
-    ":material/smart_toy: Chat IA",        # NOVA
+    ":material/smart_toy: Chat IA",       # NOVA
     ":material/settings: Configuração",
 ]
 ```
@@ -140,7 +140,7 @@ if pending:
         try:
             response = st.write_stream(stream)
         except LLMUnavailableError:
-            response = "❌ Não foi possível gerar a resposta."
+            response = ":material/error: Não foi possível gerar a resposta."
             st.error(response)
         st.session_state.messages.append(
             {"role": "assistant", "content": response}
@@ -294,7 +294,7 @@ with st.chat_message("assistant"):
         response = st.write_stream(stream)
     except LLMUnavailableError:
         response = (
-            "❌ Não foi possível gerar a resposta. "
+            ":material/error: Não foi possível gerar a resposta. "
             "Verifique sua conexão ou chave de API."
         )
         st.error(response)
@@ -339,13 +339,13 @@ if len(st.session_state.messages) >= 2:  # system + assistant
 ```python
 col1, col2 = st.columns([1, 1])
 with col1:
-    if st.button("📊 Novo relatório", type="secondary"):
+    if st.button(":material/bar_chart: Novo relatório", type="secondary"):
         # Recalcula stats e gera novo relatório inicial
         st.session_state.messages = []
         st.session_state.pop("historical_cache", None)
         st.rerun()
 with col2:
-    if st.button("🗑️ Limpar chat", type="secondary"):
+    if st.button(":material/delete: Limpar chat", type="secondary"):
         st.session_state.messages = []
         st.rerun()
 ```
@@ -354,17 +354,16 @@ with col2:
 
 ## O que acontece com a IA na aba "Análise"?
 
-**Opção A (recomendada):** Substituir o botão atual por um link/atalho para a aba Chat:
-```python
-st.button(
-    "💬 Abrir Chat com IA",
-    on_click=lambda: st.session_state.update(active_tab_idx=3),
-)
-```
-Isso evita duplicação de funcionalidade e direciona o usuário para a experiência completa.
+**Removida completamente.** O botão `_render_ai_section()` e todo o código de IA
+na aba Análise são deletados. Na v1.5.0 o único lugar com IA é a nova aba
+":material/smart_toy: Chat IA". Nenhum atalho, link, ou deadcode permanece.
 
-**Opção B:** Manter o botão one-shot como fallback rápido, renomeado para "Análise rápida".
-Não recomendado — confunde o usuário com duas interfaces diferentes para a mesma coisa.
+O que é removido:
+- Função `_render_ai_section()` inteira (≈90 linhas)
+- Imports `LLMClient`, `LLMUnavailableError` de `analysis.py`
+- Chaves do `session_state`: `llm_insight_text`, `llm_insight_pending`,
+  `llm_insight_in_flight`, `llm_insight_cancelled`
+- Decorator `@st.fragment` (ficava só em `_render_ai_section`)
 
 ---
 
@@ -426,9 +425,10 @@ def test_generate_stream_yields_tokens():
 
 ### Fase 4: Integração — app.py + aba Análise
 - [ ] Adicionar 5ª aba no `app.py`
-- [ ] Substituir `_render_ai_section()` na aba Análise por atalho para o Chat
-- [ ] Remover decorator `@st.fragment` de `_render_ai_section()` (função vira botão simples)
+- [ ] Remover `_render_ai_section()` inteira de `analysis.py` (≈90 linhas, zero deadcode)
+- [ ] Remover imports órfãos de `analysis.py`: `LLMClient`, `LLMUnavailableError`
 - [ ] Limpar chaves órfãs do `session_state`: `llm_insight_text`, `llm_insight_pending`, `llm_insight_in_flight`, `llm_insight_cancelled`
+- [ ] Remover `@st.fragment` (só existia em `_render_ai_section`)
 - [ ] **NÃO** atualizar `cookies.py` — bounds check em `app.py` já trata o shift de índices
 
 ### Fase 5: Testes manuais + qualidade
@@ -461,7 +461,7 @@ def test_generate_stream_yields_tokens():
 
 | Decisão | Escolha | Justificativa |
 |---------|---------|---------------|
-| Onde colocar o chat? | **Nova aba "💬 Chat IA"** | Isola o estado conversacional; não polui a aba Análise já cheia de charts |
+| Onde colocar o chat? | **Nova aba ":material/smart_toy: Chat IA"** | Isola o estado conversacional; não polui a aba Análise já cheia de charts |
 | Streaming vs batch? | **Streaming** | Reduz percepção de demora; nativo no Streamlit; OpenRouter suporta |
 | Persistir histórico? | **Session state apenas** (v1.5.0) | Simples; sem mudanças no schema. Persistência em DB fica para v1.6.0 |
 | O que fazer com a IA na Análise? | **Substituir por atalho** | Evita duplicação; experiência única de chat |
