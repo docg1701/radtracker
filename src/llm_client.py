@@ -264,10 +264,7 @@ class LLMClient:
         try:
             response = httpx.post(
                 _OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._headers(),
                 json=payload,
                 timeout=15.0,
             )
@@ -279,10 +276,22 @@ class LLMClient:
             raise LLMUnavailableError(
                 f"OpenRouter HTTP {exc.response.status_code}"
             ) from exc
+        except httpx.HTTPError as exc:
+            raise LLMUnavailableError(
+                f"Erro de conexão com OpenRouter: {exc}"
+            ) from exc
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from exc
 
-        return data["choices"][0]["message"]["content"]
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMUnavailableError(
+                f"Resposta inesperada da API: {exc}"
+            ) from exc
+        if not isinstance(content, str) or not content.strip():
+            raise LLMUnavailableError("Resposta vazia ou bloqueada pelo modelo")
+        return content
 
     def generate_stream(
         self,
@@ -302,14 +311,12 @@ class LLMClient:
             LLMUnavailableError: timeout, HTTP/network error, ou rate limit.
         """
         payload = self._build_payload(messages, stream=True)
+        yielded_any = False
         try:
             with httpx.stream(
                 "POST",
                 _OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers=self._headers(),
                 json=payload,
                 timeout=30.0,  # 30s para connect + read (vs 15s do não-streaming)
             ) as response:
@@ -326,6 +333,7 @@ class LLMClient:
                             delta = (choice or {}).get("delta") or {}
                             content = delta.get("content")
                             if content:
+                                yielded_any = True
                                 yield content
                         except (
                             json.JSONDecodeError,
@@ -351,7 +359,16 @@ class LLMClient:
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from exc
 
+        if not yielded_any:
+            raise LLMUnavailableError("Resposta vazia do modelo")
+
     # ── Private helpers ──
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
 
     def _build_payload(
         self, messages: list[dict[str, str]], stream: bool = False,

@@ -4,7 +4,7 @@ import pytest
 import respx
 from httpx import Response, TimeoutException
 
-from src.llm_client import LLMClient, LLMUnavailableError
+from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context, _SYSTEM_PROMPT
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OK_JSON = {"choices": [{"message": {"content": "Insight gerado pela IA"}}]}
@@ -81,6 +81,28 @@ class TestLlmClientErrors:
             llm.generate(_minimal_stats(), _ACTIVE_MODS)
         assert "HTTP 401" in str(exc.value)
 
+    @respx.mock
+    def test_llm_client_empty_content_200(self):
+        """OpenRouter may return content: null on blocked/empty responses."""
+        respx.post(_OPENROUTER_URL).mock(
+            return_value=Response(200, json={"choices": [{"message": {"content": None}}]})
+        )
+        llm = LLMClient("sk-fake-key")
+        with pytest.raises(LLMUnavailableError) as exc:
+            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+        assert "vazia" in str(exc.value)
+
+    @respx.mock
+    def test_llm_client_missing_choices(self):
+        """Malformed JSON without expected keys must raise, not leak raw KeyError."""
+        respx.post(_OPENROUTER_URL).mock(
+            return_value=Response(200, json={"model": "foo"})
+        )
+        llm = LLMClient("sk-fake-key")
+        with pytest.raises(LLMUnavailableError) as exc:
+            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+        assert "inesperada" in str(exc.value)
+
 
 class TestBuildPrompt:
     def test_build_prompt_sanitizes_none_wow(self):
@@ -125,6 +147,119 @@ class TestEnrichStatsMultiMonth:
         # April revenue = 7*35 + 14*25 + 70*4.5 = 910
         # Ticket = 910 / 91 = 10.0
         assert "R$ 10,00" in prompt
+
+
+# ── Streaming tests ──
+
+
+def _sse_chunks(*lines: str):
+    """Helper: gera bytes de SSE a partir de strings."""
+    return Response(200, content="\n".join(lines).encode("utf-8"))
+
+
+class TestGenerateStream:
+    @respx.mock
+    def test_generate_stream_yields_tokens(self):
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":"Olá"}}]}',
+                'data: {"choices":[{"delta":{"content":" mundo"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Olá", " mundo"]
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_empty_response(self):
+        """SSE válido mas sem nenhum token deve levantar LLMUnavailableError."""
+        respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks("data: [DONE]")
+        )
+        llm = LLMClient("sk-test")
+        with pytest.raises(LLMUnavailableError) as exc:
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert "vazia" in str(exc.value)
+
+    @respx.mock
+    def test_generate_stream_http_error(self):
+        respx.post(_OPENROUTER_URL).mock(
+            return_value=Response(500, json={"error": "boom"})
+        )
+        llm = LLMClient("sk-test")
+        with pytest.raises(LLMUnavailableError) as exc:
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert "HTTP 500" in str(exc.value)
+
+    @respx.mock
+    def test_generate_stream_network_error(self):
+        import httpx
+        respx.post(_OPENROUTER_URL).mock(side_effect=httpx.ConnectError("connection refused"))
+        llm = LLMClient("sk-test")
+        with pytest.raises(LLMUnavailableError) as exc:
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert "conexão" in str(exc.value)
+
+    @respx.mock
+    def test_generate_stream_malformed_sse(self):
+        """Linhas com JSON inválido ou sem choices são ignoradas; tokens válidos são yield."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                "data: not json",
+                'data: {"model":"foo"}',
+                'data: {"choices":[],"delta":{}}',
+                'data: {"choices":[{"delta":{"content":"ok"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["ok"]
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_delta_content_null(self):
+        """delta.content = null não deve quebrar nem yield nada."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":null}}]}',
+                'data: {"choices":[{"delta":{"content":"fim"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["fim"]
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_done_with_whitespace(self):
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":"fim"}}]}',
+                "data:  [DONE]  ",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["fim"]
+
+
+class TestBuildRagContext:
+    def test_build_rag_context_includes_stats(self):
+        stats = _minimal_stats()
+        ctx = build_rag_context(stats, _ACTIVE_MODS)
+        assert "=== DADOS ATUAIS PARA ANÁLISE ===" in ctx
+        assert "R$ 22.500,00" in ctx  # MTD
+
+    def test_build_rag_context_respects_custom_prompt(self):
+        stats = _minimal_stats()
+        custom = "Você é um especialista em radiologia."
+        ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt=custom)
+        assert custom in ctx
+        assert _SYSTEM_PROMPT not in ctx
 
 
 # ── Helpers ──
