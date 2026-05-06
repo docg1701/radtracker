@@ -206,7 +206,6 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_network_error(self):
-        import httpx
         respx.post(_OPENROUTER_URL).mock(side_effect=httpx.ConnectError("connection refused"))
         llm = LLMClient("sk-test")
         with pytest.raises(LLMUnavailableError) as exc:
@@ -255,6 +254,36 @@ class TestGenerateStream:
         assert route.called
 
     @respx.mock
+    def test_generate_stream_delta_content_empty_string(self):
+        """delta.content = "" (falsy) não deve setar yielded_any nem yield."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":""}}]}',
+                'data: {"choices":[{"delta":{"content":"ok"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["ok"]
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_malformed_sse_top_level_array(self):
+        """JSON array no lugar de objeto deve disparar AttributeError e ser ignorado."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                "data: []",
+                'data: {"choices":[{"delta":{"content":"ok"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["ok"]
+        assert route.called
+
+    @respx.mock
     def test_generate_stream_done_with_whitespace(self):
         respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
@@ -280,6 +309,13 @@ class TestBuildRagContext:
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt=custom)
         assert custom in ctx
         assert _SYSTEM_PROMPT not in ctx
+
+    def test_build_rag_context_empty_string_prompt(self):
+        """String vazia deve cair no fallback _SYSTEM_PROMPT."""
+        stats = _minimal_stats()
+        ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="")
+        assert "Você é um assistente pessoal de produtividade" in ctx
+        assert _SYSTEM_PROMPT in ctx
 
 
 # ── Helpers ──
