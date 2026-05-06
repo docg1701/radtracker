@@ -218,7 +218,6 @@ def _render_modality_grid(conn: Any) -> None:
             st.session_state.new_modality_pending = True
             st.rerun()
     else:
-        st.caption("**Nova modalidade**")
         col_label, col_price, col_eph, col_color, col_save, col_cancel = st.columns(
             [2.5, 1.5, 1.5, 1, 1, 1]
         )
