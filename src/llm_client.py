@@ -4,6 +4,7 @@ LLM client for radtracker — OpenRouter API (configurable model).
 Stateless wrapper. Constructor takes API key and model slug;
 generate() takes stats dict + active_modalities and returns
 Portuguese markdown insight text.
+generate_stream() does SSE token-by-token streaming.
 
 Usage:
     try:
@@ -11,8 +12,13 @@ Usage:
         insight = llm.generate(stats, active_modalities)
     except LLMUnavailableError:
         insight = generate_rule_insights(stats)  # fallback
+
+    # RAG context injection (for chat UI):
+    context = build_rag_context(stats, active_mods, system_prompt)
 """
 
+import json
+from collections.abc import Generator
 from typing import Any
 
 import httpx
@@ -71,6 +77,45 @@ Dados completos da produção:
 Produza uma análise completa e detalhada. Use **negrito** para destaques.
 Inclua: avaliação do ritmo, tendências de curto e longo prazo, análise
 do mix de modalidades, riscos e oportunidades, e recomendações práticas."""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Public: RAG context builder (used by chat UI)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def build_rag_context(
+    stats: dict[str, Any],
+    active_mods: list[dict[str, Any]],
+    system_prompt: str | None = None,
+) -> str:
+    """Monta o system prompt com dados estruturados dos stats para RAG.
+
+    Args:
+        stats: Dict de compute_historical_stats().
+        active_mods: Lista de modalidades ativas.
+        system_prompt: Prompt personalizado do usuário (settings).
+                       Se None, usa o prompt padrão (_SYSTEM_PROMPT).
+
+    Returns:
+        String completa do system prompt com contexto RAG injetado.
+    """
+    enriched = _enrich_stats(stats, active_mods)
+    user_prompt = _USER_PROMPT_TEMPLATE.format(**enriched)
+    prompt = system_prompt or _SYSTEM_PROMPT
+    return f"""{prompt}
+
+=== DADOS ATUAIS PARA ANÁLISE ===
+Os dados abaixo são o contexto da conversa. Use-os para responder perguntas.
+Quando o usuário pedir "relatório", gere uma análise completa com esses dados.
+
+{user_prompt}
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Private: prompt enrichment
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _enrich_stats(
@@ -191,6 +236,8 @@ class LLMClient:
         self._model = model
         self._prompt = prompt or _SYSTEM_PROMPT
 
+    # ── Public API ──
+
     def generate(
         self,
         stats: dict[str, Any],
@@ -209,15 +256,11 @@ class LLMClient:
             LLMUnavailableError: timeout, HTTP error, or rate limit.
         """
         user_prompt = self._build_prompt(stats, active_modalities)
-        payload = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": self._prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": 800,
-            "temperature": 0.3,
-        }
+        messages = [
+            {"role": "system", "content": self._prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        payload = self._build_payload(messages)
         try:
             response = httpx.post(
                 _OPENROUTER_URL,
@@ -241,9 +284,86 @@ class LLMClient:
 
         return data["choices"][0]["message"]["content"]
 
-    # ------------------------------------------------------------------
-    # Private
-    # ------------------------------------------------------------------
+    def generate_stream(
+        self,
+        messages: list[dict[str, str]],
+    ) -> Generator[str, None, None]:
+        """Chama OpenRouter com stream=True e faz yield de tokens.
+
+        Args:
+            messages: Lista completa de mensagens (system + user + assistant).
+                O chamador é responsável por incluir o system prompt com
+                contexto RAG.
+
+        Yields:
+            Tokens de texto conforme chegam via SSE.
+
+        Raises:
+            LLMUnavailableError: timeout, HTTP/network error, ou rate limit.
+        """
+        payload = self._build_payload(messages, stream=True)
+        try:
+            with httpx.stream(
+                "POST",
+                _OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=30.0,  # 30s para connect + read (vs 15s do não-streaming)
+            ) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            choices = data.get("choices") or [{}]
+                            choice = choices[0] if choices else {}
+                            delta = (choice or {}).get("delta") or {}
+                            content = delta.get("content")
+                            if content:
+                                yield content
+                        except (
+                            json.JSONDecodeError,
+                            KeyError,
+                            IndexError,
+                            AttributeError,
+                            TypeError,
+                        ):
+                            continue  # ignora linhas malformadas
+        except httpx.TimeoutException:
+            raise LLMUnavailableError(
+                "Timeout ao chamar OpenRouter (30s)",
+            ) from None
+        except httpx.HTTPStatusError as exc:
+            raise LLMUnavailableError(
+                f"OpenRouter HTTP {exc.response.status_code}",
+            ) from exc
+        except httpx.HTTPError as exc:
+            # Captura ConnectError, NetworkError, etc.
+            raise LLMUnavailableError(
+                f"Erro de conexão com OpenRouter: {exc}",
+            ) from exc
+        except Exception as exc:
+            raise LLMUnavailableError(str(exc)) from exc
+
+    # ── Private helpers ──
+
+    def _build_payload(
+        self, messages: list[dict[str, str]], stream: bool = False,
+    ) -> dict[str, Any]:
+        """Monta o payload comum para generate() e generate_stream()."""
+        return {
+            "model": self._model,
+            "messages": messages,
+            "stream": stream,
+            "max_tokens": 800,
+            "temperature": 0.3,
+        }
 
     def _build_prompt(
         self,
