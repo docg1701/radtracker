@@ -6,6 +6,8 @@ v2: dynamic modalities replacing hardcoded RM/TC/RX.
 """
 
 import os
+import re
+import unicodedata
 from datetime import date
 from typing import Any
 
@@ -17,37 +19,34 @@ from src.chart_colors import MODALITY_COLORS
 
 DEFAULT_PRICES: dict[str, float] = {
     "ressonancia_magnetica": 35.0,
-    "tc_geral": 25.0,
-    "radiografia": 4.5,
+    "tc_geral": 30.0,
+    "radiografia": 4.0,
 }
 DEFAULT_GOAL: float = 45000.0
 DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b:free"
 
-# ── Predefined modality catalog (11 items) ──
+# ── Predefined modality catalog (5 production modalities) ──
 _MODALITY_SEED: list[dict[str, Any]] = [
-    {"slug": "tc_abdome_total", "label": "TC de Abdome Total", "sort_order": 1,
-     "color": MODALITY_COLORS["tc_abdome_total"]},
-    {"slug": "tc_geral", "label": "TC Geral", "sort_order": 2,
-     "color": MODALITY_COLORS["tc_geral"]},
-    {"slug": "angiotomografia", "label": "Angiotomografia", "sort_order": 3,
-     "color": MODALITY_COLORS["angiotomografia"]},
-    {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética", "sort_order": 4,
-     "color": MODALITY_COLORS["ressonancia_magnetica"]},
-    {"slug": "ultrassonografia", "label": "Ultrassonografia", "sort_order": 5,
-     "color": MODALITY_COLORS["ultrassonografia"]},
-    {"slug": "dopplervelocimetria", "label": "Dopplervelocimetria", "sort_order": 6,
-     "color": MODALITY_COLORS["dopplervelocimetria"]},
-    {"slug": "mamografia", "label": "Mamografia", "sort_order": 7,
-     "color": MODALITY_COLORS["mamografia"]},
-    {"slug": "radiografia", "label": "Radiografia", "sort_order": 8,
-     "color": MODALITY_COLORS["radiografia"]},
-    {"slug": "radiografia_contrastada", "label": "Radiografia Contrastada", "sort_order": 9,
-     "color": MODALITY_COLORS["radiografia_contrastada"]},
-    {"slug": "ultrassom_morfologico", "label": "Ultrassom Morfológico", "sort_order": 10,
-     "color": MODALITY_COLORS["ultrassom_morfologico"]},
-    {"slug": "densitometria", "label": "Densitometria", "sort_order": 11,
-     "color": MODALITY_COLORS["densitometria"]},
+    {"slug": "angiotomografia",  "label": "Angiotomografia",
+     "sort_order": 1, "color": "#0D9488"},
+    {"slug": "radiografia",  "label": "Radiografia",
+     "sort_order": 2, "color": "#2563EB"},
+    {"slug": "ressonancia_magnetica",  "label": "Ressonância Magnética",
+     "sort_order": 3, "color": "#7C3AED"},
+    {"slug": "tc_geral",  "label": "TC Geral",
+     "sort_order": 4, "color": "#6366F1"},
+    {"slug": "tc_abdome_total",  "label": "TC de Abdome Total",
+     "sort_order": 5, "color": "#0891B2"},
 ]
+
+# Production default values for the 5 standard modalities.
+_PRODUCTION_DEFAULTS: dict[str, tuple[str, float, float]] = {
+    "angiotomografia":       ("Angiotomografia",       30.00, 4.0),
+    "radiografia":           ("Radiografia",            4.00, 80.0),
+    "ressonancia_magnetica": ("Ressonância Magnética", 35.00, 8.0),
+    "tc_geral":              ("TC Geral",              30.00, 10.0),
+    "tc_abdome_total":       ("TC de Abdome Total",    60.00, 5.0),
+}
 
 
 def get_connection() -> Any:
@@ -136,10 +135,12 @@ def init_db(conn: Any) -> None:
         db_conn.execute(sa.text(create_settings))
         db_conn.commit()
 
+    # Add color column if missing (must run before seed so seed can set colors)
+    _add_color_column(conn)
     # Seed modalities if table is empty
     _seed_modalities(conn)
-    # Add color column if missing (migration)
-    _add_color_column(conn)
+    # Apply v1.4 production defaults to untouched modalities
+    _migrate_v1_3_to_v1_4_defaults(conn)
     # Run v1→v2 migration if needed
     _migrate_v1_to_v2(conn)
 
@@ -148,8 +149,26 @@ def init_db(conn: Any) -> None:
 # v2: Modalities CRUD
 # ---------------------------------------------------------------------------
 
+def slugify(label: str) -> str:
+    """Convert a human-readable label into a URL-safe slug.
+
+    'Ressonância Magnética' → 'ressonancia_magnetica'
+    'TC de Abdome Total'    → 'tc_de_abdome_total'
+
+    Returns 'modalidade' if the result would be empty.
+
+    Example:
+        >>> slugify("Ressonância Magnética")
+        'ressonancia_magnetica'
+    """
+    value = unicodedata.normalize("NFKD", label.strip().lower())
+    value = value.encode("ascii", "ignore").decode()
+    value = re.sub(r"[^a-z0-9]+", "_", value).strip("_")
+    return value or "modalidade"
+
+
 def load_all_modalities(conn: Any) -> list[dict[str, Any]]:
-    """Return all 11 modalities ordered by sort_order. Always 11 rows.
+    """Return all modalities ordered by label (case-insensitive).
 
     Each dict: slug, label, price, exams_per_hour, active, sort_order, color.
     """
@@ -178,12 +197,13 @@ def load_active_modalities(conn: Any) -> list[dict[str, Any]]:
 
 def save_modality(
     conn: Any, slug: str, price: float, exams_per_hour: float, active: int,
+    label: str | None = None,
     color: str | None = None,
 ) -> None:
-    """Update price, exams_per_hour, active flag, and optionally color.
+    """Update price, exams_per_hour, active flag, and optionally label and color.
 
-    When color is None (default), the color column is left unchanged
-    for backward compatibility with existing callers.
+    When label is None (default), the label column is left unchanged.
+    When color is None (default), the color column is left unchanged.
     """
     set_clauses = [
         "price = :price",
@@ -194,6 +214,9 @@ def save_modality(
     params: dict[str, Any] = {
         "slug": slug, "price": price, "eph": exams_per_hour, "active": active,
     }
+    if label is not None:
+        set_clauses.append("label = :label")
+        params["label"] = label
     if color is not None:
         set_clauses.append("color = :color")
         params["color"] = color
@@ -204,6 +227,88 @@ def save_modality(
             params,
         )
         db_conn.commit()
+
+
+def add_modality(
+    conn: Any, slug: str, label: str, price: float, exams_per_hour: float,
+    active: int, color: str = "#64748B",
+) -> bool:
+    """Insert a new modality into the modalities table.
+
+    Generates sort_order as MAX(sort_order) + 1. Returns True if inserted,
+    False if a modality with the same slug already exists.
+
+    Example:
+        >>> add_modality(conn, "tomografia_cranio", "Tomografia de Crânio", 25.0, 5.0, 1)
+        True
+    """
+    with conn.connect() as db_conn:
+        # Check for duplicate slug
+        result = db_conn.execute(
+            sa.text("SELECT COUNT(*) AS cnt FROM modalities WHERE slug = :slug"),
+            {"slug": slug},
+        )
+        row = result.fetchone()
+        if row and row[0] > 0:
+            return False
+
+        # Calculate next sort_order
+        result = db_conn.execute(
+            sa.text("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM modalities"),
+        )
+        mx_row = result.fetchone()
+        next_order = (mx_row[0] if mx_row else 0) + 1
+
+        db_conn.execute(
+            sa.text("""
+                INSERT INTO modalities
+                    (slug, label, price, exams_per_hour, active, sort_order, color)
+                VALUES (:slug, :label, :price, :eph, :active, :sort_order, :color)
+            """),
+            {
+                "slug": slug, "label": label, "price": price,
+                "eph": exams_per_hour, "active": active,
+                "sort_order": next_order, "color": color,
+            },
+        )
+        db_conn.commit()
+    return True
+
+
+def delete_modality(conn: Any, slug: str) -> bool:
+    """Delete a modality and its daily_production_items in a single transaction.
+
+    IMPORTANT: SQLite does NOT have ON DELETE CASCADE enabled by default, and
+    our schema does not declare it. Therefore we explicitly delete from
+    daily_production_items FIRST, then from modalities, within a transaction.
+
+    Returns True if deleted, False if slug did not exist.
+
+    Example:
+        >>> delete_modality(conn, "tc_abdome_total")
+        True
+    """
+    with conn.connect() as db_conn:
+        # Check existence first
+        result = db_conn.execute(
+            sa.text("SELECT COUNT(*) AS cnt FROM modalities WHERE slug = :slug"),
+            {"slug": slug},
+        )
+        row = result.fetchone()
+        if not row or row[0] == 0:
+            return False
+
+        # Delete children first, then parent, in one transaction
+        db_conn.execute(
+            sa.text("DELETE FROM daily_production_items WHERE modality_slug = :slug"),
+            {"slug": slug},
+        )
+        db_conn.execute(
+            sa.text("DELETE FROM modalities WHERE slug = :slug"),
+            {"slug": slug},
+        )
+        db_conn.commit()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -409,20 +514,29 @@ def save_setting(conn: Any, key: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _seed_modalities(conn: Any) -> None:
-    """Insert the 11 predefined modalities if the table is empty."""
+    """Insert the 5 predefined modalities with production values if the table is empty."""
     existing = conn.query("SELECT COUNT(*) AS cnt FROM modalities", ttl=0)
     if existing["cnt"].iloc[0] > 0:
         return
     with conn.connect() as db_conn:
         for m in _MODALITY_SEED:
+            prod = _PRODUCTION_DEFAULTS.get(m["slug"])
+            if prod:
+                _, price, eph = prod
+                active = 1
+            else:
+                price, eph, active = 0.0, 0.0, 0
             db_conn.execute(
                 sa.text("""
                     INSERT OR IGNORE INTO modalities
                         (slug, label, price, exams_per_hour, active, sort_order, color)
-                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
+                    VALUES (:slug, :label, :price, :eph, :active, :sort_order, :color)
                 """),
-                {"slug": m["slug"], "label": m["label"], "sort_order": m["sort_order"],
-                 "color": m["color"]},
+                {
+                    "slug": m["slug"], "label": m["label"],
+                    "price": price, "eph": eph, "active": active,
+                    "sort_order": m["sort_order"], "color": m["color"],
+                },
             )
         db_conn.commit()
 
@@ -447,6 +561,33 @@ def _add_color_column(conn: Any) -> None:
             db_conn.execute(
                 sa.text("UPDATE modalities SET color = :color WHERE slug = :slug"),
                 {"slug": slug, "color": color},
+            )
+        db_conn.commit()
+
+
+def _migrate_v1_3_to_v1_4_defaults(conn: Any) -> None:
+    """One-shot migration: apply production defaults to the 5 standard modalities.
+
+    Only updates modalities that still have price=0 AND active=0 (untouched by
+    the user). Modalities the user already configured are preserved as-is.
+
+    Idempotent — safe to call multiple times.
+    """
+    with conn.connect() as db_conn:
+        for slug, (label, price, eph) in _PRODUCTION_DEFAULTS.items():
+            db_conn.execute(
+                sa.text("""
+                    UPDATE modalities
+                    SET label = :label,
+                        price = :price,
+                        exams_per_hour = :eph,
+                        active = 1,
+                        updated_at = datetime('now','localtime')
+                    WHERE slug = :slug
+                      AND price = 0.0
+                      AND active = 0
+                """),
+                {"slug": slug, "label": label, "price": price, "eph": eph},
             )
         db_conn.commit()
 

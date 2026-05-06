@@ -19,17 +19,21 @@ from src.db import init_db, upsert_daily_items
 # ── Fixtures from conftest ──
 
 def test_build_lookups(active_modalities):
-    """_build_lookups returns slug→price and slug→eph dicts."""
+    """_build_lookups returns slug→price and slug→eph dicts for all 5 active."""
     prices, eph = _build_lookups(active_modalities)
     assert prices == {
+        "angiotomografia": 30.0,
+        "radiografia": 4.0,
         "ressonancia_magnetica": 35.0,
-        "tc_geral": 25.0,
-        "radiografia": 4.5,
+        "tc_abdome_total": 60.0,
+        "tc_geral": 30.0,
     }
     assert eph == {
-        "ressonancia_magnetica": 7.5,
-        "tc_geral": 7.5,
-        "radiografia": 75.0,
+        "angiotomografia": 4.0,
+        "radiografia": 80.0,
+        "ressonancia_magnetica": 8.0,
+        "tc_abdome_total": 5.0,
+        "tc_geral": 10.0,
     }
 
 
@@ -124,13 +128,16 @@ class TestComputeDailyStats:
 
         stats = compute_daily_stats(conn, "2026-04-15", active_modalities)
         assert stats["has_data"] is True
-        assert stats["earnings_today"] == 587.5
+        # rm=8*35 + tc=6*30 + rx=35*4 = 280+180+140 = 600
+        assert stats["earnings_today"] == 600.0
         assert stats["exam_count_today"] == 49
         assert stats["modality_counts"]["ressonancia_magnetica"] == 8
         assert stats["modality_counts"]["tc_geral"] == 6
         assert stats["modality_counts"]["radiografia"] == 35
-        assert stats["estimated_hours"] == pytest.approx(2.33, abs=0.01)
-        assert stats["yesterday_earnings"] == 305.0
+        # 8/8 + 6/10 + 35/80 = 1.0+0.6+0.4375 = 2.0375
+        assert stats["estimated_hours"] == pytest.approx(2.04, abs=0.01)
+        # yesterday: rm=4*35 + tc=3*30 + rx=20*4 = 140+90+80 = 310
+        assert stats["yesterday_earnings"] == 310.0
         assert stats["delta_pct"] is not None
 
     def test_no_data(self, conn, active_modalities):
@@ -148,7 +155,8 @@ class TestComputeDailyStats:
         upsert_daily_items(conn, "2026-04-15", {"tc_geral": 6})
         stats = compute_daily_stats(conn, "2026-04-15", active_modalities)
         assert stats["has_data"] is True
-        assert stats["earnings_today"] == 150.0
+        # tc_geral=6 * 30.0 = 180.0
+        assert stats["earnings_today"] == 180.0
         assert stats["yesterday_earnings"] is None
         assert stats["delta_pct"] is None
 
@@ -176,9 +184,9 @@ class TestComputeMonthlyStats:
             "ressonancia_magnetica": 2,
         })
         stats = compute_monthly_stats(conn, "2026-03", 45000.0, active_modalities)
-        # 8*35 + 6*25 + 35*4.5 = 280+150+157.5 = 587.5
-        # + 2*35 = 70 → total = 657.5
-        assert stats["mtd_earnings"] == 657.5
+        # Day1: 8*35 + 6*30 + 35*4 = 280+180+140 = 600
+        # Day2: 2*35 = 70 → total = 670.0
+        assert stats["mtd_earnings"] == 670.0
         assert stats["days_worked"] == 2
 
     def test_pct_goal(self, conn, active_modalities):
@@ -285,5 +293,5 @@ class TestHistoricalStats:
         result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
         df = result["df"]
         assert len(df) == 2
-        # 5*35 + 10*25 = 175+250 = 425
-        assert df["earnings"].iloc[0] == 425.0
+        # 5*35 + 10*30 = 175+300 = 475
+        assert df["earnings"].iloc[0] == 475.0

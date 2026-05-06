@@ -116,27 +116,29 @@ def default_prices():
 
 @pytest.fixture
 def seeded_conn(conn):
-    """Return a connection with modalities seeded and 3 active."""
-    from src.db import _seed_modalities, save_modality
+    """Return a connection with 5 modalities seeded with production values."""
+    from src.db import _seed_modalities
     _seed_modalities(conn)
-    # Activate 3 modalities: RM, TC Geral, RX
-    save_modality(conn, "ressonancia_magnetica", 35.0, 7.5, 1)
-    save_modality(conn, "tc_geral", 25.0, 7.5, 1)
-    save_modality(conn, "radiografia", 4.5, 75.0, 1)
     return conn
 
 
 @pytest.fixture
 def active_modalities():
-    """Return a list of 3 active modality dicts (like from load_active_modalities)."""
+    """Return a list of 5 active modality dicts (like from load_active_modalities)."""
     return [
-        {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética",
-         "price": 35.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 4,
-         "color": "#7C3AED"},
-        {"slug": "tc_geral", "label": "TC Geral",
-         "price": 25.0, "exams_per_hour": 7.5, "active": 1, "sort_order": 2,
-         "color": "#6366F1"},
+        {"slug": "angiotomografia", "label": "Angiotomografia",
+         "price": 30.0, "exams_per_hour": 4.0, "active": 1, "sort_order": 1,
+         "color": "#0D9488"},
         {"slug": "radiografia", "label": "Radiografia",
-         "price": 4.5, "exams_per_hour": 75.0, "active": 1, "sort_order": 8,
+         "price": 4.0, "exams_per_hour": 80.0, "active": 1, "sort_order": 2,
          "color": "#2563EB"},
+        {"slug": "ressonancia_magnetica", "label": "Ressonância Magnética",
+         "price": 35.0, "exams_per_hour": 8.0, "active": 1, "sort_order": 3,
+         "color": "#7C3AED"},
+        {"slug": "tc_abdome_total", "label": "TC de Abdome Total",
+         "price": 60.0, "exams_per_hour": 5.0, "active": 1, "sort_order": 5,
+         "color": "#0891B2"},
+        {"slug": "tc_geral", "label": "TC Geral",
+         "price": 30.0, "exams_per_hour": 10.0, "active": 1, "sort_order": 4,
+         "color": "#6366F1"},
     ]

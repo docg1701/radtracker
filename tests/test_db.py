@@ -7,6 +7,8 @@ import sqlalchemy as sa
 from src.db import (
     DEFAULT_GOAL,
     DEFAULT_LLM_MODEL,
+    add_modality,
+    delete_modality,
     init_db,
     load_active_modalities,
     load_all_modalities,
@@ -21,6 +23,7 @@ from src.db import (
     save_modality,
     save_prices,
     save_setting,
+    slugify,
     upsert_daily,
     upsert_daily_items,
 )
@@ -50,25 +53,27 @@ class TestInitDb:
     def test_init_db_seeds_modalities(self, conn):
         init_db(conn)
         mods = load_all_modalities(conn)
-        assert len(mods) == 11
+        assert len(mods) == 5
         slugs = {m["slug"] for m in mods}
         assert "ressonancia_magnetica" in slugs
         assert "tc_geral" in slugs
         assert "radiografia" in slugs
-        # All should be inactive with price=0 by default
-        assert all(m["active"] == 0 for m in mods)
-        assert all(m["price"] == 0.0 for m in mods)
-        assert all(m["exams_per_hour"] == 0.0 for m in mods)
+        assert "angiotomografia" in slugs
+        assert "tc_abdome_total" in slugs
+        # All 5 should be active with production values
+        assert all(m["active"] == 1 for m in mods)
+        assert all(m["price"] > 0 for m in mods)
+        assert all(m["exams_per_hour"] > 0 for m in mods)
 
 
 # ── v2: Modalities CRUD ──
 
 
 class TestLoadAllModalities:
-    def test_returns_11_ordered(self, conn):
+    def test_returns_5_ordered(self, conn):
         init_db(conn)
         mods = load_all_modalities(conn)
-        assert len(mods) == 11
+        assert len(mods) == 5
         # Verify alphabetical order by label (case-insensitive)
         labels = [m["label"].lower() for m in mods]
         assert labels == sorted(labels)
@@ -77,20 +82,29 @@ class TestLoadAllModalities:
 class TestLoadActiveModalities:
     def test_empty_when_none_active(self, conn):
         init_db(conn)
+        # Seed now has 5 active modalities — deactivate all first
+        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
         active = load_active_modalities(conn)
         assert active == []
 
     def test_returns_activated_modalities(self, conn):
         init_db(conn)
-        save_modality(conn, "ressonancia_magnetica", 35.0, 7.5, 1)
+        # All 5 modalities are seeded active with production values
         active = load_active_modalities(conn)
-        assert len(active) == 1
-        assert active[0]["slug"] == "ressonancia_magnetica"
-        assert active[0]["price"] == 35.0
-        assert active[0]["exams_per_hour"] == 7.5
+        assert len(active) == 5
+        slugs = {m["slug"] for m in active}
+        assert slugs == {"angiotomografia", "radiografia", "ressonancia_magnetica",
+                         "tc_geral", "tc_abdome_total"}
 
     def test_excludes_zero_price_or_eph(self, conn):
         init_db(conn)
+        # Deactivate all first, then test exclusion logic
+        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
+
         # Active but price=0 → not returned
         save_modality(conn, "radiografia", 0.0, 75.0, 1)
         active = load_active_modalities(conn)
@@ -114,11 +128,16 @@ class TestSaveModality:
 
     def test_deactivate(self, conn):
         init_db(conn)
-        save_modality(conn, "densitometria", 10.0, 10.0, 1)
+        # Deactivate others so only radiografia is active
+        for slug in ["angiotomografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
+
         active = load_active_modalities(conn)
         assert len(active) == 1
+        assert active[0]["slug"] == "radiografia"
 
-        save_modality(conn, "densitometria", 10.0, 10.0, 0)
+        save_modality(conn, "radiografia", 4.0, 80.0, 0)
         active = load_active_modalities(conn)
         assert len(active) == 0
 
@@ -218,18 +237,25 @@ class TestLoadMonthItems:
 class TestLoadPricesV2:
     def test_returns_active_modality_prices(self, seeded_conn):
         prices = load_prices(seeded_conn)
+        # All 5 seeded modalities are active with production values
         assert prices == {
+            "angiotomografia": 30.0,
+            "radiografia": 4.0,
             "ressonancia_magnetica": 35.0,
-            "tc_geral": 25.0,
-            "radiografia": 4.5,
+            "tc_abdome_total": 60.0,
+            "tc_geral": 30.0,
         }
 
     def test_fallback_to_defaults_when_no_active(self, conn):
         init_db(conn)
+        # Deactivate all seeded modalities so fallback is triggered
+        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
         prices = load_prices(conn)
         assert prices["ressonancia_magnetica"] == 35.0
-        assert prices["tc_geral"] == 25.0
-        assert prices["radiografia"] == 4.5
+        assert prices["tc_geral"] == 30.0
+        assert prices["radiografia"] == 4.0
 
 
 # ── v1 (legacy) tests — kept for migration verification ──
@@ -369,16 +395,22 @@ class TestMigration:
         assert items.get("radiografia") == 35
 
         # Verify modalities got prices from migration
+        # Seed has 5 active; migration overrides 3 of them
         active = load_active_modalities(conn)
-        assert len(active) == 3
+        assert len(active) == 5
 
         rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
         assert rm["price"] == 40.0
         assert rm["exams_per_hour"] == 7.5
 
-        tx = next(m for m in active if m["slug"] == "radiografia")
-        assert tx["price"] == 5.0
-        assert tx["exams_per_hour"] == 75.0
+        # radiografia: exam_prices says 5.0, migration overrides seed 4.0
+        rx = next(m for m in active if m["slug"] == "radiografia")
+        assert rx["price"] == 5.0
+        assert rx["exams_per_hour"] == 75.0
+
+        # tc_geral: exam_prices says 30.0 (matches seed default)
+        tc = next(m for m in active if m["slug"] == "tc_geral")
+        assert tc["price"] == 30.0
 
     def test_v1_to_v2_migrates_data_without_prices(self, conn):
         """If exam_prices is empty, migration falls back to DEFAULT_PRICES."""
@@ -402,7 +434,7 @@ class TestMigration:
         assert items.get("radiografia") == 35
 
         active = load_active_modalities(conn)
-        assert len(active) == 3
+        assert len(active) == 5
         from src.db import DEFAULT_PRICES
         rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
         assert rm["price"] == DEFAULT_PRICES["ressonancia_magnetica"]
@@ -426,13 +458,22 @@ class TestModalityColor:
         _seed_modalities(conn)
         _add_color_column(conn)
         all_mods = load_all_modalities(conn)
-        assert len(all_mods) == 11
+        assert len(all_mods) == 5
         for m in all_mods:
             assert "color" in m
             # Each modality should have a real palette color (not the generic fallback)
             assert m["color"] != "#64748B", f"{m['slug']} should not have fallback color"
             assert m["color"].startswith("#")
             assert len(m["color"]) == 7
+
+    def test_chart_colors_retains_11_colors(self):
+        """MODALITY_COLORS still has 11 entries for backward compatibility."""
+        from src.chart_colors import MODALITY_COLORS
+        assert len(MODALITY_COLORS) == 11
+        # Key production slugs should have colors
+        assert "ressonancia_magnetica" in MODALITY_COLORS
+        assert "tc_geral" in MODALITY_COLORS
+        assert "radiografia" in MODALITY_COLORS
 
     def test_save_modality_without_color_does_not_overwrite(self, seeded_conn):
         """Calling save_modality without color leaves existing color unchanged."""
@@ -446,3 +487,277 @@ class TestModalityColor:
         assert tc["exams_per_hour"] == 8.0
         # Color should survive unchanged
         assert tc["color"] == "#111111"
+
+
+# ── v1.4: slugify ──
+
+
+class TestSlugify:
+    def test_slugify_basic(self):
+        assert slugify("Ressonância Magnética") == "ressonancia_magnetica"
+        assert slugify("TC Geral") == "tc_geral"
+        assert slugify("Hello World") == "hello_world"
+        assert slugify("  spaces  ") == "spaces"
+        assert slugify("Pontuação!!!") == "pontuacao"
+        assert slugify("São Paulo") == "sao_paulo"
+        assert slugify("Coração") == "coracao"
+
+    def test_slugify_edge_cases(self):
+        assert slugify("") == "modalidade"
+        assert slugify("!!!###") == "modalidade"
+        assert slugify("___") == "modalidade"
+
+
+# ── v1.4: add_modality ──
+
+
+class TestAddModality:
+    def test_add_modality_success(self, conn):
+        init_db(conn)
+        result = add_modality(conn, "tomografia_cranio", "Tomografia de Crânio",
+                              25.0, 5.0, 1)
+        assert result is True
+        mods = load_all_modalities(conn)
+        assert len(mods) == 6  # 5 seed + 1 new
+        new = next(m for m in mods if m["slug"] == "tomografia_cranio")
+        assert new["label"] == "Tomografia de Crânio"
+        assert new["price"] == 25.0
+        assert new["exams_per_hour"] == 5.0
+        assert new["active"] == 1
+        assert new["color"] == "#64748B"  # default color
+
+    def test_add_modality_duplicate_slug(self, conn):
+        init_db(conn)
+        add_modality(conn, "novo_exame", "Novo Exame", 10.0, 5.0, 1)
+        result = add_modality(conn, "novo_exame", "Outro Nome", 20.0, 10.0, 0)
+        assert result is False
+        # Only one modality with this slug
+        mods = load_all_modalities(conn)
+        matches = [m for m in mods if m["slug"] == "novo_exame"]
+        assert len(matches) == 1
+        assert matches[0]["label"] == "Novo Exame"
+
+    def test_add_modality_sort_order(self, conn):
+        init_db(conn)
+        # Seed has sort_order 1-5. New one should get 6.
+        add_modality(conn, "extra1", "Extra 1", 10.0, 5.0, 1)
+        mods = load_all_modalities(conn)
+        extra = next(m for m in mods if m["slug"] == "extra1")
+        assert extra["sort_order"] == 6
+
+        # Next one gets 7
+        add_modality(conn, "extra2", "Extra 2", 10.0, 5.0, 1)
+        mods = load_all_modalities(conn)
+        extra2 = next(m for m in mods if m["slug"] == "extra2")
+        assert extra2["sort_order"] == 7
+
+
+# ── v1.4: delete_modality ──
+
+
+class TestDeleteModality:
+    def test_delete_modality_success(self, conn):
+        init_db(conn)
+        result = delete_modality(conn, "tc_abdome_total")
+        assert result is True
+        mods = load_all_modalities(conn)
+        assert len(mods) == 4
+        slugs = {m["slug"] for m in mods}
+        assert "tc_abdome_total" not in slugs
+
+    def test_delete_nonexistent_modality(self, conn):
+        init_db(conn)
+        result = delete_modality(conn, "slug_inexistente")
+        assert result is False
+        mods = load_all_modalities(conn)
+        assert len(mods) == 5  # unchanged
+
+    def test_delete_modality_cascades_to_daily_items(self, conn):
+        init_db(conn)
+        # Create some daily production items first
+        upsert_daily_items(conn, "2026-05-01", {"tc_abdome_total": 10})
+        upsert_daily_items(conn, "2026-05-02", {"tc_abdome_total": 5,
+                                                  "tc_geral": 8})
+
+        # Verify items exist
+        assert load_daily_items(conn, "2026-05-01") == {"tc_abdome_total": 10}
+        assert load_daily_items(conn, "2026-05-02") == {"tc_abdome_total": 5,
+                                                         "tc_geral": 8}
+
+        # Delete the modality
+        result = delete_modality(conn, "tc_abdome_total")
+        assert result is True
+
+        # tc_abdome_total items should be gone
+        items_after_1 = load_daily_items(conn, "2026-05-01")
+        assert items_after_1 == {}
+
+        # tc_geral items should survive
+        items_after_2 = load_daily_items(conn, "2026-05-02")
+        assert items_after_2 == {"tc_geral": 8}
+
+
+# ── v1.4: save_modality with label ──
+
+
+class TestSaveModalityWithLabel:
+    def test_save_modality_with_label(self, seeded_conn):
+        save_modality(seeded_conn, "tc_geral", 30.0, 10.0, 1,
+                       label="Tomografia Geral")
+        mods = load_all_modalities(seeded_conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["label"] == "Tomografia Geral"
+        assert tc["slug"] == "tc_geral"  # slug never changes
+
+    def test_rename_modality_label_slug_unchanged(self, seeded_conn):
+        # Rename label, verify slug stays
+        save_modality(seeded_conn, "ressonancia_magnetica", 35.0, 8.0, 1,
+                       label="MRI")
+        mods = load_all_modalities(seeded_conn)
+        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
+        assert rm["label"] == "MRI"
+        assert rm["slug"] == "ressonancia_magnetica"
+
+    def test_save_modality_without_label_does_not_overwrite(self, seeded_conn):
+        # Set a custom label first
+        save_modality(seeded_conn, "radiografia", 4.0, 80.0, 1,
+                       label="RX Digital")
+        # Then update price only (no label)
+        save_modality(seeded_conn, "radiografia", 5.0, 80.0, 1)
+        mods = load_all_modalities(seeded_conn)
+        rx = next(m for m in mods if m["slug"] == "radiografia")
+        assert rx["price"] == 5.0
+        # Label should survive
+        assert rx["label"] == "RX Digital"
+
+
+# ── v1.4: seed verification ──
+
+
+class TestSeed:
+    def test_seed_has_five_modalities(self, seeded_conn):
+        mods = load_all_modalities(seeded_conn)
+        assert len(mods) == 5
+        expected_slugs = {"angiotomografia", "radiografia", "ressonancia_magnetica",
+                          "tc_geral", "tc_abdome_total"}
+        slugs = {m["slug"] for m in mods}
+        assert slugs == expected_slugs
+
+    def test_seed_values_match_production(self, seeded_conn):
+        mods = load_all_modalities(seeded_conn)
+        values = {m["slug"]: (m["price"], m["exams_per_hour"], m["active"])
+                  for m in mods}
+        assert values["angiotomografia"] == (30.0, 4.0, 1)
+        assert values["radiografia"] == (4.0, 80.0, 1)
+        assert values["ressonancia_magnetica"] == (35.0, 8.0, 1)
+        assert values["tc_geral"] == (30.0, 10.0, 1)
+        assert values["tc_abdome_total"] == (60.0, 5.0, 1)
+
+
+# ── v1.4: migration v1.3 → v1.4 ──
+
+
+class TestMigrationV134:
+    def test_migration_applies_defaults_to_untouched_mods(self, conn):
+        """Modalities with price=0, active=0 get production defaults."""
+        # Manually insert 5 mods with price=0, active=0 (simulating old DB)
+        from src.db import _MODALITY_SEED, _migrate_v1_3_to_v1_4_defaults
+        with conn.connect() as c:
+            c.execute(sa.text("""
+                CREATE TABLE IF NOT EXISTS modalities (
+                    slug TEXT PRIMARY KEY, label TEXT NOT NULL,
+                    price REAL DEFAULT 0.0, exams_per_hour REAL DEFAULT 0.0,
+                    active INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
+                    color TEXT DEFAULT '#64748B'
+                )
+            """))
+            c.commit()
+        for m in _MODALITY_SEED:
+            with conn.connect() as c:
+                c.execute(sa.text("""
+                    INSERT INTO modalities (slug, label, price, exams_per_hour,
+                                            active, sort_order, color)
+                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
+                """), m)
+                c.commit()
+
+        # Verify they start at 0/0/0
+        mods = load_all_modalities(conn)
+        for m in mods:
+            assert m["price"] == 0.0
+            assert m["exams_per_hour"] == 0.0
+            assert m["active"] == 0
+
+        # Run migration
+        _migrate_v1_3_to_v1_4_defaults(conn)
+
+        # Verify they got production values
+        mods = load_all_modalities(conn)
+        values = {m["slug"]: (m["price"], m["exams_per_hour"], m["active"])
+                  for m in mods}
+        assert values["angiotomografia"] == (30.0, 4.0, 1)
+        assert values["radiografia"] == (4.0, 80.0, 1)
+        assert values["ressonancia_magnetica"] == (35.0, 8.0, 1)
+        assert values["tc_geral"] == (30.0, 10.0, 1)
+        assert values["tc_abdome_total"] == (60.0, 5.0, 1)
+
+    def test_migration_preserves_user_config(self, conn):
+        """Modalities already configured by user are not overwritten."""
+        from src.db import _MODALITY_SEED, _migrate_v1_3_to_v1_4_defaults
+        with conn.connect() as c:
+            c.execute(sa.text("""
+                CREATE TABLE IF NOT EXISTS modalities (
+                    slug TEXT PRIMARY KEY, label TEXT NOT NULL,
+                    price REAL DEFAULT 0.0, exams_per_hour REAL DEFAULT 0.0,
+                    active INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
+                    color TEXT DEFAULT '#64748B'
+                )
+            """))
+            c.commit()
+        for m in _MODALITY_SEED:
+            with conn.connect() as c:
+                c.execute(sa.text("""
+                    INSERT INTO modalities (slug, label, price, exams_per_hour,
+                                            active, sort_order, color)
+                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
+                """), m)
+                c.commit()
+
+        # User configured tc_geral manually
+        with conn.connect() as c:
+            c.execute(sa.text("""
+                UPDATE modalities
+                SET price = 50.0, exams_per_hour = 3.0, active = 1
+                WHERE slug = 'tc_geral'
+            """))
+            c.commit()
+
+        # Run migration
+        _migrate_v1_3_to_v1_4_defaults(conn)
+
+        # tc_geral should keep user's values
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["price"] == 50.0
+        assert tc["exams_per_hour"] == 3.0
+        assert tc["active"] == 1
+
+        # Untouched modalities should get defaults
+        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
+        assert rm["price"] == 35.0
+        assert rm["active"] == 1
+
+    def test_init_db_idempotent_on_existing_db(self, conn):
+        """Calling init_db on a DB with existing modalities should not add
+        duplicates or crash."""
+        init_db(conn)
+        mods_first = load_all_modalities(conn)
+        assert len(mods_first) == 5
+
+        init_db(conn)  # second call
+        mods_second = load_all_modalities(conn)
+        assert len(mods_second) == 5
+        # Same slugs, same labels
+        first_slugs = {(m["slug"], m["label"]) for m in mods_first}
+        second_slugs = {(m["slug"], m["label"]) for m in mods_second}
+        assert first_slugs == second_slugs

@@ -13,6 +13,8 @@ import streamlit as st
 from src.db import (
     DEFAULT_GOAL,
     DEFAULT_LLM_MODEL,
+    add_modality,
+    delete_modality,
     load_active_modalities,
     load_all_modalities,
     load_goal,
@@ -20,6 +22,7 @@ from src.db import (
     save_goal,
     save_modality,
     save_setting,
+    slugify,
 )
 
 
@@ -81,20 +84,33 @@ def render_settings_tab(conn: Any) -> None:
 # Modality configuration grid
 # ---------------------------------------------------------------------------
 
+
+def _reload_modalities(conn: Any) -> None:
+    """Clear caches and reload modalities + prices into session_state."""
+    st.session_state.pop("historical_cache", None)
+    st.session_state.all_modalities = load_all_modalities(conn)
+    st.session_state.active_modalities = load_active_modalities(conn)
+    st.session_state.prices = {
+        m["slug"]: m["price"] for m in st.session_state.active_modalities
+    }
+
+
 @st.fragment
 def _render_modality_grid(conn: Any) -> None:
-    """Fragment: per-modality price, exams/hour, and active toggle."""
+    """Fragment: per-modality label, price, exams/hour, color, active, delete."""
     all_mods = st.session_state.all_modalities
 
     st.subheader(":material/medical_services: Modalidades")
     st.caption(
-        "Configure o preço (R$) e a produtividade (exames/hora) de cada "
+        "Configure nome, preço (R$) e produtividade (exames/hora) de cada "
         "modalidade. Marque **Ativo** para que apareça na barra lateral. "
         "Modalidades sem preço ou produtividade não aparecem no dashboard."
     )
 
-    # Header row
-    h_label, h_price, h_eph, h_color, h_active = st.columns([2.5, 2, 2, 0.8, 0.8])
+    # Header row — extra column for delete button
+    h_label, h_price, h_eph, h_color, h_active, h_del = st.columns(
+        [2.5, 1.5, 1.5, 0.8, 0.8, 0.7]
+    )
     with h_label:
         st.caption("**Modalidade**")
     with h_price:
@@ -105,20 +121,27 @@ def _render_modality_grid(conn: Any) -> None:
         st.caption("**Cor**")
     with h_active:
         st.caption("**Ativo**")
+    with h_del:
+        st.caption("")
 
-    # Track changes in a form-like structure (but don't use st.form —
-    # we want individual saves to work without freezing the whole page).
-    updated: dict[str, tuple[float, float, bool, str]] = {}
+    # Track changes — tuple: (label, price, eph, active, color)
+    updated: dict[str, tuple[str, float, float, bool, str]] = {}
 
     for m in all_mods:
         slug = m["slug"]
         label = m["label"]
-        col_label, col_price, col_eph, col_color, col_active = (
-            st.columns([2.5, 2, 2, 0.8, 0.8])
+        col_label, col_price, col_eph, col_color, col_active, col_del = st.columns(
+            [2.5, 1.5, 1.5, 0.8, 0.8, 0.7]
         )
 
         with col_label:
-            st.write(label)
+            new_label = st.text_input(
+                f"Nome {slug}",
+                value=label,
+                key=f"mod_label_{slug}",
+                label_visibility="collapsed",
+            )
+            st.caption(f"Slug: {slug}")
         with col_price:
             price = st.number_input(
                 f"Preço {slug}",
@@ -149,15 +172,38 @@ def _render_modality_grid(conn: Any) -> None:
                 key=f"mod_active_{slug}",
                 label_visibility="collapsed",
             )
+        with col_del:
+            if st.button(
+                "🗑️", key=f"mod_del_btn_{slug}",
+                help=f"Remover {label}",
+            ):
+                st.session_state.confirm_delete_slug = slug
+                st.rerun()
+
+        # Inline delete confirmation for this row
+        if st.session_state.get("confirm_delete_slug") == slug:
+            st.warning(f"Remover **{label}**? Dados de produção serão perdidos.")
+            col_yes, col_no = st.columns(2)
+            with col_yes:
+                if st.button("Confirmar", key=f"mod_del_confirm_{slug}"):
+                    delete_modality(conn, slug)
+                    _reload_modalities(conn)
+                    st.session_state.confirm_delete_slug = None
+                    st.rerun()
+            with col_no:
+                if st.button("Cancelar", key=f"mod_del_cancel_{slug}"):
+                    st.session_state.confirm_delete_slug = None
+                    st.rerun()
 
         changed = (
-            abs(price - float(m["price"])) > 0.001
+            new_label != label
+            or abs(price - float(m["price"])) > 0.001
             or abs(eph - float(m["exams_per_hour"])) > 0.001
             or active != bool(m["active"])
             or color != str(m.get("color", "#64748B"))
         )
         if changed:
-            updated[slug] = (price, eph, active, color)
+            updated[slug] = (new_label, price, eph, active, color)
 
     if updated:
         st.button(
@@ -167,22 +213,87 @@ def _render_modality_grid(conn: Any) -> None:
     else:
         st.caption("Nenhuma alteração pendente.")
 
+    # ── Add new modality section ──
+    st.divider()
+    if not st.session_state.get("new_modality_pending", False):
+        if st.button("➕ Adicionar modalidade", type="secondary"):
+            st.session_state.new_modality_pending = True
+            st.rerun()
+    else:
+        st.caption("**Nova modalidade**")
+        col_label, col_price, col_eph, col_color, col_save, col_cancel = st.columns(
+            [2.5, 1.5, 1.5, 1, 1, 1]
+        )
+
+        with col_label:
+            new_label = st.text_input(
+                "Nome da nova modalidade",
+                key="mod_new_label",
+                label_visibility="collapsed",
+                placeholder="Ex: Tomografia de Crânio",
+            )
+            if new_label:
+                new_slug = slugify(new_label)
+                st.caption(f"Slug: {new_slug}")
+            else:
+                new_slug = ""
+
+        with col_price:
+            new_price = st.number_input(
+                "Preço", min_value=0.0, step=0.50, value=0.0,
+                key="mod_new_price", label_visibility="collapsed",
+            )
+        with col_eph:
+            new_eph = st.number_input(
+                "Exames/h", min_value=0.0, step=0.5, value=0.0,
+                key="mod_new_eph", label_visibility="collapsed",
+            )
+        with col_color:
+            new_color = st.color_picker(
+                "Cor", value="#64748B",
+                key="mod_new_color", label_visibility="collapsed",
+            )
+
+        with col_save:
+            if st.button(
+                "💾 Salvar", key="mod_new_save", type="primary",
+                disabled=not new_label,
+            ):
+                new_slug = slugify(new_label)
+                success = add_modality(
+                    conn, new_slug, new_label, new_price, new_eph, 1, new_color,
+                )
+                if success:
+                    _reload_modalities(conn)
+                    st.session_state.new_modality_pending = False
+                    st.toast(f"✅ {new_label} adicionada!")
+                    st.rerun()
+                else:
+                    st.warning(
+                        f"Slug '{new_slug}' já existe. Escolha outro nome."
+                    )
+        with col_cancel:
+            if st.button("Cancelar", key="mod_new_cancel"):
+                st.session_state.new_modality_pending = False
+                for key in ("mod_new_label", "mod_new_price", "mod_new_eph", "mod_new_color"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
 
 def _save_modalities(
-    conn: Any, updated: dict[str, tuple[float, float, bool, str]]
+    conn: Any, updated: dict[str, tuple[str, float, float, bool, str]]
 ) -> None:
     """Persist updated modality rows to DB and refresh session state."""
-    for slug, (price, eph, active, color) in updated.items():
-        save_modality(conn, slug, price, eph, 1 if active else 0, color=color)
+    for slug, (label, price, eph, active, color) in updated.items():
+        save_modality(
+            conn, slug, price, eph, 1 if active else 0,
+            label=label, color=color,
+        )
 
-    # Clear caches so sidebar/dashboards pick up changes
-    st.session_state.pop("historical_cache", None)
-    st.session_state.all_modalities = load_all_modalities(conn)
-    st.session_state.active_modalities = load_active_modalities(conn)
-    st.session_state.prices = {
-        m["slug"]: m["price"] for m in st.session_state.active_modalities
-    }
-    st.toast(":material/check_circle: Modalidades salvas! Barra lateral atualizada.")
+    _reload_modalities(conn)
+    st.toast(
+        ":material/check_circle: Modalidades salvas! Barra lateral atualizada."
+    )
 
 
 # ---------------------------------------------------------------------------
