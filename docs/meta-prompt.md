@@ -6,11 +6,11 @@
 
 ## Goal
 
-You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. Self-hosted deployment to a VPS is supported via Docker + Caddy + fail2ban, managed with Ansible playbooks (v1.2.0+).
+You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. Self-hosted deployment to a VPS is supported via Docker + Caddy + fail2ban, managed with Ansible playbooks.
 
 You will be modifying Python code in the `src/` tree, the Streamlit entry point `app.py`, the config `.streamlit/config.toml`, the test suite in `tests/`, Docker/deployment files at the project root, or Ansible playbooks in `ansible/`.
 
-**Current release:** v1.3.0.
+**Current release:** v1.5.0.
 
 ---
 
@@ -22,10 +22,10 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 | Database | **SQLite** via SQLAlchemy + `st.connection` | File at `data/telerrad.db` (gitignored) |
 | Charts | **Plotly ≥5.18** | All chart factories in `src/charts.py` and `src/charts_analysis.py` |
 | Data | **Pandas ≥2.0** | DataFrames for calculations and chart data |
-| HTTP | **httpx ≥0.27** | OpenRouter API calls only |
-| Extras | **streamlit-extras ≥1.5** | `skeleton`, `rain`, `star_rating`, `stoggle`, `cookie_manager` |
+| HTTP | **httpx ≥0.27** | OpenRouter API calls (one-shot + SSE streaming) |
+| Extras | **streamlit-extras ≥1.5** | `skeleton`, `rain`, `star_rating`, `stoggle`, `cookie_manager`, `pills` |
 | Package mgr | **uv** | `uv.lock` is authoritative |
-| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 108 tests, all passing |
+| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 150 tests, all passing |
 | Lint/fmt | **ruff** (E, F, I, UP rules, line-length 100) | Run: `uv run ruff check src/ tests/` |
 | Types | **mypy** (strict=false) | Run: `uv run mypy src/` |
 | **Deployment** | | |
@@ -33,46 +33,38 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 | Reverse proxy | **Caddy 2** (BasicAuth + Let's Encrypt) | `Caddyfile`, Jinja2 template in `ansible/templates/` |
 | Automation | **Ansible** (5 playbooks, Vault encryption) | `ansible/` directory |
 | Security | **fail2ban** (401 detection) | Filter + jail in `deploy.yml` playbook |
-| Lint (deploy) | **ansible-lint**, **hadolint**, **yamllint** | `.ansible-lint.yml`, `.hadolint.yml`, `.yamllint.yml` |
 
 ---
 
 ## Key Files (Read these first for any task)
 
 ### Application core (Python)
-1. **`app.py`** (73 lines) — Entry point, page config, DB boot, tab navigation
-2. **`src/db.py`** (476 lines) — All SQLite schema (v1+v2) + CRUD; `st.connection("telerrad")` pattern; 11-modality seed + auto-migration
-3. **`src/calculations.py`** (445 lines) — Pure business logic (earnings, hours, MA, projections) + DB-dependent stats; dynamic modality-aware
-4. **`src/chart_colors.py`** (92 lines) — Central color palette (11 modalities + legacy aliases) + `color_for_modality()` with optional DB lookup
-5. **`src/charts.py`** (366 lines) — Plotly factories for Today and Month tabs (dynamic modalities)
-6. **`src/charts_analysis.py`** (363 lines) — Plotly factories for Analysis tab (dynamic modalities)
-7. **`src/formatting.py`** (53 lines) — `fmt_brl()` BRL currency, `md_escape()`, `MONTHS_PT`
-8. **`src/insights_rules.py`** (247 lines) — Rule-based Portuguese insight generator (dynamic modalities)
-9. **`src/llm_client.py`** (255 lines) — OpenRouter client; model configurable via constructor slug
-10. **`src/cookies.py`** (39 lines) — `cookie_manager` for tab persistence
-11. **`src/ui/sidebar.py`** (89 lines) — Dynamic date picker + modality inputs (label+input side by side) + save
-12. **`src/ui/today.py`** (202 lines) — KPI cards, donut, sparkline (dynamic)
-13. **`src/ui/month.py`** (226 lines) — Gauge, line chart, rhythm alert, celebration
-14. **`src/ui/analysis.py`** (239 lines) — Rule insights + configurable LLM (fragment) + 4 analysis charts
-15. **`src/ui/settings.py`** (323 lines) — `ensure_settings()` bootstrap + modality grid + LLM config + danger zone
-16. **`.streamlit/config.toml`** (60 lines) — All theme config: colors, fonts, dark mode, semantic colors
+1. **`app.py`** (61 lines) — Entry point, page config, DB boot, 5-tab navigation
+2. **`src/db.py`** (~420 lines) — All SQLite schema (v1+v2) + CRUD; `st.connection("telerrad")` pattern; 5-modality seed + 3 auto-migrations
+3. **`src/calculations.py`** (~380 lines) — Pure business logic (earnings, hours, MA, projections) + DB-dependent stats; dynamic modality-aware
+4. **`src/chart_colors.py`** (~85 lines) — Central color palette (11 modality colors + legacy aliases) + `color_for_modality(slug, modalities=None)` with DB-based lookup
+5. **`src/charts.py`** (~330 lines) — Plotly factories for Today and Month tabs (dynamic modalities, DB-stored colors)
+6. **`src/charts_analysis.py`** (~300 lines) — Plotly factories for Analysis tab (dynamic modalities)
+7. **`src/formatting.py`** (~55 lines) — `fmt_brl()` BRL currency, `md_escape()` (escapes `$` for Streamlit Markdown), `MONTHS_PT`
+8. **`src/insights_rules.py`** (~230 lines) — Rule-based Portuguese insight generator (dynamic modalities)
+9. **`src/llm_client.py`** (~290 lines) — OpenRouter client with one-shot `generate()` + SSE `generate_stream()` + `build_rag_context()` for RAG
+10. **`src/cookies.py`** (~30 lines) — `cookie_manager` for tab persistence
+11. **`src/ui/sidebar.py`** (~85 lines) — Dynamic date picker + modality inputs (label+input side by side) + save
+12. **`src/ui/today.py`** (~195 lines) — KPI cards, modality bar, sparkline (dynamic)
+13. **`src/ui/month.py`** (~210 lines) — Gauge, line chart, rhythm alert, celebration
+14. **`src/ui/analysis.py`** (~130 lines) — Rule insights + 4 analysis charts (AI section removed in 1.5.0)
+15. **`src/ui/chat.py`** (~280 lines) — RAG-powered Chat IA with SSE streaming, suggestion pills, history trimming (new in 1.5.0)
+16. **`src/ui/settings.py`** (~340 lines) — `ensure_settings()` bootstrap + modality grid with add/delete/color_picker + LLM config + danger zone
+17. **`.streamlit/config.toml`** (60 lines) — All theme config: colors, fonts, dark mode, semantic colors
 
 ### Deployment
-17. **`Dockerfile`** (~40 lines) — Multi-stage build (builder + runtime), non-root user (uid 1000)
-18. **`docker-compose.yml`** (~35 lines) — Caddy + Streamlit services, loopback-only port exposure
-19. **`Caddyfile`** (~13 lines) — Reverse proxy: BasicAuth, JSON access log, streamlit upstream
-20. **`.env.example`** — Template: DOMAIN + BASICAUTH_USERS (with `$$` escaping note)
-21. **`.dockerignore`** — Build context exclusions
-22. **`ansible/ansible.cfg`** — pipelining; ForwardAgent removed (replaced by deploy key)
-23. **`ansible/inventory.yml`** — Single host via `VPS_HOST` + `VPS_USER` env vars
-24. **`ansible/group_vars/all.yml`** — Vault-encrypted secrets (`deployment_mode`, `basicauth_users`, `github_pat`) + shared vars + `deploy_key_path`
-25. **`ansible/playbooks/deploy.yml`** — 10-step idempotent bootstrap + deploy (now generates ed25519 deploy key, registers with GitHub API)
-26. **`ansible/playbooks/update.yml`** — Git update via deploy key + rebuild
-27. **`ansible/templates/Caddyfile.j2`** — LAN vs internet mode template
-28. **`ansible/templates/.env.j2`** — `.env` template with `$` → `$$` escaping
-29. **`docs/deployment.md`** — Complete deployment guide (v1.2.0+)
+18. **`Dockerfile`** — Multi-stage build (builder + runtime), non-root user (uid 1000)
+19. **`docker-compose.yml`** — Caddy + Streamlit services, loopback-only port exposure
+20. **`Caddyfile`** — Reverse proxy: BasicAuth, JSON access log, streamlit upstream
+21. **`docs/deployment.md`** — Complete deployment guide with Vault secrets, playbooks, troubleshooting
 
-**For tests:** `tests/conftest.py` defines `FakeConnection` (SQLite `:memory:` emulation, v2 schema), `conn` fixture, `seeded_conn` fixture, `default_prices` fixture, `active_modalities` fixture. Each `test_*.py` corresponds 1:1 to a `src/` module.
+### Tests
+**`tests/conftest.py`** — `FakeConnection` (SQLite `:memory:` emulation, v2 schema with `color` column), `conn` fixture, `seeded_conn` fixture (5 production modalities), `active_modalities` fixture, `default_prices` fixture. Each `test_*.py` corresponds 1:1 to a `src/` module.
 
 ---
 
@@ -80,7 +72,7 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 
 ### v2 tables (primary)
 
-- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `color` (TEXT, default `#64748B`), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 11 modalities on `init_db()`. Colors are customizable per-modality via Settings tab `st.color_picker`.
+- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `color` (TEXT, default `#64748B`), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 5 modalities with production values on `init_db()`. Colors customizable per-modality via Settings tab `st.color_picker`. Since v1.4.0: add/remove modalities dynamically.
 - **`daily_production_items`** — `date` (TEXT), `modality_slug` (TEXT), `count` (INTEGER), `created_at`, `updated_at`. PK: `(date, modality_slug)`. FK → `modalities(slug)`.
 
 ### v1 tables (kept for migration)
@@ -93,23 +85,28 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 - **`monthly_goals`** — `year_month` (PK, TEXT "YYYY-MM"), `goal_reais`, `updated_at`
 - **`user_settings`** — `key` (PK, TEXT), `value`, `updated_at` (keys: `user_name`, `api_key`, `llm_prompt`, `llm_model`)
 
-**Migration:** `_migrate_v1_to_v2()` runs automatically if v1 `daily_production` has rows and v2 `daily_production_items` is empty. Maps RM→ressonancia_magnetica, TC→tc_geral, RX→radiografia. Copies latest prices. One-shot, idempotent.
+### Auto-migrations (run by `init_db()`, all idempotent)
+
+1. **`_add_color_column()`** — Adds `color` column via `PRAGMA table_info` + `ALTER TABLE`, backfills from `MODALITY_COLORS`
+2. **`_migrate_v1_3_to_v1_4_defaults()`** — Applies production defaults to untouched modalities (price=0, active=0)
+3. **`_migrate_v1_to_v2()`** — Copies RM/TC/RX counts to `daily_production_items`, activates 3 legacy modalities
 
 ### Key CRUD Functions (src/db.py)
 
 | Function | Operation | Notes |
 |----------|-----------|-------|
-| `load_all_modalities(conn)` | Read | Returns all 11 modalities, ordered by label |
-| `load_active_modalities(conn)` | Read | Returns modalities where `active=1 AND price>0 AND exams_per_hour>0` |
-| `save_modality(conn, slug, price, eph, active, color=None)` | Write | Updates single modality; `color` optional for backward compat |
-| `upsert_daily_items(conn, date_str, items)` | Write | Inserts/updates dict of slug→count; zero counts → DELETE |
-| `load_daily_items(conn, date_str)` | Read | Returns dict slug→count |
-| `load_month_items(conn, year_month)` | Read | DataFrame with date, modality_slug, count |
-| `upsert_daily`, `load_daily`, `load_month` | v1 read/write | Legacy: kept for migration and backward compat |
-| `load_prices(conn)` | Read | Returns slug→price from active modalities |
-| `save_prices` | v1 write | Legacy: append-only price history |
-| `load_goal` / `save_goal` | Read/Write | Per-month target |
+| `slugify(label)` | Utility | Portuguese text → URL-safe slug (NFKD → ASCII → `[^a-z0-9]+` → `_`) |
+| `load_all_modalities(conn)` | Read | All modalities ordered by label COLLATE NOCASE |
+| `load_active_modalities(conn)` | Read | `active=1 AND price>0 AND exams_per_hour>0` |
+| `save_modality(conn, slug, price, eph, active, label=None, color=None)` | Write | Updates single modality; label/color unchanged when None |
+| `add_modality(conn, slug, label, price, eph, active, color)` | Create | Auto sort_order; returns False if slug exists |
+| `delete_modality(conn, slug)` | Delete | Transactional: items first, then modalities |
+| `upsert_daily_items(conn, date_str, items)` | Write | Dict slug→count; zero → DELETE, non-zero → UPSERT |
+| `load_daily_items(conn, date_str)` | Read | Dict slug→count |
+| `load_month_items(conn, year_month)` | Read | DataFrame: date, modality_slug, count |
+| `load_goal` / `save_goal` | Read/Write | Per-month target, falls back to 45000.0 |
 | `load_setting` / `save_setting` | Read/Write | Key-value store |
+| `load_prices(conn)` | Read | slug→price from active modalities |
 
 All query functions pass `ttl=0` — no Streamlit caching.
 
@@ -121,19 +118,23 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 
 | Key | DB Source | Default Value |
 |-----|-----------|---------------|
-| `all_modalities` | `modalities` table (11 rows) | Empty list (populated by seed on init) |
+| `all_modalities` | `modalities` table | Empty list (seeded on init) |
 | `active_modalities` | `modalities` WHERE `active=1 AND price>0 AND exams_per_hour>0` | Empty list |
 | `prices` | Built from `active_modalities` (slug→price) | `{}` |
 | `goal` | `monthly_goals` for current year-month | `45000.0` |
 | `user_name` | `user_settings` key `"user_name"` | `"Galvani"` |
 | `api_key` | `user_settings` key `"api_key"` | `""` |
-| `llm_prompt` | `user_settings` key `"llm_prompt"` | Default system prompt (with `{user_name}` interpolated) |
+| `llm_prompt` | `user_settings` key `"llm_prompt"` | Default system prompt (`{user_name}` interpolated) |
 | `llm_model` | `user_settings` key `"llm_model"` | `"openai/gpt-oss-120b:free"` |
 
 **Analysis-tab specific state:**
-- `historical_cache` — `{"key": "json_hash", "stats": {...}}` — invalidated when goal or active modalities change
-- `llm_insight_text` — cached LLM response (cleared when historical cache invalidates)
-- `llm_insight_pending`, `llm_insight_in_flight`, `llm_insight_cancelled` — AI state machine flags
+- `historical_cache` — `{"key": "json_hash", "stats": {...}}` — invalidated when goal/active modalities change
+
+**Chat IA specific state:**
+- `messages` — list of `{"role": str, "content": str}` for chat history (system + user/assistant pairs, capped at 31)
+- `chat_suggestions` — temporary pill selection
+
+**Month tab:**
 - `goal_celebrated_YYYY-MM` — boolean guard for celebration rain (once per month)
 
 ---
@@ -142,18 +143,22 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 
 ### Hard constraints (never violate)
 - **Python ≥ 3.12** — use modern syntax (match/case, `str | None`, walrus ok)
-- **Streamlit ≥ 1.54** — use `container(border=True)`, `st.badge`, Material icons (`:material/name:`), `st.fragment`
-- **No custom CSS / `unsafe_allow_html=True`** — all theming via `.streamlit/config.toml`
+- **Streamlit ≥ 1.54** — use `container(border=True)`, `st.badge`, Material icons (`:material/name:`), `st.fragment`, `st.chat_message`, `st.chat_input`, `st.write_stream`, `st.pills`
+- **No custom CSS / `unsafe_allow_html=True`** — all theming via `.streamlit/config.toml`. Exception: `st.html()` for chat avatar colors only (limited, scoped).
 - **No deprecated streamlit-extras** — never import: `add_vertical_space`, `app_logo`, `colored_header`, `row`, `stylable_container`, `tags`
 - **No `st.divider()`** — use natural spacing or section headers
-- **No emojis as functional icons** — use Material icons exclusively; emojis only for celebration rain
+- **No emojis as functional icons** — use `:material/` icons exclusively; emojis only for celebration rain
 - **No `st.form` in sidebar** — it breaks date-dependent pre-fill (forms suppress widget-driven reruns)
 - **No `.env` file in the application** — API key is stored in DB `user_settings` table, configured in UI
 - **Portuguese locale for all user-facing text** — UI labels, tooltips, chart annotations, insights
 - **No database access in chart modules** — `src/charts.py` and `src/charts_analysis.py` accept data as parameters only
 - **Deployment: Streamlit on loopback only** — `127.0.0.1:8501` in docker-compose, never exposed externally
 - **Dockerfile: non-root user** — container runs as `streamlit` (uid 1000), not root
-- **Dynamic modalities** — never hardcode RM/TC/RX labels or prices in UI code; always use `st.session_state.active_modalities`
+- **Dynamic modalities** — never hardcode modality slugs, labels, or prices in UI code; always use `st.session_state.active_modalities`
+- **`md_escape()` before `st.markdown()`** — all LLM outputs and BRL strings rendered via `st.markdown`, `st.write`, `st.expander`, `st.warning`, `st.info`, or `st.metric delta` must pass through `md_escape()`
+- **`safe_stream` for `st.write_stream()`** — always wrap the token generator: `(token.replace("$", "\\$") for token in stream)`
+- **History rendering in chat** — use `md_escape(msg["content"])` when rendering saved messages
+- **Package management via `uv` only** — `uv add`, `uv sync`, `uv run`
 
 ### Style conventions
 - **Functions: 4–20 lines.** Split if longer.
@@ -162,48 +167,42 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 - **Types: explicit.** No `Any` except where the Streamlit API requires it (e.g., `conn: Any`).
 - **Early returns over nested ifs.** Max 2 levels of indentation.
 - **Docstrings on all public functions** — intent + one usage example.
-- **Logging: structured JSON** for debugging; plain text only for CLI output.
 - **No code duplication.** Extract shared logic.
-- **Charts:** all colors from `MODALITY_COLORS` / `CHART_COLORS` dicts in `src/chart_colors.py` — no inline hex values.
+- **Charts:** all colors from `color_for_modality()` or `CHART_COLORS` dict in `src/chart_colors.py` — no inline hex values.
 - **Currency:** use `fmt_brl()` from `src/formatting.py`; it uses `Decimal.quantize(ROUND_HALF_UP)`.
-- **Markdown safety:** wrap BRL strings in `md_escape()` before passing to `st.markdown`.
+- **Markdown safety:** wrap BRL strings in `md_escape()` before passing to `st.markdown`. See `docs/markdown-escaping-guide.md` for complete rules.
 
 ### Deployment conventions
-- **`$` in `BASICAUTH_USERS`:** must be escaped as `$$` in `.env` (Docker env_file parser)
-  - The `.env.j2` Ansible template handles this automatically with `regex_replace('\\$', '$$')`
-  - When editing `.env.example` or `.env` manually, double all `$` characters in the bcrypt hash
-- **Ansible secrets:** use `ansible-vault encrypt_string` for sensitive values (`deployment_mode`, `basicauth_users`, `github_pat`)
-  - Embed `!vault |` blocks directly in `all.yml` — no separate vault file
-- **Playbook idempotency:** All playbooks must be safe to re-run without data loss
-  - `data/` is bind-mounted, never touched by git operations or rebuilds
-  - Container strategy: `recreate: always` (ensures fresh config on every deploy)
-- **fail2ban whitelist:** Always include RFC1918 + loopback ranges in jail config to prevent admin lockout
-- **Git authentication:** Uses deploy key (ed25519 SSH key generated on VPS, registered via GitHub API)
-  - SSH agent forwarding (`ForwardAgent`) is no longer required
-  - `github_pat` (Vault-encrypted) is used once to register the key; can expire afterwards
+- **`$` in `BASICAUTH_USERS`:** must be escaped as `$$` in `.env` (Docker env_file parser). The `.env.j2` template handles this with `regex_replace`.
+- **Ansible secrets:** use `ansible-vault encrypt_string` for sensitive values; embed `!vault |` blocks directly in `all.yml`.
+- **Playbook idempotency:** All playbooks must be safe to re-run. `data/` is bind-mounted, never touched by git ops.
+- **Git authentication:** ed25519 deploy key auto-generated on VPS, registered via GitHub API. No ForwardAgent.
 
-### Color palette reference (customizable)
+---
 
-Modality colors are stored in the `modalities` table (`color` column) and default
-to the palette below. Users can override any color via the Settings tab — chart
-factories read the DB-stored color via `color_for_modality(slug, modalities)`.
+## Color Palette Reference
+
+Modality colors are stored in the `modalities` table (`color` column) and default to the palettes below. Users can override any color via the Settings tab — chart factories read DB-stored color via `color_for_modality(slug, modalities)`.
+
 ```python
-MODALITY_COLORS = {
-    "radiografia": "#2563EB",              # Blue-600
-    "tc_geral": "#6366F1",                 # Indigo-500
-    "tc_abdome_total": "#0891B2",          # Cyan-600
-    "ressonancia_magnetica": "#7C3AED",    # Violet-600
-    "angiotomografia": "#0D9488",           # Teal-600
-    "ultrassonografia": "#A855F7",          # Purple-500
-    "dopplervelocimetria": "#059669",       # Emerald-600
-    "radiografia_contrastada": "#475569",   # Slate-600
-    "ultrassom_morfologico": "#0EA5E9",     # Sky-500
-    "mamografia": "#BE123C",                # Rose-700
-    "densitometria": "#A16207",             # Amber-700
-}
+# 5 seeded modalities (active, with production values)
+# angiotomografia:         #0D9488 (Teal-600)
+# radiografia:             #2563EB (Blue-600)
+# ressonancia_magnetica:   #7C3AED (Violet-600)
+# tc_geral:                #6366F1 (Indigo-500)
+# tc_abdome_total:         #0891B2 (Cyan-600)
+
+# 6 additional colors in MODALITY_COLORS (for backward compat / user-added modalities)
+# ultrassonografia:        #A855F7 (Purple-500)
+# dopplervelocimetria:     #059669 (Emerald-600)
+# radiografia_contrastada: #475569 (Slate-600)
+# ultrassom_morfologico:   #0EA5E9 (Sky-500)
+# mamografia:              #BE123C (Rose-700)
+# densitometria:           #A16207 (Amber-700)
+# fallback:                #64748B (Slate-500)
 
 CHART_COLORS = {
-    **MODALITY_COLORS,   # all 11 modality colors
+    **MODALITY_COLORS,
     "rm": MODALITY_COLORS["ressonancia_magnetica"],  # legacy alias
     "tc": MODALITY_COLORS["tc_geral"],               # legacy alias
     "rx": MODALITY_COLORS["radiografia"],            # legacy alias
@@ -218,28 +217,33 @@ CHART_COLORS = {
 }
 ```
 
-### Business constants
-- 11 predefined modalities (see `_MODALITY_SEED` in `src/db.py`)
-- Default prices: RM=R$35, TC Geral=R$25, RX=R$4.50
-- Default exams/hour: RM=7.5, TC Geral=7.5, RX=75.0
-- Other 8 modalities default to price=0, exams_per_hour=0, active=0
+---
+
+## Business Constants
+
+- 5 seeded modalities (see `_MODALITY_SEED` in `src/db.py`)
+- Production default prices: Angiotomografia=R$30, Radiografia=R$4, RM=R$35, TC Geral=R$30, TC Abdome Total=R$60
+- Production default exams/h: 4.0, 80.0, 8.0, 10.0, 5.0
 - Default monthly goal: R$45,000
 - Work starts at 08:00
-- CSV import mapping (legacy): `ag`→TC, `tt`→2×TC
+- `_MAX_MESSAGE_PAIRS = 15` (chat history: system + 30 user/assistant)
+- Streaming timeout: 30s (vs 15s for one-shot)
+- SSE parser: safe accessor chain (`data.get("choices") or [{}]`, `choice.get("delta") or {}`)
 
 ---
 
 ## Success Criteria
 
 Before considering any task done:
-1. **Tests pass:** `uv run pytest tests/ -v` → 108 passed (or higher if new tests added)
+1. **Tests pass:** `uv run pytest tests/ -v` → 150 passed (or higher if new tests added)
 2. **Lint clean:** `uv run ruff check src/ tests/` → no errors
-3. **Types check:** `uv run mypy src/` → no new errors (existing warnings may exist)
+3. **Types check:** `uv run mypy src/` → no new errors
 4. **New functions have tests** — add to the appropriate `tests/test_*.py` file
 5. **New public functions have docstrings** — intent + one usage example
 6. **No dead code** — check with `rg`/`grep` for unused imports, functions, variables
-7. **For deployment changes:** verify Ansible playbooks still pass `ansible-lint` and playbook syntax check
+7. **For deployment changes:** verify Ansible playbooks pass `ansible-lint` and syntax check
 8. **For Dockerfile changes:** verify `hadolint` passes
+9. **For chat changes:** verify both $ escaping rules (history + streaming) per `docs/markdown-escaping-guide.md`
 
 ---
 
@@ -261,7 +265,7 @@ uv run mypy src/
 # Linting (deployment files)
 ansible-lint ansible/                    # Ansible playbooks
 hadolint Dockerfile                      # Dockerfile
-yamllint .                               # All YAML files (respects .yamllint.yml ignores)
+yamllint .                               # All YAML files
 
 # Run the app (manual spot-check)
 uv run streamlit run app.py
@@ -277,6 +281,7 @@ uv run streamlit run app.py
   - You need to introduce a new dependency not already in `pyproject.toml`
   - You're unsure whether a design decision is intentional
   - Changing `.streamlit/config.toml` theme values (has visual impact across all tabs)
+  - Modifying the streaming/message pipeline in the Chat IA tab
 - **Proceed without asking** when:
   - Adding tests for existing logic
   - Fixing a bug with clear reproduction
@@ -286,7 +291,8 @@ uv run streamlit run app.py
   - Refactoring within a single module (no API changes)
   - Adding or updating Ansible playbooks following existing patterns
   - Updating Dockerfile dependencies (must sync with `pyproject.toml`)
-  - Editing `docs/deployment.md` for clarity or accuracy
+  - Editing documentation for clarity or accuracy
+  - Adding a new modality color entry to `MODALITY_COLORS`
 
 ---
 
@@ -295,15 +301,19 @@ uv run streamlit run app.py
 - **API key lives in DB** (`user_settings`), not in `.env` — do not reintroduce `python-dotenv` or `.env` loading
 - **Sidebar does NOT use `st.form`** — the date-dependent pre-fill requires widgets to rerun naturally; keep the imperative save button + spinner pattern
 - **Tab navigation uses `st.radio`** (not `st.tabs`) — Material icons render correctly in radio labels
-- **Progress gauge uses teal monochrome gradient** (not red/amber/green) — this is a deliberate aesthetic choice
+- **Progress gauge uses teal monochrome gradient** (not red/amber/green) — deliberate aesthetic choice (Cal.com-inspired)
 - **No `st.divider()` in the app** — removed intentionally; use spacing and section headers
 - **Chart modules have no DB access** — they receive pre-computed data as parameters
 - **Streamlit bound to loopback only** — Caddy is the sole public-facing endpoint; do not expose 8501 externally
 - **Ansible secrets in `all.yml`** — encrypted inline via `ansible-vault encrypt_string`; do not create separate vault files
 - **`requirements.txt` has been removed** — `pyproject.toml` + `uv.lock` are the only canonical dependency sources
-- **11 dynamic modalities** — never hardcode RM/TC/RX in UI; always load from DB via `load_active_modalities()`
+- **Dynamic modalities** — never hardcode modality labels/prices in UI; always load from DB via `load_active_modalities()`
 - **Git deploy key** — ed25519 SSH key auto-generated on VPS, registered via GitHub API; no ForwardAgent needed
 - **LLM model configurable via slug** — stored in `user_settings` as `llm_model` key; constructor accepts it as parameter
+- **AI insights moved to Chat IA tab** — the Analysis tab's AI section was removed in v1.5.0; all AI interaction now goes through the Chat IA tab with RAG context and streaming
+- **Modality slugs immutable after creation** — `slugify()` is run once at add time; user edits label but slug persists
+- **`md_escape()` required in two places** — history rendering AND streaming wrapper; both are required, not either-or (see `docs/markdown-escaping-guide.md`)
+- **Chat history capped at 15 pairs** — system message preserved, older user/assistant pairs trimmed from front
 
 ---
 
@@ -313,10 +323,10 @@ uv run streamlit run app.py
 - Portuguese locale for all user-facing text
 - Cal.com-inspired monochrome design aesthetic
 - The `uv` package manager is installed and is the standard toolchain
-- `data/telerrad.db` contains actual production data (Jan–Apr 2026); tests use `:memory:` databases
+- `data/telerrad.db` may contain production data; tests use `:memory:` databases
 - Deployment target is a clean Debian 12+ or Ubuntu 22.04+ VPS
-- Git access uses deploy key (ed25519 SSH key generated on VPS and registered as read-only GitHub deploy key)
-- SSH agent forwarding is NOT required for deployment (replaced by deploy key in v1.2.0)
+- Git access uses deploy key (ed25519 SSH key on VPS, registered as read-only GitHub deploy key)
+- OpenRouter API key is configured by the user in the Settings tab
 
 ---
 
@@ -325,7 +335,7 @@ uv run streamlit run app.py
 ```bash
 cd /home/galvani/dev/radtracker
 uv sync                          # install deps
-uv run pytest tests/ -v          # verify tests pass (108 expected)
+uv run pytest tests/ -v          # verify tests pass (150 expected)
 uv run streamlit run app.py      # run the app
 ```
 
@@ -334,7 +344,7 @@ For deployment:
 export VPS_HOST=10.10.10.209
 export VPS_USER=galvani
 ansible-galaxy collection install -r ansible/requirements.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
 
-Read `README.md` for end-user setup instructions. Read `docs/context.md` for exhaustive module-by-module detail. Read `docs/deployment.md` for the complete deployment guide.
+Read `README.md` for end-user setup instructions. Read `docs/context.md` for exhaustive module-by-module detail. Read `docs/deployment.md` for the complete deployment guide. Read `docs/markdown-escaping-guide.md` for `$` escaping rules.
