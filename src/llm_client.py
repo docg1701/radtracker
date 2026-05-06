@@ -95,7 +95,8 @@ def build_rag_context(
         stats: Dict de compute_historical_stats().
         active_mods: Lista de modalidades ativas.
         system_prompt: Prompt personalizado do usuário (settings).
-                       Se None, usa o prompt padrão (_SYSTEM_PROMPT).
+                       Se None ou string vazia, usa o prompt padrão
+                       (_SYSTEM_PROMPT).
 
     Returns:
         String completa do system prompt com contexto RAG injetado.
@@ -132,8 +133,10 @@ def _enrich_stats(
     ma30_val = 0.0
     if not df.empty and "ma7" in df.columns and "ma30" in df.columns:
         last_row = df.iloc[-1]
-        ma7_val = float(last_row.get("ma7", 0.0) or 0.0)
-        ma30_val = float(last_row.get("ma30", 0.0) or 0.0)
+        raw_ma7 = last_row.get("ma7", 0.0)
+        raw_ma30 = last_row.get("ma30", 0.0)
+        ma7_val = float(raw_ma7) if pd.notna(raw_ma7) else 0.0
+        ma30_val = float(raw_ma30) if pd.notna(raw_ma30) else 0.0
 
     # ── Acceleration trend ──
     tendencia = "estável"
@@ -365,6 +368,7 @@ class LLMClient:
     # ── Private helpers ──
 
     def _headers(self) -> dict[str, str]:
+        """Return Authorization + Content-Type headers for OpenRouter."""
         return {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",

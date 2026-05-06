@@ -1,10 +1,11 @@
 """Tests for src.llm_client — v2 OpenRouter API client with mocked HTTP."""
 
+import httpx
 import pytest
 import respx
 from httpx import Response, TimeoutException
 
-from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context, _SYSTEM_PROMPT
+from src.llm_client import _SYSTEM_PROMPT, LLMClient, LLMUnavailableError, build_rag_context
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OK_JSON = {"choices": [{"message": {"content": "Insight gerado pela IA"}}]}
@@ -50,6 +51,16 @@ class TestLlmClientErrors:
         with pytest.raises(LLMUnavailableError) as exc:
             llm.generate(_minimal_stats(), _ACTIVE_MODS)
         assert "Timeout" in str(exc.value)
+
+    @respx.mock
+    def test_llm_client_connect_error(self):
+        respx.post(_OPENROUTER_URL).mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        llm = LLMClient("sk-fake-key")
+        with pytest.raises(LLMUnavailableError) as exc:
+            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+        assert "conexão" in str(exc.value)
 
     @respx.mock
     def test_llm_client_http_500(self):
@@ -203,13 +214,22 @@ class TestGenerateStream:
         assert "conexão" in str(exc.value)
 
     @respx.mock
+    def test_generate_stream_timeout(self):
+        respx.post(_OPENROUTER_URL).mock(side_effect=TimeoutException("timeout"))
+        llm = LLMClient("sk-test")
+        with pytest.raises(LLMUnavailableError) as exc:
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert "Timeout" in str(exc.value)
+        assert "30s" in str(exc.value)
+
+    @respx.mock
     def test_generate_stream_malformed_sse(self):
         """Linhas com JSON inválido ou sem choices são ignoradas; tokens válidos são yield."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 "data: not json",
                 'data: {"model":"foo"}',
-                'data: {"choices":[],"delta":{}}',
+                'data: {"delta":{"content":"ignored"}}',
                 'data: {"choices":[{"delta":{"content":"ok"}}]}',
                 "data: [DONE]",
             )
@@ -236,7 +256,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_done_with_whitespace(self):
-        route = respx.post(_OPENROUTER_URL).mock(
+        respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":"fim"}}]}',
                 "data:  [DONE]  ",
