@@ -12,6 +12,7 @@ from typing import Any
 import streamlit as st
 
 from src.calculations import compute_historical_stats
+from src.formatting import md_escape
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
 from src.ui.settings import ensure_settings
 
@@ -29,6 +30,18 @@ _SUGGESTIONS = [
 @st.fragment
 def render_chat_tab(conn: Any) -> None:
     """Render the complete Chat IA tab with streaming and RAG context."""
+    # ── Pastel avatar colours ──
+    st.html("""
+    <style>
+        [data-testid="stChatMessageAvatarAssistant"] {
+            background-color: #A7F3D0 !important;
+        }
+        [data-testid="stChatMessageAvatarUser"] {
+            background-color: #BFDBFE !important;
+        }
+    </style>
+    """)
+
     today = date.today()
     year_month = today.isoformat()[:7]
 
@@ -61,17 +74,36 @@ def render_chat_tab(conn: Any) -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # First open: generate initial report via RAG context
+    # First open: show initiate button
     if not st.session_state.messages:
-        _trigger_initial_report(conn, year_month, goal, active_mods, llm_prompt)
-        st.rerun()
+        _, col, _ = st.columns([1, 2, 1])
+        with col:
+            with st.container(border=True):
+                st.markdown(
+                    ":material/smart_toy:", text_alignment="center"
+                )
+                st.subheader("Chat com IA")
+                st.markdown(
+                    "O assistente analisa seus dados de produção "
+                    "e responde perguntas em português."
+                )
+                if st.button(
+                    ":material/psychology: Iniciar análise",
+                    type="primary",
+                    key="chat_start",
+                ):
+                    _trigger_initial_report(
+                        conn, year_month, goal, active_mods, llm_prompt
+                    )
+                    st.rerun()
+        return
 
     # Render existing messages (skip system message in UI)
     for msg in st.session_state.messages:
         if msg["role"] == "system":
             continue
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            st.markdown(md_escape(msg["content"]))
 
     # Dispatcher: pending user message needs assistant reply
     pending = (
@@ -170,22 +202,30 @@ def _trigger_initial_report(
 def _stream_response(api_key: str, llm_model: str) -> None:
     """Stream assistant response for the pending user message.
 
-    Trims history to _MAX_MESSAGE_PAIRS before sending, appends the
-    complete response to st.session_state.messages when done.
+    Trims history to _MAX_MESSAGE_PAIRS before sending, shows a processing
+    indicator while waiting for the first token, appends the complete
+    response to st.session_state.messages when done.
     """
     _trim_history()
     with st.chat_message("assistant"):
+        placeholder = st.empty()
+        placeholder.status(
+            ":material/psychology: Processando...", expanded=False
+        )
         llm = LLMClient(api_key, model=llm_model)
         stream = llm.generate_stream(st.session_state.messages)
         try:
             response = st.write_stream(stream)
+            placeholder.empty()
         except LLMUnavailableError:
+            placeholder.empty()
             response = (
                 ":material/error: Não foi possível gerar a resposta. "
                 "Verifique sua conexão ou chave de API."
             )
             st.error(response)
         except Exception as exc:
+            placeholder.empty()
             response = (
                 ":material/error: Erro inesperado ao gerar a resposta. "
                 f"Detalhes: {exc}"
