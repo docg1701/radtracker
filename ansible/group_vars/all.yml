@@ -53,5 +53,8 @@ basicauth_users: !vault |
       64623733623665313666346561653432316662393234343135303064653365333032323931366537
       39313861393061353530
 
+# Timezone for the Streamlit container (affects date.today())
+timezone: America/Fortaleza
+
 # Backup retention (days)
 backup_retention_days: 30

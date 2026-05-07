@@ -24,6 +24,8 @@ services:
       - "127.0.0.1:8501:8501"   # loopback only — health checks, never exposed externally
     volumes:
       - "./data:/app/data"
+    env_file:
+      - .env
     networks:
       - radtracker
     healthcheck:
