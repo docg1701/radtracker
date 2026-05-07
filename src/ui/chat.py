@@ -12,7 +12,6 @@ from typing import Any
 import streamlit as st
 
 from src.calculations import compute_historical_stats
-from src.formatting import md_escape
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
 from src.ui.settings import ensure_settings
 
@@ -103,7 +102,7 @@ def render_chat_tab(conn: Any) -> None:
         if msg["role"] == "system":
             continue
         with st.chat_message(msg["role"]):
-            st.markdown(md_escape(msg["content"]))
+            st.markdown(msg["content"])
 
     # Dispatcher: pending user message needs assistant reply
     pending = (
@@ -214,7 +213,12 @@ def _stream_response(api_key: str, llm_model: str) -> None:
         )
         llm = LLMClient(api_key, model=llm_model)
         stream = llm.generate_stream(st.session_state.messages)
-        safe_stream = (token.replace("$", "\\$") for token in stream)
+        safe_stream = (
+            token.replace("\u202f", " ")
+            .replace("\u00a0", " ")
+            .replace("$", "\\$")
+            for token in stream
+        )
         try:
             response = st.write_stream(safe_stream)
             placeholder.empty()
