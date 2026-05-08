@@ -6,22 +6,24 @@ from src.text_sanitize import sanitize_text, sanitize_token
 class TestSanitizeToken:
     """Tests for sanitize_token() — streaming processor."""
 
-    def test_collapses_thin_space(self) -> None:
-        assert sanitize_token("R$\u202f45.000") == "R$ 45.000"
+    def test_collapses_thin_space_and_escapes_currency(self) -> None:
+        assert sanitize_token("R$\u202f45.000") == r"R\$ 45.000"
 
     def test_collapses_nbsp(self) -> None:
         assert sanitize_token("valor\u00a0total") == "valor total"
 
-    def test_strips_legacy_double_escaped_dollar(self) -> None:
-        assert sanitize_token(r"Valor: \\$ 100") == "Valor: $ 100"
+    def test_strips_legacy_double_and_escapes_currency(self) -> None:
+        assert sanitize_token(r"Valor: \\$ 100") == r"Valor: \$ 100"
 
     def test_does_not_convert_latex_brackets(self) -> None:
-        # Paired conversion skipped during streaming
         assert sanitize_token(r"\( x^2 \)") == r"\( x^2 \)"
         assert sanitize_token(r"\[ x^2 \]") == r"\[ x^2 \]"
 
-    def test_preserves_normal_text(self) -> None:
-        assert sanitize_token("**negrito** e $x=2$") == "**negrito** e $x=2$"
+    def test_preserves_math_dollar(self) -> None:
+        assert sanitize_token("$x=2$") == "$x=2$"
+
+    def test_escapes_currency_no_space(self) -> None:
+        assert sanitize_token("R$129") == r"R\$129"
 
 
 class TestSanitizeText:
@@ -30,13 +32,41 @@ class TestSanitizeText:
     # ── whitespace ──
 
     def test_collapses_thin_space(self) -> None:
-        assert sanitize_text("R$\u202f45.000") == "R$ 45.000"
+        assert sanitize_text("R$\u202f45.000") == r"R\$ 45.000"
 
     def test_collapses_nbsp(self) -> None:
         assert sanitize_text("valor\u00a0total") == "valor total"
 
-    def test_preserves_regular_spaces(self) -> None:
-        assert sanitize_text("R$ 45.000,00") == "R$ 45.000,00"
+    # ── currency escape ──
+
+    def test_escapes_currency_with_space(self) -> None:
+        assert sanitize_text("R$ 45.000,00") == r"R\$ 45.000,00"
+
+    def test_escapes_currency_without_space(self) -> None:
+        assert sanitize_text("R$129.513") == r"R\$129.513"
+
+    def test_escapes_standalone_currency(self) -> None:
+        assert sanitize_text("Custa $50") == r"Custa \$50"
+
+    def test_preserves_math_dollar(self) -> None:
+        assert sanitize_text("$x^2$") == "$x^2$"
+        assert sanitize_text(r"$\frac{a}{b}$") == r"$\frac{a}{b}$"
+
+    def test_preserves_native_display_math(self) -> None:
+        assert sanitize_text(r"$$\sum x$$") == r"$$\sum x$$"
+
+    def test_mixed_currency_and_math(self) -> None:
+        assert sanitize_text(
+            r"Faturamento R$ 100 e fórmula $f(x)=2x$"
+        ) == r"Faturamento R\$ 100 e fórmula $f(x)=2x$"
+
+    def test_multiple_currencies_in_text(self) -> None:
+        assert sanitize_text(r"R$ 12,12 vs R$ 8,14") == r"R\$ 12,12 vs R\$ 8,14"
+
+    def test_currency_idempotent(self) -> None:
+        first = sanitize_text("R$ 100")
+        second = sanitize_text(first)
+        assert first == second
 
     # ── LaTeX bracket → $/$$ conversion ──
 
@@ -59,15 +89,11 @@ class TestSanitizeText:
 
     # ── legacy double-escape stripping ──
 
-    def test_strips_legacy_double_escaped_dollar(self) -> None:
-        # Simulates stored content from old double-escaped sessions
-        assert sanitize_text(r"Valor: \\$ 100") == "Valor: $ 100"
+    def test_strips_legacy_and_escapes_currency(self) -> None:
+        assert sanitize_text(r"Valor: \\$ 100") == r"Valor: \$ 100"
 
     def test_single_backslash_dollar_passes_through(self) -> None:
-        # \$ from old safe_stream is valid markdown — renders as $
-        # sanitize_text preserves it (no double-escape to clean)
         result = sanitize_text(r"R\$ 100")
-        # The backslash remains — st.markdown will render it as literal $
         assert r"\$" in result
 
     # ── preserves normal text ──
@@ -79,10 +105,6 @@ class TestSanitizeText:
     def test_preserves_markdown_formatting(self) -> None:
         original = "**negrito** e *itálico* e `código`"
         assert sanitize_text(original) == original
-
-    def test_preserves_dollar_sign_followed_by_space(self) -> None:
-        # Currency pattern: $ followed by space — not math
-        assert sanitize_text("Custa $ 50") == "Custa $ 50"
 
     # ── unmatched delimiter fallback ──
 
@@ -110,14 +132,6 @@ class TestSanitizeText:
         second = sanitize_text(first)
         assert first == second
 
-    # ── native dollar math untouched ──
-
-    def test_preserves_native_dollar_math(self) -> None:
-        assert sanitize_text(r"$\frac{a}{b}$") == r"$\frac{a}{b}$"
-
-    def test_preserves_native_display_math(self) -> None:
-        assert sanitize_text(r"$$\sum x$$") == r"$$\sum x$$"
-
     # ── edge cases ──
 
     def test_empty_string(self) -> None:
@@ -129,8 +143,7 @@ class TestSanitizeText:
     def test_only_thin_space(self) -> None:
         assert sanitize_text("\u202f") == " "
 
-    def test_mixed_escape_and_math(self) -> None:
-        # Legacy double-escaped \\$ alongside real LaTeX brackets
+    def test_mixed_legacy_and_latex(self) -> None:
         assert sanitize_text(r"Ganhou \\$ 100 com \( x^2 \)") == (
-            r"Ganhou $ 100 com $ x^2 $"
+            r"Ganhou \$ 100 com $ x^2 $"
         )
