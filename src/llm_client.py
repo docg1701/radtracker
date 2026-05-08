@@ -29,54 +29,26 @@ class LLMUnavailableError(Exception):
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-_USER_PROMPT_TEMPLATE = """\
-Dados completos da produção:
+_RAG_TEMPLATE = """\
+=== DADOS ATUAIS PARA ANÁLISE ===
+Os dados abaixo são o contexto da conversa. Use-os para responder perguntas.
+Quando o usuário pedir "relatório" ou "análise", use TODOS os meses, não
+apenas o mês atual.
 
-=== DADOS DO ANO (YTD) ===
-- Faturamento acumulado no ano: {ytd_earnings}
-- Meses com dados: {ytd_months}
-- Média mensal no ano: {ytd_avg_monthly}
-- Evolução mensal:
-{ytd_monthly_breakdown}
+=== RESUMO DO ANO (YTD) ===
+Faturamento acumulado: {ytd_earnings} | Média mensal: {ytd_avg_monthly} | Meses com dados: {ytd_months}
 
-=== DADOS DIÁRIOS COMPLETOS (todas as modalidades) ===
+=== DETALHES POR MÊS ===
+{monthly_detail}
+
+=== DADOS DIÁRIOS COMPLETOS (todas as modalidades, todos os dias) ===
 {full_daily_table}
-
-=== RESUMO MENSAL POR MODALIDADE ===
-{monthly_modality_summary}
-
-=== META E RITMO (mês atual) ===
-- Faturamento no mês (MTD): {mtd}
-- Percentual da meta: {pct:.0f}%
-- Meta mensal: {meta_mensal}
-- Dias trabalhados: {dias_trabalhados} de {total_dias} dias no mês
-- Dias restantes: {dias_restantes}
-- Média diária atual: {media_diaria}
-- Meta diária necessária (para bater a meta): {meta_diaria}
-- Projeção de fechamento do mês: {projecao}
-- Dias consecutivos abaixo da meta diária: {consecutivos}
-
-=== TENDÊNCIAS ===
-- Variação vs semana anterior (WoW): {wow}
-- Variação vs mês anterior (MoM): {mom}
-- Média móvel 7 dias (último valor): {ma7}
-- Média móvel 30 dias (último valor): {ma30}
-- Média histórica mensal (todos os meses): {media_historica}
-- Tendência de aceleração/desaceleração: {tendencia}
-
-=== VOLUME DE EXAMES (por modalidade) ===
-{modality_breakdown}
-
-=== DESTAQUES DO MÊS ===
-- Dia mais produtivo: {dia_produtivo} com {valor_dia_produtivo}
-- Média de exames por dia: {media_exames_dia:.0f}
-- Ticket médio por exame: {ticket_medio}
-- Horas estimadas no mês: {horas_estimadas}h ({horas_diarias}h/dia)
-- Receita média por hora: {receita_por_hora}
 
 Produza uma análise completa e detalhada. Use **negrito** para destaques.
 Inclua: avaliação do ritmo, tendências de curto e longo prazo, análise
-do mix de modalidades, riscos e oportunidades, e recomendações práticas."""
+do mix de modalidades, riscos e oportunidades, e recomendações práticas.
+Compare os meses entre si.
+"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -89,27 +61,10 @@ def build_rag_context(
     active_mods: list[dict[str, Any]],
     system_prompt: str,
 ) -> str:
-    """Monta o system prompt com dados estruturados dos stats para RAG.
-
-    Args:
-        stats: Dict de compute_historical_stats().
-        active_mods: Lista de modalidades ativas.
-        system_prompt: Prompt personalizado do usuário (settings).
-
-    Returns:
-        String completa do system prompt com contexto RAG injetado.
-    """
+    """Build the full system prompt with RAG context injected."""
     enriched = _enrich_stats(stats, active_mods)
-    user_prompt = _USER_PROMPT_TEMPLATE.format(**enriched)
-    prompt = system_prompt
-    return f"""{prompt}
-
-=== DADOS ATUAIS PARA ANÁLISE ===
-Os dados abaixo são o contexto da conversa. Use-os para responder perguntas.
-Quando o usuário pedir "relatório", gere uma análise completa com esses dados.
-
-{user_prompt}
-"""
+    rag_block = _RAG_TEMPLATE.format(**enriched)
+    return f"{system_prompt}\n\n{rag_block}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -121,104 +76,100 @@ def _enrich_stats(
     stats: dict[str, Any],
     active_modalities: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Extract scalar metrics from stats + modality data for the prompt."""
+    """Build a rich per-month breakdown + YTD summary + full daily table."""
     df: pd.DataFrame = stats.get("df", pd.DataFrame())
-    current = stats.get("current_month_stats", {})
-    mix = stats.get("modality_mix_current", {})
-
-    # ── MA7 / MA30 latest ──
-    ma7_val = 0.0
-    ma30_val = 0.0
-    if not df.empty and "ma7" in df.columns and "ma30" in df.columns:
-        last_row = df.iloc[-1]
-        raw_ma7 = last_row.get("ma7", 0.0)
-        raw_ma30 = last_row.get("ma30", 0.0)
-        ma7_val = float(raw_ma7) if pd.notna(raw_ma7) else 0.0
-        ma30_val = float(raw_ma30) if pd.notna(raw_ma30) else 0.0
-
-    # ── Acceleration trend ──
-    tendencia = "estável"
-    if not df.empty and len(df) >= 14:
-        recent = df["ma7"].iloc[-1] if pd.notna(df["ma7"].iloc[-1]) else 0.0
-        prior = df["ma7"].iloc[-8] if pd.notna(df["ma7"].iloc[-8]) else 0.0
-        if prior > 0 and recent > 0:
-            delta = (recent - prior) / prior * 100
-            if delta > 5:
-                tendencia = f"acelerando (+{delta:.0f}% na última semana)"
-            elif delta < -5:
-                tendencia = f"desacelerando ({delta:.0f}% na última semana)"
-
-    # ── Total exam counts per modality (current month) ──
-    total_exames = 0
-    modality_lines: list[str] = []
     current_ym = stats.get("year_month") or ""
-    horas_estimadas = 0.0
-    for m in active_modalities:
-        slug = m["slug"]
-        price = float(m.get("price", 0))
-        eph = float(m.get("exams_per_hour", 0))
-        count = 0
-        if not df.empty and slug in df.columns:
-            month_df = df[df["date"].str[:7] == current_ym]
-            count = int(month_df[slug].sum()) if not month_df.empty else 0
-        total_exames += count
-        if eph > 0:
-            horas_estimadas += count / eph
-        mix_pct = mix.get(slug, 0.0)
-        receita_hora = price * eph if eph > 0 else 0.0
-        modality_lines.append(
-            f"- {m['label']}: {count} exames "
-            f"({mix_pct:.1f}% da receita, "
-            f"R$ {price:.2f}/exame, "
-            f"{eph:.1f} exames/h, "
-            f"≈ R$ {receita_hora:.2f}/h)"
-        )
-    modality_breakdown = "\n".join(modality_lines)
 
-    # ── Best day ──
-    dia_produtivo = "—"
-    valor_dia_produtivo = "—"
-    if not df.empty and "earnings" in df.columns:
-        month_df = df[df["date"].str[:7] == current_ym]
-        if not month_df.empty:
-            best_idx = month_df["earnings"].idxmax()
-            if pd.notna(best_idx):
-                best_row = month_df.loc[best_idx]
-                dia_produtivo = str(best_row.get("date", "—"))
-                valor_dia_produtivo = fmt_brl(float(best_row.get("earnings", 0.0)))
+    MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
-    # ── Historical monthly average ──
-    media_historica = "R$ 0,00"
-    if not df.empty and len(df) >= 30:
-        total_earnings = float(df["earnings"].sum())
-        unique_months = df["date"].str[:7].nunique()
-        if unique_months > 0:
-            media_historica = fmt_brl(total_earnings / unique_months)
+    def _month_name(ym: str) -> str:
+        try:
+            m = int(ym[5:7])
+            return MESES[m] if 1 <= m <= 12 else ym
+        except (IndexError, ValueError):
+            return ym
 
-    # ── YTD (year-to-date) ──
+    # ── YTD ──
     current_year = current_ym[:4] if len(current_ym) >= 4 else ""
     ytd_earnings = 0.0
-    ytd_monthly_lines: list[str] = []
     ytd_month_count = 0
     if not df.empty and current_year:
         year_df = df[df["date"].str[:4] == current_year]
         ytd_earnings = float(year_df["earnings"].sum())
-        monthly = (
-            year_df.groupby(year_df["date"].str[:7])
-            .agg(total=("earnings", "sum"))
-            .reset_index()
-        )
-        monthly = monthly.sort_values("date")
-        ytd_month_count = len(monthly)
-        MESES_PT = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-                     "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-        for _, row in monthly.iterrows():
-            ym = str(row["date"])
-            month_num = int(ym[5:7])
-            abbr = MESES_PT[month_num] if 1 <= month_num <= 12 else ym
-            ytd_monthly_lines.append(f"  {abbr}: {fmt_brl(float(row['total']))}")
+        ytd_month_count = year_df["date"].str[:7].nunique()
     ytd_avg_monthly = fmt_brl(ytd_earnings / ytd_month_count) if ytd_month_count > 0 else "R$ 0,00"
-    ytd_monthly_breakdown = "\n".join(ytd_monthly_lines) if ytd_monthly_lines else "  (sem dados)"
+
+    # ── Per-month detail ──
+    months_list = sorted(df["date"].str[:7].unique()) if not df.empty else []
+    detail_blocks: list[str] = []
+
+    for ym in months_list:
+        month_df = df[df["date"].str[:7] == ym]
+        if month_df.empty:
+            continue
+
+        mtd = float(month_df["earnings"].sum())
+        days_worked = month_df["date"].nunique()
+        daily_avg = mtd / days_worked if days_worked > 0 else 0.0
+
+        # Total exames + per modality
+        total_exames_mes = 0
+        horas_mes = 0.0
+        mod_lines: list[str] = []
+        for m in active_modalities:
+            slug = m["slug"]
+            price = float(m.get("price", 0))
+            eph = float(m.get("exams_per_hour", 0))
+            count = int(month_df[slug].sum()) if slug in month_df.columns else 0
+            total_exames_mes += count
+            if eph > 0 and count > 0:
+                horas_mes += count / eph
+            if count > 0:
+                pct = (count * price / mtd * 100) if mtd > 0 else 0.0
+                rec_hora = price * eph if eph > 0 else 0.0
+                mod_lines.append(
+                    f"  {m['label']}: {count} exames, "
+                    f"{fmt_brl(count * price)} ({pct:.0f}%), "
+                    f"R$ {price:.2f}/exame, "
+                    f"{eph:.1f}e/h ≈ R$ {rec_hora:.2f}/h"
+                )
+
+        horas_dia = horas_mes / days_worked if days_worked > 0 else 0.0
+        rec_hora_mes = mtd / horas_mes if horas_mes > 0 else 0.0
+        ticket = fmt_brl(mtd / total_exames_mes) if total_exames_mes > 0 else "R$ 0,00"
+
+        # Best day
+        best_date = "—"
+        best_val = "—"
+        if "earnings" in month_df.columns:
+            best_idx = month_df["earnings"].idxmax()
+            if pd.notna(best_idx):
+                best_row = month_df.loc[best_idx]
+                best_date = str(best_row.get("date", "—"))
+                best_val = fmt_brl(float(best_row.get("earnings", 0.0)))
+
+        # WoW / MoM
+        wow = stats.get("wow_change_pct")
+        mom = stats.get("mom_change_pct")
+
+        block = (
+            f"--- {_month_name(ym).upper()} ---\n"
+            f"Faturamento: {fmt_brl(mtd)} | "
+            f"Dias trabalhados: {days_worked} | "
+            f"Média diária: {fmt_brl(daily_avg)} | "
+            f"Ticket médio: {ticket}\n"
+            f"Horas estimadas: {horas_mes:.1f}h "
+            f"({horas_dia:.1f}h/dia) | "
+            f"Receita/h: {fmt_brl(rec_hora_mes)}\n"
+            f"Melhor dia: {best_date} ({best_val}) | "
+            f"Total exames: {total_exames_mes}\n"
+        )
+        if mod_lines:
+            block += "Modalidades:\n" + "\n".join(mod_lines) + "\n"
+        detail_blocks.append(block)
+
+    monthly_detail = "\n".join(detail_blocks) if detail_blocks else "(sem dados mensais)"
 
     # ── Full daily table ──
     full_daily_table = "(sem dados diários)"
@@ -227,11 +178,9 @@ def _enrich_stats(
         available_cols = [c for c in mod_slugs if c in df.columns]
         if available_cols:
             daily_rows: list[str] = []
-            # Header with abbreviations
             header_parts = ["Data"]
             for s in available_cols:
                 label = next((m["label"] for m in active_modalities if m["slug"] == s), s)
-                # Abbreviate: "Ressonância Magnética" → "RM"
                 abbr = "".join(w[0] for w in label.split() if w[0].isupper()).upper() or label[:3]
                 header_parts.append(abbr)
             daily_rows.append(" | ".join(header_parts))
@@ -245,78 +194,12 @@ def _enrich_stats(
                 daily_rows.append(" | ".join(parts))
             full_daily_table = "\n".join(daily_rows)
 
-    # ── Monthly per-modality summary ──
-    monthly_modality_summary = "(sem dados)"
-    if not df.empty:
-        mod_slugs = [m["slug"] for m in active_modalities]
-        available = [c for c in mod_slugs if c in df.columns]
-        if available:
-            months_list = sorted(df["date"].str[:7].unique())
-            summary_lines: list[str] = []
-            # Header
-            header = ["Mês"]
-            for s in available:
-                label = next((m["label"] for m in active_modalities if m["slug"] == s), s)
-                abbr = "".join(w[0] for w in label.split() if w[0].isupper()).upper() or label[:3]
-                header.append(f"{abbr} (exam)")
-                header.append(f"{abbr} (R$)")
-            summary_lines.append(" | ".join(header))
-            # Rows
-            for ym in months_list:
-                parts = [ym]
-                for s in available:
-                    price = float(next((m["price"] for m in active_modalities if m["slug"] == s), 0))
-                    ym_count = int(df[df["date"].str[:7] == ym][s].sum()) if s in df.columns else 0
-                    parts.append(str(ym_count) if ym_count > 0 else "·")
-                    parts.append(fmt_brl(ym_count * price) if ym_count > 0 else "·")
-                summary_lines.append(" | ".join(parts))
-            monthly_modality_summary = "\n".join(summary_lines)
-
-    # ── Average exams per day ──
-    days_worked = current.get("days_worked", 0)
-    media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
-
-    # ── Ticket médio ──
-    mtd = current.get("mtd_earnings", 0.0)
-    ticket_medio = fmt_brl(mtd / total_exames) if total_exames > 0 else "R$ 0,00"
-
-    horas_diarias = horas_estimadas / days_worked if days_worked > 0 else 0.0
-    receita_por_hora = mtd / horas_estimadas if horas_estimadas > 0 else 0.0
-
     return {
-        "mtd": fmt_brl(mtd),
-        "pct": current.get("pct_goal", 0.0),
-        "meta_mensal": fmt_brl(mtd / max(current.get("pct_goal", 1.0), 0.01) * 100
-                                if current.get("pct_goal", 0) > 0 else 0),
-        "dias_trabalhados": days_worked,
-        "total_dias": current.get("total_calendar_days", 0),
-        "dias_restantes": current.get("remaining_calendar_days", 0),
-        "media_diaria": fmt_brl(current.get("daily_avg", 0.0)),
-        "meta_diaria": fmt_brl(max(0.0, current.get("daily_target_needed", 0.0))),
-        "projecao": fmt_brl(current.get("projection_month_end", 0.0)),
-        "consecutivos": stats.get("consecutive_below_target", 0),
-        "wow": f"{stats.get('wow_change_pct'):+.1f}%"
-               if stats.get("wow_change_pct") is not None else "sem dados suficientes",
-        "mom": f"{stats.get('mom_change_pct'):+.1f}%"
-               if stats.get("mom_change_pct") is not None else "sem dados suficientes",
-        "ma7": fmt_brl(ma7_val),
-        "ma30": fmt_brl(ma30_val),
-        "media_historica": media_historica,
-        "tendencia": tendencia,
-        "modality_breakdown": modality_breakdown,
-        "dia_produtivo": dia_produtivo,
-        "valor_dia_produtivo": valor_dia_produtivo,
-        "media_exames_dia": media_exames_dia,
-        "ticket_medio": ticket_medio,
-        "horas_estimadas": f"{horas_estimadas:.1f}",
-        "horas_diarias": f"{horas_diarias:.1f}",
-        "receita_por_hora": fmt_brl(receita_por_hora),
         "ytd_earnings": fmt_brl(ytd_earnings),
-        "ytd_months": str(ytd_month_count),
         "ytd_avg_monthly": ytd_avg_monthly,
-        "ytd_monthly_breakdown": ytd_monthly_breakdown,
+        "ytd_months": str(ytd_month_count),
+        "monthly_detail": monthly_detail,
         "full_daily_table": full_daily_table,
-        "monthly_modality_summary": monthly_modality_summary,
     }
 
 

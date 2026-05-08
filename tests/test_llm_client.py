@@ -82,41 +82,44 @@ class TestLlmClientErrors:
 
 
 class TestEnrichStats:
-    def test_enrich_stats_sanitizes_none_wow(self):
-        stats = _minimal_stats(wow=None)
-        enriched = _enrich_stats(stats, _ACTIVE_MODS)
-        assert enriched["wow"] == "sem dados suficientes"
-
-    def test_enrich_stats_includes_brl_formatting(self):
+    def test_enrich_stats_has_required_keys(self):
         stats = _minimal_stats()
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
-        assert enriched["mtd"] == "R$ 22.500,00"
+        for key in ["ytd_earnings", "ytd_avg_monthly", "ytd_months",
+                     "monthly_detail", "full_daily_table"]:
+            assert key in enriched, f"Missing key: {key}"
+
+    def test_enrich_stats_monthly_detail_contains_brl(self):
+        stats = _minimal_stats()
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
+        detail = enriched["monthly_detail"]
+        assert "R$" in detail
+        assert "ABRIL" in detail.upper() or "2026-04" in detail
 
 
 class TestEnrichStatsMultiMonth:
-    def test_total_exames_filters_current_month_only(self):
+    def test_monthly_detail_separates_months(self):
         stats = _multi_month_stats()
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
-        # April: 1*7 RM + 2*7 TC + 10*7 RX = 7+14+70 = 91 total
-        breakdown = enriched["modality_breakdown"]
-        assert "Ressonância Magnética: 7 exames" in breakdown
-        assert "TC Geral: 14 exames" in breakdown
-        assert "Radiografia: 70 exames" in breakdown
-        assert "896" not in breakdown
+        detail = enriched["monthly_detail"]
+        # Each month gets its own block
+        assert "--- MARÇO ---" in detail.upper() or "--- 2026-03 ---" in detail
+        assert "--- ABRIL ---" in detail.upper() or "--- 2026-04 ---" in detail
 
-    def test_best_day_filters_current_month_only(self):
+    def test_full_daily_table_includes_all_days(self):
         stats = _multi_month_stats()
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
-        # April best day = any April day; if unfiltered, best would be March
-        assert enriched["dia_produtivo"].startswith("2026-04")
-        assert "2026-03" not in enriched["dia_produtivo"]
+        table = enriched["full_daily_table"]
+        assert "2026-03" in table
+        assert "2026-04" in table
 
-    def test_ticket_medio_uses_current_month_counts(self):
+    def test_monthly_detail_has_per_modality_breakdown(self):
         stats = _multi_month_stats()
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
-        # April revenue = 7*35 + 14*25 + 70*4.5 = 910
-        # Ticket = 910 / 91 = 10.0
-        assert enriched["ticket_medio"] == "R$ 10,00"
+        detail = enriched["monthly_detail"]
+        # Should mention modality labels
+        for m in _ACTIVE_MODS:
+            assert m["label"] in detail, f"Missing modality: {m['label']}"
 
 
 # ── Streaming tests ──
@@ -256,11 +259,14 @@ class TestGenerateStream:
 
 
 class TestBuildRagContext:
-    def test_build_rag_context_includes_stats(self):
+    def test_build_rag_context_includes_template_sections(self):
         stats = _minimal_stats()
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="Teste")
         assert "=== DADOS ATUAIS PARA ANÁLISE ===" in ctx
-        assert "R$ 22.500,00" in ctx  # MTD
+        assert "=== RESUMO DO ANO (YTD) ===" in ctx
+        assert "=== DETALHES POR MÊS ===" in ctx
+        assert "=== DADOS DIÁRIOS COMPLETOS (todas as modalidades, todos os dias) ===" in ctx
+        assert "R$ 3.915,00" in ctx  # MTD computed from df earnings
 
     def test_build_rag_context_respects_custom_prompt(self):
         stats = _minimal_stats()
