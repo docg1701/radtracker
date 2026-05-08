@@ -6,12 +6,21 @@ Renders the app title, greeting, date picker, dynamic modality inputs
 """
 
 from datetime import date
+from pathlib import Path
 from typing import Any
+import tomllib
 
 import streamlit as st
 
 from src.db import load_daily_items, upsert_daily_items
 from src.ui.settings import ensure_settings
+
+
+def _get_version() -> str:
+    """Read version from pyproject.toml."""
+    pyproject = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        return tomllib.load(f)["project"]["version"]
 
 
 def render_sidebar(conn: Any) -> None:
@@ -86,4 +95,4 @@ def render_sidebar(conn: Any) -> None:
             st.rerun()
 
         # Footer
-        st.caption("radtracker v1.5 · local")
+        st.caption(f"radtracker v{_get_version()} · local")
