@@ -12,7 +12,6 @@ import streamlit as st
 
 from src.db import (
     DEFAULT_GOAL,
-    DEFAULT_LLM_MODEL,
     add_modality,
     delete_modality,
     load_active_modalities,
@@ -43,18 +42,13 @@ def ensure_settings(conn: Any) -> None:
         today = date.today()
         st.session_state.goal = load_goal(conn, today.isoformat()[:7])
     if "user_name" not in st.session_state:
-        st.session_state.user_name = load_setting(conn, "user_name", "Galvani")
+        st.session_state.user_name = load_setting(conn, "user_name", "")
     if "api_key" not in st.session_state:
         st.session_state.api_key = load_setting(conn, "api_key", "")
     if "llm_prompt" not in st.session_state:
-        default_prompt = _DEFAULT_LLM_PROMPT.replace(
-            "{user_name}", st.session_state.user_name
-        )
-        st.session_state.llm_prompt = load_setting(conn, "llm_prompt", default_prompt)
+        st.session_state.llm_prompt = load_setting(conn, "llm_prompt", "")
     if "llm_model" not in st.session_state:
-        st.session_state.llm_model = load_setting(
-            conn, "llm_model", DEFAULT_LLM_MODEL
-        )
+        st.session_state.llm_model = load_setting(conn, "llm_model", "")
 
 
 _DEFAULT_LLM_PROMPT = (
@@ -301,24 +295,26 @@ def _save_modalities(
 def _render_llm_section(conn: Any, year_month: str) -> None:
     """Fragment: monthly goal, LLM model, API key, system prompt."""
     current_goal = st.session_state.goal
-    current_name = st.session_state.get("user_name", "Galvani")
+    current_name = st.session_state.get("user_name", "")
     current_api_key = st.session_state.get("api_key", "")
-    current_prompt = st.session_state.get("llm_prompt", _DEFAULT_LLM_PROMPT)
-    current_model = st.session_state.get("llm_model", DEFAULT_LLM_MODEL)
+    current_prompt = st.session_state.get("llm_prompt", "")
+    current_model = st.session_state.get("llm_model", "")
 
-    st.subheader(":material/target: Meta mensal")
+    st.subheader(":material/target: Meta mensal *")
     goal = st.number_input(
         "Meta mensal (R$)", min_value=0.0, step=100.0,
         value=current_goal, key="cfg_goal",
     )
 
-    st.subheader(":material/person: Personalização")
-    user_name = st.text_input("Seu nome", value=current_name, key="cfg_name")
+    st.subheader(":material/person: Personalização *")
+    user_name = st.text_input("Seu nome", value=current_name, key="cfg_name",
+                              placeholder="Seu nome")
 
-    st.subheader(":material/smart_toy: IA — OpenRouter")
+    st.subheader(":material/smart_toy: IA — OpenRouter *")
     api_key = st.text_input(
         "Chave API OpenRouter", type="password",
         value=current_api_key, key="cfg_apikey",
+        placeholder="sk-or-v1-...",
     )
     st.caption("[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)")
 
@@ -341,6 +337,7 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
 
     system_prompt = st.text_area(
         "Prompt da IA", value=current_prompt, height=200, key="cfg_prompt",
+        placeholder=_DEFAULT_LLM_PROMPT,
     )
     st.caption("Use {user_name} como placeholder para o nome do usuário.")
 
@@ -361,18 +358,37 @@ def _save_llm_settings(
     llm_model: str,
     system_prompt: str,
 ) -> None:
-    """Persist LLM settings to DB + session_state."""
+    """Persist LLM settings to DB + session_state. Validates required fields."""
+    errors: list[str] = []
+    if not user_name.strip():
+        errors.append("Nome do usuário é obrigatório.")
+    if not (goal > 0.0):
+        errors.append("Meta mensal deve ser maior que zero.")
+    if not api_key.strip():
+        errors.append("Chave API OpenRouter é obrigatória.")
+    if not system_prompt.strip():
+        errors.append("Prompt da IA é obrigatório.")
+    if not llm_model.strip():
+        errors.append("Modelo LLM é obrigatório.")
+    if "/" not in llm_model.strip():
+        errors.append("Slug do modelo LLM inválido (formato: provedor/modelo).")
+
+    if errors:
+        for err in errors:
+            st.error(err, icon=":material/error:")
+        return
+
     save_goal(conn, year_month, goal)
-    save_setting(conn, "user_name", user_name)
-    save_setting(conn, "api_key", api_key)
-    save_setting(conn, "llm_model", llm_model or DEFAULT_LLM_MODEL)
-    save_setting(conn, "llm_prompt", system_prompt)
+    save_setting(conn, "user_name", user_name.strip())
+    save_setting(conn, "api_key", api_key.strip())
+    save_setting(conn, "llm_model", llm_model.strip())
+    save_setting(conn, "llm_prompt", system_prompt.strip())
 
     st.session_state.pop("historical_cache", None)
     st.session_state.goal = goal
     st.session_state.user_name = user_name
     st.session_state.api_key = api_key
-    st.session_state.llm_model = llm_model or DEFAULT_LLM_MODEL
+    st.session_state.llm_model = llm_model.strip()
     st.session_state.llm_prompt = system_prompt
     st.toast(":material/check_circle: Configurações salvas!")
 
@@ -421,7 +437,7 @@ def _execute_delete() -> None:
         goal=DEFAULT_GOAL,
         all_modalities=[],
         active_modalities=[],
-        llm_model=DEFAULT_LLM_MODEL,
+        llm_model="",
     )
     st.session_state.pop("historical_cache", None)
     st.cache_data.clear()

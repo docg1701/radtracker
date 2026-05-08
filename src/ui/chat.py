@@ -46,9 +46,7 @@ def render_chat_tab(conn: Any) -> None:
 
     ensure_settings(conn)
     api_key: str = st.session_state.get("api_key", "")
-    llm_model: str = st.session_state.get(
-        "llm_model", "openai/gpt-oss-120b:free"
-    )
+    llm_model: str = st.session_state.get("llm_model", "")
     llm_prompt: str | None = st.session_state.get("llm_prompt")
     active_mods: list[dict[str, Any]] = st.session_state.active_modalities
     goal: float = st.session_state.goal
@@ -65,6 +63,27 @@ def render_chat_tab(conn: Any) -> None:
     if not active_mods:
         _render_chat_empty_state(
             "Nenhuma modalidade ativa. Configure na aba "
+            ":material/settings: **Configuração**."
+        )
+        return
+
+    if not st.session_state.get("user_name", "").strip():
+        _render_chat_empty_state(
+            "Configure seu **nome** na aba "
+            ":material/settings: **Configuração**."
+        )
+        return
+
+    if not (goal > 0.0):
+        _render_chat_empty_state(
+            "Configure a **meta mensal** na aba "
+            ":material/settings: **Configuração**."
+        )
+        return
+
+    if not (llm_prompt or "").strip():
+        _render_chat_empty_state(
+            "Configure o **prompt da IA** na aba "
             ":material/settings: **Configuração**."
         )
         return
@@ -173,7 +192,7 @@ def _trigger_initial_report(
     year_month: str,
     goal: float,
     active_mods: list[dict[str, Any]],
-    llm_prompt: str | None,
+    llm_prompt: str,
 ) -> None:
     """Compute stats, build RAG context, queue initial report prompt."""
     cache_key = _build_historical_cache_key(year_month, goal, active_mods)

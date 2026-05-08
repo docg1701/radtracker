@@ -29,7 +29,7 @@ def render_sidebar(conn: Any) -> None:
     with st.sidebar:
         # Header
         st.markdown("**radtracker**")
-        user_name = st.session_state.get("user_name", "Galvani")
+        user_name = st.session_state.get("user_name", "")
         st.markdown(f"Olá, {user_name}.")
 
         # Date picker

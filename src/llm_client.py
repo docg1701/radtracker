@@ -1,17 +1,13 @@
 """
 LLM client for radtracker — OpenRouter API (configurable model).
 
-Stateless wrapper. Constructor takes API key and model slug;
-generate() takes stats dict + active_modalities and returns
-Portuguese markdown insight text.
+Streaming-only client. Constructor takes API key and model slug;
 generate_stream() does SSE token-by-token streaming.
 
 Usage:
-    try:
-        llm = LLMClient(api_key, model)
-        insight = llm.generate(stats, active_modalities)
-    except LLMUnavailableError:
-        insight = generate_rule_insights(stats)  # fallback
+    llm = LLMClient(api_key, model)
+    stream = llm.generate_stream(messages)  # messages already include system prompt
+    response = st.write_stream(stream)
 
     # RAG context injection (for chat UI):
     context = build_rag_context(stats, active_mods, system_prompt)
@@ -32,17 +28,6 @@ class LLMUnavailableError(Exception):
 
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-_SYSTEM_PROMPT = (
-    "Você é um assistente pessoal de produtividade para um médico "
-    "radiologista chamado Galvani. "
-    "Analise os dados de produção abaixo e produza uma análise completa "
-    "e detalhada em português, com tom amigável, direto e profissional. "
-    "Use os números reais. Analise tendências, sazonalidade, composição "
-    "do mix de modalidades, ritmo de trabalho, projeções e riscos. "
-    "Seja analítico e profundo. Dê sugestões acionáveis e específicas, "
-    "cite valores exatos e compare com períodos anteriores."
-)
 
 _USER_PROMPT_TEMPLATE = """\
 Dados completos da produção:
@@ -87,7 +72,7 @@ do mix de modalidades, riscos e oportunidades, e recomendações práticas."""
 def build_rag_context(
     stats: dict[str, Any],
     active_mods: list[dict[str, Any]],
-    system_prompt: str | None = None,
+    system_prompt: str,
 ) -> str:
     """Monta o system prompt com dados estruturados dos stats para RAG.
 
@@ -95,15 +80,13 @@ def build_rag_context(
         stats: Dict de compute_historical_stats().
         active_mods: Lista de modalidades ativas.
         system_prompt: Prompt personalizado do usuário (settings).
-                       Se None ou string vazia, usa o prompt padrão
-                       (_SYSTEM_PROMPT).
 
     Returns:
         String completa do system prompt com contexto RAG injetado.
     """
     enriched = _enrich_stats(stats, active_mods)
     user_prompt = _USER_PROMPT_TEMPLATE.format(**enriched)
-    prompt = system_prompt or _SYSTEM_PROMPT
+    prompt = system_prompt
     return f"""{prompt}
 
 === DADOS ATUAIS PARA ANÁLISE ===
@@ -230,71 +213,16 @@ class LLMClient:
     def __init__(
         self,
         api_key: str | None,
-        model: str = "openai/gpt-oss-120b:free",
-        prompt: str | None = None,
+        model: str,
     ) -> None:
         if not api_key:
             raise LLMUnavailableError("API key não configurada")
+        if not model.strip():
+            raise LLMUnavailableError("Modelo LLM não configurado")
         self._api_key = api_key
         self._model = model
-        self._prompt = prompt or _SYSTEM_PROMPT
 
     # ── Public API ──
-
-    def generate(
-        self,
-        stats: dict[str, Any],
-        active_modalities: list[dict[str, Any]],
-    ) -> str:
-        """Call the configured model via OpenRouter and return Portuguese insight.
-
-        Args:
-            stats: Dict from compute_historical_stats().
-            active_modalities: List of active modality dicts.
-
-        Returns:
-            Markdown-formatted Portuguese insight text.
-
-        Raises:
-            LLMUnavailableError: timeout, HTTP error, or rate limit.
-        """
-        user_prompt = self._build_prompt(stats, active_modalities)
-        messages = [
-            {"role": "system", "content": self._prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        payload = self._build_payload(messages)
-        try:
-            response = httpx.post(
-                _OPENROUTER_URL,
-                headers=self._headers(),
-                json=payload,
-                timeout=15.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-        except httpx.TimeoutException:
-            raise LLMUnavailableError("Timeout ao chamar OpenRouter (15s)") from None
-        except httpx.HTTPStatusError as exc:
-            raise LLMUnavailableError(
-                f"OpenRouter HTTP {exc.response.status_code}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise LLMUnavailableError(
-                f"Erro de conexão com OpenRouter: {exc}"
-            ) from exc
-        except Exception as exc:
-            raise LLMUnavailableError(str(exc)) from exc
-
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LLMUnavailableError(
-                f"Resposta inesperada da API: {exc}"
-            ) from exc
-        if not isinstance(content, str) or not content.strip():
-            raise LLMUnavailableError("Resposta vazia ou bloqueada pelo modelo")
-        return content
 
     def generate_stream(
         self,
@@ -377,7 +305,7 @@ class LLMClient:
     def _build_payload(
         self, messages: list[dict[str, str]], stream: bool = False,
     ) -> dict[str, Any]:
-        """Monta o payload comum para generate() e generate_stream()."""
+        """Monta o payload para generate_stream()."""
         return {
             "model": self._model,
             "messages": messages,
@@ -385,12 +313,3 @@ class LLMClient:
             "max_tokens": 800,
             "temperature": 0.3,
         }
-
-    def _build_prompt(
-        self,
-        stats: dict[str, Any],
-        active_modalities: list[dict[str, Any]],
-    ) -> str:
-        """Enrich stats with DataFrame-derived metrics and interpolate template."""
-        enriched = _enrich_stats(stats, active_modalities)
-        return _USER_PROMPT_TEMPLATE.format(**enriched)

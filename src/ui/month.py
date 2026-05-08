@@ -204,7 +204,7 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
 
     st.warning(
         ":material/warning: **Atenção ao ritmo**\n\n"
-        f"{st.session_state.get('user_name', 'Galvani')}, "
+        f"{st.session_state.get('user_name', '')}, "
         f"você está atrás do ritmo para bater a meta "
         f"de {md_escape(fmt_brl(goal))}.\n\n"
         f"Faltam {md_escape(fmt_brl(missing))} em {day_text} — "

@@ -5,7 +5,12 @@ import pytest
 import respx
 from httpx import Response, TimeoutException
 
-from src.llm_client import _SYSTEM_PROMPT, LLMClient, LLMUnavailableError, build_rag_context
+from src.llm_client import (
+    LLMClient,
+    LLMUnavailableError,
+    build_rag_context,
+    _enrich_stats,
+)
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OK_JSON = {"choices": [{"message": {"content": "Insight gerado pela IA"}}]}
@@ -22,142 +27,96 @@ _ACTIVE_MODS = [
 
 class TestLlmClientSuccess:
     @respx.mock
-    def test_llm_client_success(self):
+    def test_generate_stream_success(self):
         respx.post(_OPENROUTER_URL).mock(
-            return_value=Response(200, json=_OK_JSON)
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":"Insight"}}]}',
+                "data: [DONE]",
+            )
         )
-        llm = LLMClient("sk-fake-key")
-        result = llm.generate(_minimal_stats(), _ACTIVE_MODS)
-        assert result == "Insight gerado pela IA"
+        llm = LLMClient("sk-fake-key", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Insight"]
 
 
 class TestLlmClientMissingKey:
     def test_llm_client_missing_key(self):
         with pytest.raises(LLMUnavailableError) as exc:
-            LLMClient(None)
+            LLMClient(None, "test/model")
         assert "não configurada" in str(exc.value)
 
     def test_llm_client_empty_key(self):
         with pytest.raises(LLMUnavailableError) as exc:
-            LLMClient("")
+            LLMClient("", "test/model")
         assert "não configurada" in str(exc.value)
 
 
 class TestLlmClientErrors:
     @respx.mock
-    def test_llm_client_timeout(self):
+    def test_generate_stream_timeout(self):
         respx.post(_OPENROUTER_URL).mock(side_effect=TimeoutException("timeout"))
-        llm = LLMClient("sk-fake-key")
+        llm = LLMClient("sk-fake-key", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "Timeout" in str(exc.value)
 
     @respx.mock
-    def test_llm_client_connect_error(self):
+    def test_generate_stream_connect_error(self):
         respx.post(_OPENROUTER_URL).mock(
             side_effect=httpx.ConnectError("connection refused")
         )
-        llm = LLMClient("sk-fake-key")
+        llm = LLMClient("sk-fake-key", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "conexão" in str(exc.value)
 
     @respx.mock
-    def test_llm_client_http_500(self):
+    def test_generate_stream_http_500(self):
         respx.post(_OPENROUTER_URL).mock(
             return_value=Response(500, json={"error": "server error"})
         )
-        llm = LLMClient("sk-fake-key")
+        llm = LLMClient("sk-fake-key", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
+            list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "HTTP 500" in str(exc.value)
-
-    @respx.mock
-    def test_llm_client_http_429(self):
-        respx.post(_OPENROUTER_URL).mock(
-            return_value=Response(429, json={"error": "rate limited"})
-        )
-        llm = LLMClient("sk-fake-key")
-        with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
-        assert "HTTP 429" in str(exc.value)
-
-    @respx.mock
-    def test_llm_client_http_401(self):
-        respx.post(_OPENROUTER_URL).mock(
-            return_value=Response(401, json={"error": "unauthorized"})
-        )
-        llm = LLMClient("sk-fake-key")
-        with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
-        assert "HTTP 401" in str(exc.value)
-
-    @respx.mock
-    def test_llm_client_empty_content_200(self):
-        """OpenRouter may return content: null on blocked/empty responses."""
-        respx.post(_OPENROUTER_URL).mock(
-            return_value=Response(200, json={"choices": [{"message": {"content": None}}]})
-        )
-        llm = LLMClient("sk-fake-key")
-        with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
-        assert "vazia" in str(exc.value)
-
-    @respx.mock
-    def test_llm_client_missing_choices(self):
-        """Malformed JSON without expected keys must raise, not leak raw KeyError."""
-        respx.post(_OPENROUTER_URL).mock(
-            return_value=Response(200, json={"model": "foo"})
-        )
-        llm = LLMClient("sk-fake-key")
-        with pytest.raises(LLMUnavailableError) as exc:
-            llm.generate(_minimal_stats(), _ACTIVE_MODS)
-        assert "inesperada" in str(exc.value)
 
 
 class TestBuildPrompt:
-    def test_build_prompt_sanitizes_none_wow(self):
-        llm = LLMClient("sk-fake-key")
+    def test_enrich_stats_sanitizes_none_wow(self):
         stats = _minimal_stats(wow=None)
-        prompt = llm._build_prompt(stats, _ACTIVE_MODS)
-        assert "sem dados suficientes" in prompt
-        assert "None" not in prompt
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
+        assert enriched["wow"] == "sem dados suficientes"
 
-    def test_build_prompt_includes_brl_formatting(self):
-        llm = LLMClient("sk-fake-key")
+    def test_enrich_stats_includes_brl_formatting(self):
         stats = _minimal_stats()
-        prompt = llm._build_prompt(stats, _ACTIVE_MODS)
-        assert "R$ 22.500,00" in prompt
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
+        assert enriched["mtd"] == "R$ 22.500,00"
 
 
 class TestEnrichStatsMultiMonth:
     def test_total_exames_filters_current_month_only(self):
-        llm = LLMClient("sk-fake-key")
         stats = _multi_month_stats()
-        prompt = llm._build_prompt(stats, _ACTIVE_MODS)
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
         # April: 1*7 RM + 2*7 TC + 10*7 RX = 7+14+70 = 91 total
-        assert "Ressonância Magnética: 7 exames" in prompt
-        assert "TC Geral: 14 exames" in prompt
-        assert "Radiografia: 70 exames" in prompt
-        # March: 10*7 RM + 5*7 TC + 100*7 RX = 70+35+700 = 805
-        assert "896" not in prompt
+        breakdown = enriched["modality_breakdown"]
+        assert "Ressonância Magnética: 7 exames" in breakdown
+        assert "TC Geral: 14 exames" in breakdown
+        assert "Radiografia: 70 exames" in breakdown
+        assert "896" not in breakdown
 
     def test_best_day_filters_current_month_only(self):
-        llm = LLMClient("sk-fake-key")
         stats = _multi_month_stats()
-        prompt = llm._build_prompt(stats, _ACTIVE_MODS)
-        # April best day = any April day, all have 100 earnings
-        # If unfiltered, best day would be March with 500 earnings
-        assert "2026-04" in prompt
-        assert "2026-03" not in prompt
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
+        # April best day = any April day; if unfiltered, best would be March
+        assert enriched["dia_produtivo"].startswith("2026-04")
+        assert "2026-03" not in enriched["dia_produtivo"]
 
     def test_ticket_medio_uses_current_month_counts(self):
-        llm = LLMClient("sk-fake-key")
         stats = _multi_month_stats()
-        prompt = llm._build_prompt(stats, _ACTIVE_MODS)
+        enriched = _enrich_stats(stats, _ACTIVE_MODS)
         # April revenue = 7*35 + 14*25 + 70*4.5 = 910
         # Ticket = 910 / 91 = 10.0
-        assert "R$ 10,00" in prompt
+        assert enriched["ticket_medio"] == "R$ 10,00"
 
 
 # ── Streaming tests ──
@@ -178,7 +137,7 @@ class TestGenerateStream:
                 "data: [DONE]",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["Olá", " mundo"]
         assert route.called
@@ -189,7 +148,7 @@ class TestGenerateStream:
         respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks("data: [DONE]")
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "vazia" in str(exc.value)
@@ -199,7 +158,7 @@ class TestGenerateStream:
         respx.post(_OPENROUTER_URL).mock(
             return_value=Response(500, json={"error": "boom"})
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "HTTP 500" in str(exc.value)
@@ -207,7 +166,7 @@ class TestGenerateStream:
     @respx.mock
     def test_generate_stream_network_error(self):
         respx.post(_OPENROUTER_URL).mock(side_effect=httpx.ConnectError("connection refused"))
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "conexão" in str(exc.value)
@@ -215,7 +174,7 @@ class TestGenerateStream:
     @respx.mock
     def test_generate_stream_timeout(self):
         respx.post(_OPENROUTER_URL).mock(side_effect=TimeoutException("timeout"))
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert "Timeout" in str(exc.value)
@@ -233,7 +192,7 @@ class TestGenerateStream:
                 "data: [DONE]",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["ok"]
         assert route.called
@@ -248,7 +207,7 @@ class TestGenerateStream:
                 "data: [DONE]",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["fim"]
         assert route.called
@@ -263,7 +222,7 @@ class TestGenerateStream:
                 "data: [DONE]",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["ok"]
         assert route.called
@@ -278,7 +237,7 @@ class TestGenerateStream:
                 "data: [DONE]",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["ok"]
         assert route.called
@@ -291,7 +250,7 @@ class TestGenerateStream:
                 "data:  [DONE]  ",
             )
         )
-        llm = LLMClient("sk-test")
+        llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["fim"]
 
@@ -299,7 +258,7 @@ class TestGenerateStream:
 class TestBuildRagContext:
     def test_build_rag_context_includes_stats(self):
         stats = _minimal_stats()
-        ctx = build_rag_context(stats, _ACTIVE_MODS)
+        ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="Teste")
         assert "=== DADOS ATUAIS PARA ANÁLISE ===" in ctx
         assert "R$ 22.500,00" in ctx  # MTD
 
@@ -308,14 +267,12 @@ class TestBuildRagContext:
         custom = "Você é um especialista em radiologia."
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt=custom)
         assert custom in ctx
-        assert _SYSTEM_PROMPT not in ctx
 
     def test_build_rag_context_empty_string_prompt(self):
-        """String vazia deve cair no fallback _SYSTEM_PROMPT."""
+        """String vazia resulta em system prompt vazio (sem fallback)."""
         stats = _minimal_stats()
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="")
-        assert "Você é um assistente pessoal de produtividade" in ctx
-        assert _SYSTEM_PROMPT in ctx
+        assert ctx.startswith("\n\n=== DADOS ATUAIS")
 
 
 # ── Helpers ──
