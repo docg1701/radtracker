@@ -86,7 +86,6 @@ def build_moving_averages_chart(
 # ---------------------------------------------------------------------------
 
 def build_wow_comparison_chart(
-    weekly_data: list[dict],
     df: pd.DataFrame,
     active_modalities: list[dict[str, Any]],
 ) -> go.Figure:

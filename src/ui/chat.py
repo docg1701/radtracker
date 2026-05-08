@@ -13,6 +13,7 @@ import streamlit as st
 
 from src.calculations import compute_historical_stats
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
+from src.text_sanitize import sanitize_text
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
@@ -126,7 +127,10 @@ def render_chat_tab(conn: Any) -> None:
         if msg["role"] == "system":
             continue
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            content = msg["content"]
+            if msg["role"] == "assistant":
+                content = sanitize_text(content)
+            st.markdown(content)
 
     # Dispatcher: pending user message needs assistant reply
     pending = (
@@ -237,12 +241,7 @@ def _stream_response(api_key: str, llm_model: str) -> None:
         )
         llm = LLMClient(api_key, model=llm_model)
         stream = llm.generate_stream(st.session_state.messages)
-        safe_stream = (
-            token.replace("\u202f", " ")
-            .replace("\u00a0", " ")
-            .replace("$", "\\$")
-            for token in stream
-        )
+        safe_stream = (sanitize_text(token) for token in stream)
         try:
             response = st.write_stream(safe_stream)
             placeholder.empty()
@@ -260,8 +259,10 @@ def _stream_response(api_key: str, llm_model: str) -> None:
                 f"Detalhes: {exc}"
             )
             st.error(response)
+        # Apply full-string sanitization before storing (handles token-boundary issues)
+        clean_response = sanitize_text(response)
         st.session_state.messages.append(
-            {"role": "assistant", "content": response}
+            {"role": "assistant", "content": clean_response}
         )
 
 

@@ -87,9 +87,8 @@ def render_analysis_tab(conn: Any) -> None:
 
     with col_right:
         st.subheader(":material/analytics: Comparação semanal")
-        weekly = stats.get("weekly_totals_last_4", [])
-        if len(weekly) >= 1:
-            wow_chart = build_wow_comparison_chart(weekly, df, active_mods)
+        if not df.empty:
+            wow_chart = build_wow_comparison_chart(df, active_mods)
             st.plotly_chart(wow_chart, width="stretch")
         else:
             st.info("Dados insuficientes para comparação semanal.")
