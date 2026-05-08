@@ -91,18 +91,28 @@ def build_wow_comparison_chart(
     active_modalities: list[dict[str, Any]],
 ) -> go.Figure:
     """
-    Grouped bar chart: Semana Anterior vs Semana Atual, per modality revenue.
+    Grouped bar chart: current partial week vs last complete week, per modality.
 
-    Revenue is computed from the full df since weekly_data from
-    compute_historical_stats v2 only has total_earnings.
+    Shows revenue comparison so the user sees real-time progress against
+    the previous week. Week labels use actual date ranges (e.g. "28/04 – 04/05").
     """
-    if len(weekly_data) < 2:
-        # Single week: show current week per modality
-        if weekly_data:
-            return _single_week_chart(df, active_modalities)
-        return go.Figure()
+    today = pd.Timestamp.now().normalize()
 
-    # Build date ranges for each week
+    # Current week: Monday .. today (partial)
+    current_monday = today - pd.Timedelta(days=today.dayofweek)
+    curr_start = current_monday
+    curr_end = today
+
+    # Previous complete week: last Monday .. last Sunday
+    prev_monday = current_monday - pd.Timedelta(weeks=1)
+    prev_sunday = current_monday - pd.Timedelta(days=1)
+
+    def _fmt(d: pd.Timestamp) -> str:
+        return d.strftime("%d/%m")
+
+    curr_label = f"{_fmt(curr_start)} – {_fmt(curr_end)}"
+    prev_label = f"{_fmt(prev_monday)} – {_fmt(prev_sunday)}"
+
     labels: list[str] = []
     prev_revs: list[float] = []
     curr_revs: list[float] = []
@@ -114,24 +124,23 @@ def build_wow_comparison_chart(
         mod_colors.append(color_for_modality(slug, active_modalities))
         price = float(m["price"])
 
-        # Revenue for this modality in previous week and current week
-        prev_rev = _weekly_modality_revenue(df, slug, price, -2)
-        curr_rev = _weekly_modality_revenue(df, slug, price, -1)
+        prev_rev = _week_revenue(df, slug, price, prev_monday, prev_sunday)
+        curr_rev = _week_revenue(df, slug, price, curr_start, curr_end)
         prev_revs.append(prev_rev)
         curr_revs.append(curr_rev)
 
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=labels, y=prev_revs, name="Semana Anterior",
+        x=labels, y=prev_revs, name=f"Semana passada ({prev_label})",
         marker_color=[hex_to_rgba(c, 0.5) for c in mod_colors],
-        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana Anterior</extra>",
+        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana passada</extra>",
     ))
 
     fig.add_trace(go.Bar(
-        x=labels, y=curr_revs, name="Semana Atual",
+        x=labels, y=curr_revs, name=f"Esta semana ({curr_label})",
         marker_color=mod_colors,
-        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana Atual</extra>",
+        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Esta semana</extra>",
     ))
 
     fig.update_layout(
@@ -152,80 +161,22 @@ def build_wow_comparison_chart(
     return fig
 
 
-def _weekly_modality_revenue(
-    df: pd.DataFrame, slug: str, price: float, week_offset: int,
+def _week_revenue(
+    df: pd.DataFrame, slug: str, price: float,
+    week_start: pd.Timestamp, week_end: pd.Timestamp,
 ) -> float:
-    """Sum revenue for a modality in the N-th last complete week.
-
-    week_offset: -1 = most recent complete week, -2 = week before that.
-    Falls back to all data for current partial week if not enough weeks.
-    """
+    """Sum revenue for a modality in a given date range."""
     if df.empty or "date_dt" not in df.columns:
         return 0.0
 
-    # Get week boundaries
-    today = pd.Timestamp.now().normalize()
-    # Last complete week: Monday to Sunday before this week
-    current_weekday = today.dayofweek  # Monday=0
-    last_sunday = today - pd.Timedelta(days=current_weekday + 1)
-    last_monday = last_sunday - pd.Timedelta(days=6)
-
-    # Shift back by week_offset
-    start = last_monday + pd.Timedelta(weeks=week_offset)
-    end = start + pd.Timedelta(days=6)
-
     week_df = df[
-        (df["date_dt"] >= pd.Timestamp(start))
-        & (df["date_dt"] <= pd.Timestamp(end))
+        (df["date_dt"] >= pd.Timestamp(week_start))
+        & (df["date_dt"] <= pd.Timestamp(week_end))
     ]
 
-    count_col = slug
-    if count_col in week_df.columns:
-        return float(week_df[count_col].sum()) * price
+    if slug in week_df.columns:
+        return float(week_df[slug].sum()) * price
     return 0.0
-
-
-def _single_week_chart(
-    df: pd.DataFrame,
-    active_modalities: list[dict[str, Any]],
-) -> go.Figure:
-    """Single-week bar chart per modality."""
-    labels: list[str] = []
-    revs: list[float] = []
-    mod_colors: list[str] = []
-
-    for m in active_modalities:
-        slug = m["slug"]
-        price = float(m["price"])
-        labels.append(m["label"])
-        mod_colors.append(color_for_modality(slug, active_modalities))
-
-        count_col = slug
-        if count_col in df.columns:
-            revs.append(float(df[count_col].sum()) * price)
-        else:
-            revs.append(0.0)
-
-    fig = go.Figure(data=[
-        go.Bar(
-            x=labels, y=revs, marker_color=mod_colors,
-            name="Semana Atual",
-            hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
-        )
-    ])
-    fig.update_layout(
-        title=dict(text="", font=dict(size=14)),
-        height=350,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=50, b=20),
-        yaxis=dict(
-            title=None, tickprefix="R$ ",
-            showgrid=True, gridcolor=CHART_COLORS["track"],
-        ),
-        xaxis=dict(title=None),
-    )
-    return fig
 
 
 # ---------------------------------------------------------------------------
