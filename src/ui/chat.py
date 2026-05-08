@@ -13,7 +13,7 @@ import streamlit as st
 
 from src.calculations import compute_historical_stats
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
-from src.text_sanitize import sanitize_text
+from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
@@ -241,7 +241,7 @@ def _stream_response(api_key: str, llm_model: str) -> None:
         )
         llm = LLMClient(api_key, model=llm_model)
         stream = llm.generate_stream(st.session_state.messages)
-        safe_stream = (sanitize_text(token) for token in stream)
+        safe_stream = (sanitize_token(token) for token in stream)
         try:
             response = st.write_stream(safe_stream)
             placeholder.empty()

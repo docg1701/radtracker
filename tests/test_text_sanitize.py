@@ -1,6 +1,27 @@
 """Unit tests for src.text_sanitize."""
 
-from src.text_sanitize import sanitize_text
+from src.text_sanitize import sanitize_text, sanitize_token
+
+
+class TestSanitizeToken:
+    """Tests for sanitize_token() — streaming processor."""
+
+    def test_collapses_thin_space(self) -> None:
+        assert sanitize_token("R$\u202f45.000") == "R$ 45.000"
+
+    def test_collapses_nbsp(self) -> None:
+        assert sanitize_token("valor\u00a0total") == "valor total"
+
+    def test_strips_legacy_double_escaped_dollar(self) -> None:
+        assert sanitize_token(r"Valor: \\$ 100") == "Valor: $ 100"
+
+    def test_does_not_convert_latex_brackets(self) -> None:
+        # Paired conversion skipped during streaming
+        assert sanitize_token(r"\( x^2 \)") == r"\( x^2 \)"
+        assert sanitize_token(r"\[ x^2 \]") == r"\[ x^2 \]"
+
+    def test_preserves_normal_text(self) -> None:
+        assert sanitize_token("**negrito** e $x=2$") == "**negrito** e $x=2$"
 
 
 class TestSanitizeText:
@@ -62,6 +83,40 @@ class TestSanitizeText:
     def test_preserves_dollar_sign_followed_by_space(self) -> None:
         # Currency pattern: $ followed by space — not math
         assert sanitize_text("Custa $ 50") == "Custa $ 50"
+
+    # ── unmatched delimiter fallback ──
+
+    def test_unmatched_open_fallback(self) -> None:
+        assert sanitize_text(r"valor \(x") == "valor (x"
+
+    def test_unmatched_close_fallback(self) -> None:
+        assert sanitize_text(r"fim\)") == "fim)"
+
+    def test_unmatched_display_fallback(self) -> None:
+        assert sanitize_text(r"nota \[") == "nota ["
+        assert sanitize_text(r"fim \]") == "fim ]"
+
+    # ── non-crossing pairs (lazy matching) ──
+
+    def test_two_separate_pairs(self) -> None:
+        assert sanitize_text(r"\(a\) and \(b\)") == "$a$ and $b$"
+
+    def test_lazy_matching_displays(self) -> None:
+        assert sanitize_text(r"\[a\] b \[c\]") == "$$a$$ b $$c$$"
+
+    def test_idempotent(self) -> None:
+        original = r"\[a\] e \(b\) e resto"
+        first = sanitize_text(original)
+        second = sanitize_text(first)
+        assert first == second
+
+    # ── native dollar math untouched ──
+
+    def test_preserves_native_dollar_math(self) -> None:
+        assert sanitize_text(r"$\frac{a}{b}$") == r"$\frac{a}{b}$"
+
+    def test_preserves_native_display_math(self) -> None:
+        assert sanitize_text(r"$$\sum x$$") == r"$$\sum x$$"
 
     # ── edge cases ──
 
