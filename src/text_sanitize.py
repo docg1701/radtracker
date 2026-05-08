@@ -24,7 +24,7 @@ import re
 # $ not preceded by \\, followed by optional whitespace then digit.
 # Matches: R$ 100, R$100, $50 — always currency, never math.
 # Preserves: $x^2$, $\frac{a}{b}$ — $ followed by letter/command.
-_CURRENCY_DOLLAR_RE = re.compile(r"(?<!\\)\$(?=\s*\d)")
+_CURRENCY_DOLLAR_RE = re.compile(r"(?<=R)\$(?![a-zA-Z0-9\\])|(?<!\\)\$(?=\s*\d)")
 
 # ── Paired-delimiter patterns (lazy + DOTALL so they don't cross pairs) ──
 # \[...\]  →  $$...$$
