@@ -150,7 +150,7 @@ def build_wow_comparison_chart(
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=50, b=20),
         barmode="group",
-        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        legend=dict(title=None), showlegend=False,
         xaxis=dict(title=None),
         yaxis=dict(
             title=None, tickprefix="R$ ",
