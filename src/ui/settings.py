@@ -444,15 +444,16 @@ def _execute_delete() -> None:
 
 
 def _delete_all_data() -> None:
-    """Delete all rows from all tables within a single transaction."""
-    import sqlite3
-    from contextlib import closing
+    """Delete all rows from all tables via the app's SQL connection."""
+    import sqlalchemy as sa
+    import streamlit as st
 
-    with closing(sqlite3.connect("data/telerrad.db")) as raw:
-        raw.execute("DELETE FROM daily_production_items")
-        raw.execute("DELETE FROM modalities")
-        raw.execute("DELETE FROM daily_production")
-        raw.execute("DELETE FROM exam_prices")
-        raw.execute("DELETE FROM monthly_goals")
-        raw.execute("DELETE FROM user_settings")
-        raw.commit()
+    conn = st.connection("telerrad", type="sql")
+    with conn.connect() as db_conn:
+        db_conn.execute(sa.text("DELETE FROM daily_production_items"))
+        db_conn.execute(sa.text("DELETE FROM modalities"))
+        db_conn.execute(sa.text("DELETE FROM daily_production"))
+        db_conn.execute(sa.text("DELETE FROM exam_prices"))
+        db_conn.execute(sa.text("DELETE FROM monthly_goals"))
+        db_conn.execute(sa.text("DELETE FROM user_settings"))
+        db_conn.commit()
