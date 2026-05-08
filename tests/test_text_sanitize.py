@@ -1,6 +1,5 @@
 """Unit tests for src.text_sanitize."""
 
-import pytest
 from src.text_sanitize import sanitize_text
 
 

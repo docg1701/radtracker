@@ -1,5 +1,6 @@
 """Formatting utilities and locale constants for radtracker."""
 
+import math
 from decimal import ROUND_HALF_UP, Decimal
 
 MONTHS_PT: dict[int, str] = {
@@ -44,6 +45,10 @@ def fmt_brl(value: float) -> str:
         >>> fmt_brl(0.0)
         'R$ 0,00'
     """
+    if math.isnan(value):
+        return "R$ —"
+    if math.isinf(value):
+        return "R$ ∞" if value > 0 else "−R$ ∞"
     if value < 0:
         return f"\u2212{fmt_brl(-value)}"
     d = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

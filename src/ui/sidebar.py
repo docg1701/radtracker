@@ -5,10 +5,10 @@ Renders the app title, greeting, date picker, dynamic modality inputs
 (based on st.session_state.active_modalities), and the save button.
 """
 
+import tomllib
 from datetime import date
 from pathlib import Path
 from typing import Any
-import tomllib
 
 import streamlit as st
 

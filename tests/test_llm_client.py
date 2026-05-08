@@ -8,8 +8,8 @@ from httpx import Response, TimeoutException
 from src.llm_client import (
     LLMClient,
     LLMUnavailableError,
-    build_rag_context,
     _enrich_stats,
+    build_rag_context,
 )
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"

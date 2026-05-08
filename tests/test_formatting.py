@@ -23,6 +23,13 @@ class TestFmtBrl:
         # 0.005 → cents = int(0.5 + 0.5) = 1 → "R$ 0,01"
         assert fmt_brl(0.005) == "R$ 0,01"
 
+    def test_fmt_brl_nan(self):
+        assert fmt_brl(float("nan")) == "R$ —"
+
+    def test_fmt_brl_infinity(self):
+        assert fmt_brl(float("inf")) == "R$ ∞"
+        assert fmt_brl(float("-inf")) == "−R$ ∞"
+
     def test_fmt_brl_floating_point_trap_one_point_zero_zero_five(self):
         # 1.005 in IEEE-754 is slightly below 1.005, so naive
         # int(value*100 + 0.5) incorrectly yields R$ 1,00.

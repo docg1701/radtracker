@@ -36,7 +36,8 @@ Quando o usuário pedir "relatório" ou "análise", use TODOS os meses, não
 apenas o mês atual.
 
 === RESUMO DO ANO (YTD) ===
-Faturamento acumulado: {ytd_earnings} | Média mensal: {ytd_avg_monthly} | Meses com dados: {ytd_months}
+Faturamento acumulado: {ytd_earnings} | Média mensal: {ytd_avg_monthly}
+Meses com dados: {ytd_months}
 
 === DETALHES POR MÊS ===
 {monthly_detail}
@@ -148,10 +149,6 @@ def _enrich_stats(
                 best_row = month_df.loc[best_idx]
                 best_date = str(best_row.get("date", "—"))
                 best_val = fmt_brl(float(best_row.get("earnings", 0.0)))
-
-        # WoW / MoM
-        wow = stats.get("wow_change_pct")
-        mom = stats.get("mom_change_pct")
 
         block = (
             f"--- {_month_name(ym).upper()} ---\n"
