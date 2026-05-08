@@ -39,6 +39,9 @@ Dados completos da produção:
 - Evolução mensal:
 {ytd_monthly_breakdown}
 
+=== DADOS DIÁRIOS COMPLETOS (todas as modalidades) ===
+{full_daily_table}
+
 === META E RITMO (mês atual) ===
 - Faturamento no mês (MTD): {mtd}
 - Percentual da meta: {pct:.0f}%
@@ -214,6 +217,31 @@ def _enrich_stats(
     ytd_avg_monthly = fmt_brl(ytd_earnings / ytd_month_count) if ytd_month_count > 0 else "R$ 0,00"
     ytd_monthly_breakdown = "\n".join(ytd_monthly_lines) if ytd_monthly_lines else "  (sem dados)"
 
+    # ── Full daily table ──
+    full_daily_table = "(sem dados diários)"
+    if not df.empty:
+        mod_slugs = [m["slug"] for m in active_modalities]
+        available_cols = [c for c in mod_slugs if c in df.columns]
+        if available_cols:
+            daily_rows: list[str] = []
+            # Header with abbreviations
+            header_parts = ["Data"]
+            for s in available_cols:
+                label = next((m["label"] for m in active_modalities if m["slug"] == s), s)
+                # Abbreviate: "Ressonância Magnética" → "RM"
+                abbr = "".join(w[0] for w in label.split() if w[0].isupper()).upper() or label[:3]
+                header_parts.append(abbr)
+            daily_rows.append(" | ".join(header_parts))
+            daily_rows.append("|".join(["-" * len(p) for p in header_parts]))
+            for _, row in df.sort_values("date").iterrows():
+                date_val = str(row["date"])
+                parts = [date_val]
+                for s in available_cols:
+                    count = int(row.get(s, 0) or 0)
+                    parts.append(str(count) if count > 0 else "·")
+                daily_rows.append(" | ".join(parts))
+            full_daily_table = "\n".join(daily_rows)
+
     # ── Average exams per day ──
     days_worked = current.get("days_worked", 0)
     media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
@@ -257,6 +285,7 @@ def _enrich_stats(
         "ytd_months": str(ytd_month_count),
         "ytd_avg_monthly": ytd_avg_monthly,
         "ytd_monthly_breakdown": ytd_monthly_breakdown,
+        "full_daily_table": full_daily_table,
     }
 
 
