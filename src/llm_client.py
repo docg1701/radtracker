@@ -42,6 +42,9 @@ Dados completos da produção:
 === DADOS DIÁRIOS COMPLETOS (todas as modalidades) ===
 {full_daily_table}
 
+=== RESUMO MENSAL POR MODALIDADE ===
+{monthly_modality_summary}
+
 === META E RITMO (mês atual) ===
 - Faturamento no mês (MTD): {mtd}
 - Percentual da meta: {pct:.0f}%
@@ -242,6 +245,33 @@ def _enrich_stats(
                 daily_rows.append(" | ".join(parts))
             full_daily_table = "\n".join(daily_rows)
 
+    # ── Monthly per-modality summary ──
+    monthly_modality_summary = "(sem dados)"
+    if not df.empty:
+        mod_slugs = [m["slug"] for m in active_modalities]
+        available = [c for c in mod_slugs if c in df.columns]
+        if available:
+            months_list = sorted(df["date"].str[:7].unique())
+            summary_lines: list[str] = []
+            # Header
+            header = ["Mês"]
+            for s in available:
+                label = next((m["label"] for m in active_modalities if m["slug"] == s), s)
+                abbr = "".join(w[0] for w in label.split() if w[0].isupper()).upper() or label[:3]
+                header.append(f"{abbr} (exam)")
+                header.append(f"{abbr} (R$)")
+            summary_lines.append(" | ".join(header))
+            # Rows
+            for ym in months_list:
+                parts = [ym]
+                for s in available:
+                    price = float(next((m["price"] for m in active_modalities if m["slug"] == s), 0))
+                    ym_count = int(df[df["date"].str[:7] == ym][s].sum()) if s in df.columns else 0
+                    parts.append(str(ym_count) if ym_count > 0 else "·")
+                    parts.append(fmt_brl(ym_count * price) if ym_count > 0 else "·")
+                summary_lines.append(" | ".join(parts))
+            monthly_modality_summary = "\n".join(summary_lines)
+
     # ── Average exams per day ──
     days_worked = current.get("days_worked", 0)
     media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
@@ -286,6 +316,7 @@ def _enrich_stats(
         "ytd_avg_monthly": ytd_avg_monthly,
         "ytd_monthly_breakdown": ytd_monthly_breakdown,
         "full_daily_table": full_daily_table,
+        "monthly_modality_summary": monthly_modality_summary,
     }
 
 
