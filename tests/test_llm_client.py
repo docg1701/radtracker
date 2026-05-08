@@ -81,7 +81,7 @@ class TestLlmClientErrors:
         assert "HTTP 500" in str(exc.value)
 
 
-class TestBuildPrompt:
+class TestEnrichStats:
     def test_enrich_stats_sanitizes_none_wow(self):
         stats = _minimal_stats(wow=None)
         enriched = _enrich_stats(stats, _ACTIVE_MODS)

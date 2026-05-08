@@ -17,10 +17,13 @@ from src.ui.settings import ensure_settings
 
 
 def _get_version() -> str:
-    """Read version from pyproject.toml."""
-    pyproject = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
-    with open(pyproject, "rb") as f:
-        return tomllib.load(f)["project"]["version"]
+    """Read version from pyproject.toml, searching upward from this file."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "pyproject.toml"
+        if candidate.exists():
+            with open(candidate, "rb") as f:
+                return tomllib.load(f)["project"]["version"]
+    return "unknown"
 
 
 def render_sidebar(conn: Any) -> None:
@@ -39,6 +42,7 @@ def render_sidebar(conn: Any) -> None:
         # Header
         st.markdown("**radtracker**")
         user_name = st.session_state.get("user_name", "")
+    if user_name:
         st.markdown(f"Olá, {user_name}.")
 
         # Date picker

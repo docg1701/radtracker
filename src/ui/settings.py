@@ -11,7 +11,6 @@ from typing import Any
 import streamlit as st
 
 from src.db import (
-    DEFAULT_GOAL,
     add_modality,
     delete_modality,
     load_active_modalities,
@@ -434,7 +433,7 @@ def _execute_delete() -> None:
     st.session_state.update(
         confirm_delete=False,
         prices={},
-        goal=DEFAULT_GOAL,
+        goal=0.0,
         all_modalities=[],
         active_modalities=[],
         llm_model="",

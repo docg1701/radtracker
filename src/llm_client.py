@@ -58,6 +58,8 @@ Dados completos da produção:
 - Dia mais produtivo: {dia_produtivo} com {valor_dia_produtivo}
 - Média de exames por dia: {media_exames_dia:.0f}
 - Ticket médio por exame: {ticket_medio}
+- Horas estimadas no mês: {horas_estimadas}h ({horas_diarias}h/dia)
+- Receita média por hora: {receita_por_hora}
 
 Produza uma análise completa e detalhada. Use **negrito** para destaques.
 Inclua: avaliação do ritmo, tendências de curto e longo prazo, análise
@@ -137,17 +139,26 @@ def _enrich_stats(
     total_exames = 0
     modality_lines: list[str] = []
     current_ym = stats.get("year_month") or ""
+    horas_estimadas = 0.0
     for m in active_modalities:
         slug = m["slug"]
-        count_col = slug
+        price = float(m.get("price", 0))
+        eph = float(m.get("exams_per_hour", 0))
         count = 0
-        if not df.empty and count_col in df.columns:
+        if not df.empty and slug in df.columns:
             month_df = df[df["date"].str[:7] == current_ym]
-            count = int(month_df[count_col].sum()) if not month_df.empty else 0
+            count = int(month_df[slug].sum()) if not month_df.empty else 0
         total_exames += count
+        if eph > 0:
+            horas_estimadas += count / eph
         mix_pct = mix.get(slug, 0.0)
+        receita_hora = price * eph if eph > 0 else 0.0
         modality_lines.append(
-            f"- {m['label']}: {count} exames ({mix_pct:.1f}% da receita)"
+            f"- {m['label']}: {count} exames "
+            f"({mix_pct:.1f}% da receita, "
+            f"R$ {price:.2f}/exame, "
+            f"{eph:.1f} exames/h, "
+            f"≈ R$ {receita_hora:.2f}/h)"
         )
     modality_breakdown = "\n".join(modality_lines)
 
@@ -179,6 +190,9 @@ def _enrich_stats(
     mtd = current.get("mtd_earnings", 0.0)
     ticket_medio = fmt_brl(mtd / total_exames) if total_exames > 0 else "R$ 0,00"
 
+    horas_diarias = horas_estimadas / days_worked if days_worked > 0 else 0.0
+    receita_por_hora = mtd / horas_estimadas if horas_estimadas > 0 else 0.0
+
     return {
         "mtd": fmt_brl(mtd),
         "pct": current.get("pct_goal", 0.0),
@@ -204,6 +218,9 @@ def _enrich_stats(
         "valor_dia_produtivo": valor_dia_produtivo,
         "media_exames_dia": media_exames_dia,
         "ticket_medio": ticket_medio,
+        "horas_estimadas": f"{horas_estimadas:.1f}",
+        "horas_diarias": f"{horas_diarias:.1f}",
+        "receita_por_hora": fmt_brl(receita_por_hora),
     }
 
 

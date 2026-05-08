@@ -47,9 +47,14 @@ def render_chat_tab(conn: Any) -> None:
     ensure_settings(conn)
     api_key: str = st.session_state.get("api_key", "")
     llm_model: str = st.session_state.get("llm_model", "")
-    llm_prompt: str | None = st.session_state.get("llm_prompt")
+    llm_prompt: str = st.session_state.get("llm_prompt", "")
     active_mods: list[dict[str, Any]] = st.session_state.active_modalities
     goal: float = st.session_state.goal
+    user_name: str = st.session_state.get("user_name", "")
+
+    # Substitute {user_name} placeholder in the prompt
+    if llm_prompt and "{user_name}" in llm_prompt:
+        llm_prompt = llm_prompt.replace("{user_name}", user_name)
 
     if not api_key:
         _render_chat_empty_state(
