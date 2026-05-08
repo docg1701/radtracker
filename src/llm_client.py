@@ -32,7 +32,14 @@ _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _USER_PROMPT_TEMPLATE = """\
 Dados completos da produção:
 
-=== META E RITMO ===
+=== DADOS DO ANO (YTD) ===
+- Faturamento acumulado no ano: {ytd_earnings}
+- Meses com dados: {ytd_months}
+- Média mensal no ano: {ytd_avg_monthly}
+- Evolução mensal:
+{ytd_monthly_breakdown}
+
+=== META E RITMO (mês atual) ===
 - Faturamento no mês (MTD): {mtd}
 - Percentual da meta: {pct:.0f}%
 - Meta mensal: {meta_mensal}
@@ -182,6 +189,31 @@ def _enrich_stats(
         if unique_months > 0:
             media_historica = fmt_brl(total_earnings / unique_months)
 
+    # ── YTD (year-to-date) ──
+    current_year = current_ym[:4] if len(current_ym) >= 4 else ""
+    ytd_earnings = 0.0
+    ytd_monthly_lines: list[str] = []
+    ytd_month_count = 0
+    if not df.empty and current_year:
+        year_df = df[df["date"].str[:4] == current_year]
+        ytd_earnings = float(year_df["earnings"].sum())
+        monthly = (
+            year_df.groupby(year_df["date"].str[:7])
+            .agg(total=("earnings", "sum"))
+            .reset_index()
+        )
+        monthly = monthly.sort_values("date")
+        ytd_month_count = len(monthly)
+        MESES_PT = ["", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                     "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        for _, row in monthly.iterrows():
+            ym = str(row["date"])
+            month_num = int(ym[5:7])
+            abbr = MESES_PT[month_num] if 1 <= month_num <= 12 else ym
+            ytd_monthly_lines.append(f"  {abbr}: {fmt_brl(float(row['total']))}")
+    ytd_avg_monthly = fmt_brl(ytd_earnings / ytd_month_count) if ytd_month_count > 0 else "R$ 0,00"
+    ytd_monthly_breakdown = "\n".join(ytd_monthly_lines) if ytd_monthly_lines else "  (sem dados)"
+
     # ── Average exams per day ──
     days_worked = current.get("days_worked", 0)
     media_exames_dia = total_exames / days_worked if days_worked > 0 else 0.0
@@ -221,6 +253,10 @@ def _enrich_stats(
         "horas_estimadas": f"{horas_estimadas:.1f}",
         "horas_diarias": f"{horas_diarias:.1f}",
         "receita_por_hora": fmt_brl(receita_por_hora),
+        "ytd_earnings": fmt_brl(ytd_earnings),
+        "ytd_months": str(ytd_month_count),
+        "ytd_avg_monthly": ytd_avg_monthly,
+        "ytd_monthly_breakdown": ytd_monthly_breakdown,
     }
 
 
