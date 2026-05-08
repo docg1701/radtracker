@@ -1,4 +1,4 @@
-# Guia de Deploy — radtracker v1.5.3
+# Guia de Deploy — radtracker v1.5.4
 
 ## Pré-requisitos
 
