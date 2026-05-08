@@ -1,7 +1,7 @@
 # radtracker — Comprehensive Project Context
 
 **Generated:** 2026-05-06
-**Version:** v1.5.2
+**Version:** v1.5.3
 **Test status:** 150 passed, 0 failed (2026-05-06)
 
 ---
