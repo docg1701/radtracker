@@ -260,18 +260,22 @@ over-reserve credits on low-ceiling ones. Omission is the correct default.
 
 ### 12. Add DB columns for reasoning settings
 - **File**: `src/db.py`, `init_db()` function
-- **Change**: Seed new keys via `save_setting()` in a one-shot migration called from
-  `ensure_settings()` (simpler than ALTER TABLE):
+- **Change**: Add a private helper `_seed_reasoning_settings()` called from
+  `init_db()` (not from `ensure_settings()` — that's the UI layer and runs
+  per-tab). Uses the existing `save_setting`/`load_setting` key-value store:
   ```python
-  for key, default in [
-      ("thinking_enabled", "1"),
-      ("thinking_effort", "high"),
-      ("thinking_budget", ""),        # empty = not set (effort takes precedence)
-      ("temperature", "0.3"),
-  ]:
-      if not load_setting(conn, key):
-          save_setting(conn, key, default)
+  def _seed_reasoning_settings(conn):
+      defaults = [
+          ("thinking_enabled", "1"),
+          ("thinking_effort", "high"),
+          ("thinking_budget", ""),        # empty = budget not set
+          ("temperature", "0.3"),
+      ]
+      for key, default in defaults:
+          if not load_setting(conn, key):
+              save_setting(conn, key, default)
   ```
+  `init_db()` calls `_seed_reasoning_settings(conn)` after creating tables.
 - **Acceptance**: `load_setting(conn, 'thinking_enabled')` returns `'1'` after migration.
 
 ### 13. Load reasoning settings in `ensure_settings()`
@@ -317,14 +321,20 @@ over-reserve credits on low-ceiling ones. Omission is the correct default.
                "O OpenRouter traduz para o formato nativo de cada modelo.",
       )
 
-      thinking_budget = st.number_input(
-          "Ou: orçamento exato de tokens de reasoning",
-          min_value=1024, max_value=32000, step=1024,
-          value=st.session_state.thinking_budget or 32000,
-          help="Alternativa ao nível de esforço. "
-               "Se preenchido, o esforço é ignorado. "
-               "O OpenRouter traduz para o formato nativo de cada modelo.",
+      use_budget = st.checkbox(
+          "Usar orçamento exato de tokens (anula o esforço)",
+          value=st.session_state.thinking_budget is not None,
       )
+      thinking_budget = None
+      if use_budget:
+          thinking_budget = st.number_input(
+              "Orçamento de tokens de reasoning",
+              min_value=1024, max_value=32000, step=1024,
+              value=st.session_state.thinking_budget or 32000,
+              help="Define exatamente quantos tokens o modelo pode gastar "
+                   "em raciocínio. O OpenRouter traduz para o formato "
+                   "nativo de cada modelo.",
+          )
   else:
       thinking_effort = None
       thinking_budget = None
@@ -386,8 +396,22 @@ over-reserve credits on low-ceiling ones. Omission is the correct default.
 ### 17. Build `reasoning` object in `_build_payload()`
 - **File**: `src/llm_client.py`, `_build_payload()` (~line 306)
 - **Change**: Accept and use the new params. Build `reasoning` object following
-  OpenRouter's mutual-exclusivity rules. Do NOT send `max_tokens` (let the model
-  decide its output ceiling):
+  OpenRouter's mutual-exclusivity rules (budget > effort). Do NOT send `max_tokens`
+  — let the model decide its output ceiling. **Also call `_build_payload` from
+  `generate_stream()` with all new params** (currently the call at line ~246 passes
+  only `messages` and `stream`):
+  ```python
+  # Inside generate_stream():
+  payload = self._build_payload(
+      messages,
+      stream=True,
+      thinking_enabled=thinking_enabled,
+      thinking_effort=thinking_effort,
+      thinking_budget=thinking_budget,
+      temperature=temperature,
+  )
+  ```
+  `_build_payload()` itself:
   ```python
   def _build_payload(
       self, messages, stream=False,
@@ -411,8 +435,12 @@ over-reserve credits on low-ceiling ones. Omission is the correct default.
 
       return payload
   ```
+  Update docstrings on both `generate_stream()` and `_build_payload()` to document
+  the new parameters (project convention: every public function has intent +
+  one usage example).
 - **Acceptance**: Payload includes correct `reasoning` object. No `max_tokens` sent.
   Budget takes precedence over effort when both are set.
+  `generate_stream()` forwards settings to `_build_payload()`.
 
 ### 18. Update `_stream_response()` to pass config to `generate_stream()`
 - **File**: `src/ui/chat.py`, `_stream_response()` (~line 250)
