@@ -223,8 +223,15 @@ class LLMClient:
             raise LLMUnavailableError("Modelo LLM não configurado")
         self._api_key = api_key
         self._model = model
+        self._reasoning_buffer: list[str] = []
 
     # ── Public API ──
+
+    @property
+    def reasoning(self) -> str | None:
+        """Texto completo do reasoning acumulado no último generate_stream()."""
+        joined = "".join(self._reasoning_buffer)
+        return joined if joined else None
 
     def generate_stream(
         self,
@@ -243,6 +250,7 @@ class LLMClient:
         Raises:
             LLMUnavailableError: timeout, HTTP/network error, ou rate limit.
         """
+        self._reasoning_buffer = []
         payload = self._build_payload(messages, stream=True)
         yielded_any = False
         try:
@@ -264,6 +272,13 @@ class LLMClient:
                             choices = data.get("choices") or [{}]
                             choice = choices[0] if choices else {}
                             delta = (choice or {}).get("delta") or {}
+                            # Accumulate reasoning tokens from the delta.
+                            # DeepSeek V4 via OpenRouter uses "reasoning_content" in the native
+                            # format; other providers (Anthropic, Qwen, Gemini) use "reasoning"
+                            # as normalized by OpenRouter. Both are handled model-agnostically.
+                            reasoning_token = delta.get("reasoning_content") or delta.get("reasoning", "")
+                            if reasoning_token:
+                                self._reasoning_buffer.append(reasoning_token)
                             content = delta.get("content")
                             if content:
                                 yielded_any = True

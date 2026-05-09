@@ -257,6 +257,89 @@ class TestGenerateStream:
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert tokens == ["fim"]
 
+    @respx.mock
+    def test_generate_stream_captures_reasoning_content(self):
+        """reasoning_content tokens (DeepSeek native) are accumulated in buffer."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"reasoning_content":"Pensando...","content":null}}]}',
+                'data: {"choices":[{"delta":{"content":"Resposta"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Resposta"]  # content tokens unchanged
+        assert llm.reasoning == "Pensando..."
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_captures_reasoning_field(self):
+        """reasoning tokens (OpenRouter normalized) are accumulated in buffer."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"reasoning":"Thinking...","content":null}}]}',
+                'data: {"choices":[{"delta":{"content":"Answer"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Answer"]
+        assert llm.reasoning == "Thinking..."
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_reasoning_and_content_same_delta(self):
+        """When delta has both reasoning_content and content, both are captured."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"reasoning_content":"Think","content":"Out"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Out"]
+        assert llm.reasoning == "Think"
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_reasoning_none_when_no_tokens(self):
+        """reasoning property returns None when model doesn't emit reasoning."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":"Plain"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == ["Plain"]
+        assert llm.reasoning is None
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_reasoning_buffer_resets(self):
+        """Each generate_stream() call gets a fresh reasoning buffer."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"reasoning_content":"First"}}]}',
+                'data: {"choices":[{"delta":{"content":"A"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        list(llm.generate_stream([{"role": "user", "content": "Q1"}]))
+        assert llm.reasoning == "First"
+
+        route.return_value = _sse_chunks(
+            'data: {"choices":[{"delta":{"content":"B"}}]}',
+            "data: [DONE]",
+        )
+        list(llm.generate_stream([{"role": "user", "content": "Q2"}]))
+        assert llm.reasoning is None  # second call has no reasoning
+
 
 class TestBuildRagContext:
     def test_build_rag_context_includes_template_sections(self):

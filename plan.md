@@ -1,5 +1,7 @@
 # Implementation Plan: DeepSeek V4 `reasoning_content` 400 error fix
 
+# Part 1 — Response-side reasoning capture
+
 ## Goal
 
 Make `LLMClient` capture reasoning tokens (`reasoning_content` / `reasoning`) from streaming SSE deltas, store them on assistant messages, and pass them back in subsequent multi-turn requests — model-agnostic, zero hardcoded provider checks.
