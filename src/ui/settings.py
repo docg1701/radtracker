@@ -349,19 +349,12 @@ def _render_ai_section(conn: Any) -> None:
             key="cfg_llm_model",
             placeholder="openai/gpt-oss-120b:free",
         )
-        st.caption(
-            "Digite o slug exato do modelo como aparece no site do OpenRouter "
-            "(google/gemini-2.5-flash, anthropic/claude-sonnet-4)."
-        )
     if llm_model and "/" not in llm_model:
         st.warning(
             "Slug inválido: use o formato provedor/modelo "
             "(ex: openai/gpt-oss-120b:free).",
             icon=":material/warning:",
         )
-
-    st.divider()
-    st.subheader(":material/psychology: Thinking (reasoning)")
 
     thinking_enabled = st.toggle(
         "Ativar thinking mode",
@@ -418,7 +411,6 @@ def _render_ai_section(conn: Any) -> None:
                  "Recomendado: 0.3 para análises.",
         )
 
-    st.subheader(":material/edit_note: Prompt inicial")
     system_prompt = st.text_area(
         "Prompt inicial", value=current_prompt, height=200, key="cfg_prompt",
         placeholder=_DEFAULT_LLM_PROMPT,
