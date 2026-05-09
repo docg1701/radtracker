@@ -36,7 +36,7 @@ class TestLlmClientSuccess:
         )
         llm = LLMClient("sk-fake-key", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Insight"]
+        assert tokens == [("content", "Insight")]
 
 
 class TestLlmClientMissingKey:
@@ -142,7 +142,7 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Olá", " mundo"]
+        assert tokens == [("content", "Olá"), ("content", " mundo")]
         assert route.called
 
     @respx.mock
@@ -197,7 +197,7 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["ok"]
+        assert tokens == [("content", "ok")]
         assert route.called
 
     @respx.mock
@@ -212,7 +212,7 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["fim"]
+        assert tokens == [("content", "fim")]
         assert route.called
 
     @respx.mock
@@ -227,7 +227,7 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["ok"]
+        assert tokens == [("content", "ok")]
         assert route.called
 
     @respx.mock
@@ -242,7 +242,7 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["ok"]
+        assert tokens == [("content", "ok")]
         assert route.called
 
     @respx.mock
@@ -255,11 +255,11 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["fim"]
+        assert tokens == [("content", "fim")]
 
     @respx.mock
     def test_generate_stream_captures_reasoning_content(self):
-        """reasoning_content tokens (DeepSeek native) are accumulated in buffer."""
+        """reasoning_content tokens (DeepSeek native) are yieldados como tuplas."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"reasoning_content":"Pensando...","content":null}}]}',
@@ -269,13 +269,16 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Resposta"]  # content tokens unchanged
+        content_tokens = [t for t_type, t in tokens if t_type == "content"]
+        reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
+        assert content_tokens == ["Resposta"]
+        assert reasoning_tokens == ["Pensando..."]
         assert llm.reasoning == "Pensando..."
         assert route.called
 
     @respx.mock
     def test_generate_stream_captures_reasoning_field(self):
-        """reasoning tokens (OpenRouter normalized) are accumulated in buffer."""
+        """reasoning tokens (OpenRouter normalized) are yieldados como tuplas."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"reasoning":"Thinking...","content":null}}]}',
@@ -285,13 +288,16 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Answer"]
+        content_tokens = [t for t_type, t in tokens if t_type == "content"]
+        reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
+        assert content_tokens == ["Answer"]
+        assert reasoning_tokens == ["Thinking..."]
         assert llm.reasoning == "Thinking..."
         assert route.called
 
     @respx.mock
     def test_generate_stream_reasoning_and_content_same_delta(self):
-        """When delta has both reasoning_content and content, both are captured."""
+        """When delta has both reasoning_content and content, both are yieldados."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"reasoning_content":"Think","content":"Out"}}]}',
@@ -300,13 +306,16 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Out"]
+        content_tokens = [t for t_type, t in tokens if t_type == "content"]
+        reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
+        assert content_tokens == ["Out"]
+        assert reasoning_tokens == ["Think"]
         assert llm.reasoning == "Think"
         assert route.called
 
     @respx.mock
     def test_generate_stream_reasoning_none_when_no_tokens(self):
-        """reasoning property returns None when model doesn't emit reasoning."""
+        """Todas as tuplas são ("content", ...) quando não há reasoning."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":"Plain"}}]}',
@@ -315,7 +324,10 @@ class TestGenerateStream:
         )
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert tokens == ["Plain"]
+        content_tokens = [t for t_type, t in tokens if t_type == "content"]
+        reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
+        assert content_tokens == ["Plain"]
+        assert reasoning_tokens == []
         assert llm.reasoning is None
         assert route.called
 
@@ -337,8 +349,44 @@ class TestGenerateStream:
             'data: {"choices":[{"delta":{"content":"B"}}]}',
             "data: [DONE]",
         )
-        list(llm.generate_stream([{"role": "user", "content": "Q2"}]))
+        second_tokens = list(llm.generate_stream([{"role": "user", "content": "Q2"}]))
         assert llm.reasoning is None  # second call has no reasoning
+        content_tokens = [t for t_type, t in second_tokens if t_type == "content"]
+        assert content_tokens == ["B"]
+
+    @respx.mock
+    def test_generate_stream_yields_reasoning_and_content_tuples(self):
+        """Tokens de reasoning e content são yieldados como tuplas (tipo, valor)."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"reasoning_content":"Pensando..."}}]}',
+                'data: {"choices":[{"delta":{"content":"Ok"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert tokens == [
+            ("reasoning", "Pensando..."),
+            ("content", "Ok"),
+        ]
+        assert llm.reasoning == "Pensando..."
+        assert route.called
+
+    @respx.mock
+    def test_generate_stream_content_only_no_reasoning_tuples(self):
+        """Sem reasoning, todas as tuplas são ("content", ...)."""
+        route = respx.post(_OPENROUTER_URL).mock(
+            return_value=_sse_chunks(
+                'data: {"choices":[{"delta":{"content":"Plain"}}]}',
+                "data: [DONE]",
+            )
+        )
+        llm = LLMClient("sk-test", "test/model")
+        tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
+        assert all(t_type == "content" for t_type, _ in tokens)
+        assert llm.reasoning is None
+        assert route.called
 
 
 class TestBuildPayload:

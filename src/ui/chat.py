@@ -229,37 +229,56 @@ def _trigger_initial_report(
 def _stream_response(api_key: str, llm_model: str) -> None:
     """Stream assistant response for the pending user message.
 
-    Trims history to _MAX_MESSAGE_PAIRS before sending, shows a processing
-    indicator while waiting for the first token, appends the complete
+    Trims history to _MAX_MESSAGE_PAIRS before sending, shows live reasoning
+    tokens as a status indicator while the model thinks, passes content tokens
+    to st.write_stream for progressive rendering, appends the complete
     response to st.session_state.messages when done.
     """
     _trim_history()
     with st.chat_message("assistant"):
-        placeholder = st.empty()
-        placeholder.status(
-            ":material/psychology: Processando...", expanded=False
-        )
+        status_ph = st.empty()      # reasoning / status
         llm = LLMClient(api_key, model=llm_model)
-        stream = llm.generate_stream(
+        raw_stream = llm.generate_stream(
             st.session_state.messages,
             thinking_enabled=st.session_state.get("thinking_enabled", True),
             thinking_effort=st.session_state.get("thinking_effort"),
             thinking_budget=st.session_state.get("thinking_budget"),
             temperature=st.session_state.get("temperature", 0.3),
         )
-        safe_stream = (sanitize_token(token) for token in stream)
+
+        reasoning_acc = ""   # acumula p/ snippet no status
+
+        def content_stream():
+            """Wrapper: reasoning → side effect, content → pass through."""
+            nonlocal reasoning_acc
+            for token_type, token in raw_stream:
+                if token_type == "reasoning":
+                    reasoning_acc += token
+                    # Mostra últimos ~150 chars, truncado com "…"
+                    snippet = reasoning_acc[-150:]
+                    if len(reasoning_acc) > 150:
+                        snippet = "…" + snippet
+                    status_ph.status(
+                        f":material/psychology: {snippet}",
+                        expanded=False,
+                    )
+                else:  # "content"
+                    status_ph.empty()  # limpa reasoning
+                    yield sanitize_token(token)
+
+        safe_stream = content_stream()
+
         try:
             response = st.write_stream(safe_stream)
-            placeholder.empty()
         except LLMUnavailableError:
-            placeholder.empty()
+            status_ph.empty()
             response = (
                 ":material/error: Não foi possível gerar a resposta. "
                 "Verifique sua conexão ou chave de API."
             )
             st.error(response)
         except Exception as exc:
-            placeholder.empty()
+            status_ph.empty()
             response = (
                 ":material/error: Erro inesperado ao gerar a resposta. "
                 f"Detalhes: {exc}"

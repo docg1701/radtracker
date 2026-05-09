@@ -240,8 +240,8 @@ class LLMClient:
         thinking_effort: str | None = None,   # low|medium|high|xhigh
         thinking_budget: int | None = None,   # 1024–32000
         temperature: float = 0.3,
-    ) -> Generator[str, None, None]:
-        """Chama OpenRouter com stream=True e faz yield de tokens.
+    ) -> Generator[tuple[str, str], None, None]:
+        """Chama OpenRouter com stream=True e faz yield de tuplas (tipo, token).
 
         Args:
             messages: Lista completa de mensagens (system + user + assistant).
@@ -255,16 +255,18 @@ class LLMClient:
             temperature: Controla aleatoriedade (0.0–2.0).
 
         Yields:
-            Tokens de texto conforme chegam via SSE.
+            Tuplas (tipo, texto) onde tipo é "reasoning" (pensamento do modelo)
+            ou "content" (resposta visível).
 
         Raises:
             LLMUnavailableError: timeout, HTTP/network error, ou rate limit.
 
         Example:
             >>> llm = LLMClient("sk-test", "model")
-            >>> for token in llm.generate_stream(
+            >>> for tipo, token in llm.generate_stream(
             ...     messages, thinking_enabled=False, temperature=0.5):
-            ...     print(token, end="")
+            ...     if tipo == "content":
+            ...         print(token, end="")
         """
         self._reasoning_buffer = []
         payload = self._build_payload(
@@ -302,10 +304,11 @@ class LLMClient:
                             reasoning_token = delta.get("reasoning_content") or delta.get("reasoning", "")
                             if reasoning_token:
                                 self._reasoning_buffer.append(reasoning_token)
+                                yield ("reasoning", reasoning_token)
                             content = delta.get("content")
                             if content:
                                 yielded_any = True
-                                yield content
+                                yield ("content", content)
                         except (
                             json.JSONDecodeError,
                             KeyError,
