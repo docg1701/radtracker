@@ -31,9 +31,13 @@ _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _RAG_TEMPLATE = """\
 === DADOS ATUAIS PARA ANÁLISE ===
-Os dados abaixo são o contexto da conversa. Use-os para responder perguntas.
-Quando o usuário pedir "relatório" ou "análise", use TODOS os meses, não
-apenas o mês atual.
+Os dados abaixo são fatos. Use-os para fundamentar suas estratégias.
+
+=== META E SITUAÇÃO DO MÊS ===
+Meta mensal: {goal} | Dias úteis restantes: {remaining_days}
+Faturamento atual (MTD): {mtd_earnings}
+Projeção no ritmo atual: {projection_month_end}
+Necessário por dia útil restante para bater a meta: {daily_target_needed}
 
 === RESUMO DO ANO (YTD) ===
 Faturamento acumulado: {ytd_earnings} | Média mensal: {ytd_avg_monthly}
@@ -44,11 +48,6 @@ Meses com dados: {ytd_months}
 
 === DADOS DIÁRIOS COMPLETOS (todas as modalidades, todos os dias) ===
 {full_daily_table}
-
-Produza uma análise completa e detalhada. Use **negrito** para destaques.
-Inclua: avaliação do ritmo, tendências de curto e longo prazo, análise
-do mix de modalidades, riscos e oportunidades, e recomendações práticas.
-Compare os meses entre si.
 """
 
 
@@ -77,9 +76,14 @@ def _enrich_stats(
     stats: dict[str, Any],
     active_modalities: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Build a rich per-month breakdown + YTD summary + full daily table."""
+    """Build a rich per-month breakdown + YTD summary + full daily table.
+
+    Extracts goal and projection from current_month_stats so the RAG
+    template can surface them to the LLM.
+    """
     df: pd.DataFrame = stats.get("df", pd.DataFrame())
     current_ym = stats.get("year_month") or ""
+    current_stats = stats.get("current_month_stats", {})
 
     MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -192,6 +196,11 @@ def _enrich_stats(
             full_daily_table = "\n".join(daily_rows)
 
     return {
+        "goal": fmt_brl(float(current_stats.get("goal", 0))),
+        "mtd_earnings": fmt_brl(float(current_stats.get("mtd_earnings", 0))),
+        "remaining_days": str(current_stats.get("remaining_calendar_days", 0)),
+        "daily_target_needed": fmt_brl(float(current_stats.get("daily_target_needed", 0))),
+        "projection_month_end": fmt_brl(float(current_stats.get("projection_month_end", 0))),
         "ytd_earnings": fmt_brl(ytd_earnings),
         "ytd_avg_monthly": ytd_avg_monthly,
         "ytd_months": str(ytd_month_count),

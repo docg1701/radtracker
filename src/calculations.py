@@ -232,6 +232,7 @@ def compute_monthly_stats(
     projection_month_end = mtd_earnings + (daily_avg * remaining_calendar_days)
 
     return {
+        "goal": goal,
         "mtd_earnings": mtd_earnings,
         "pct_goal": pct_goal,
         "days_worked": days_worked,
