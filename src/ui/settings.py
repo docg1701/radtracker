@@ -387,17 +387,14 @@ def _render_ai_section(conn: Any) -> None:
             )
         with col_budget:
             use_budget = st.checkbox(
-                "Usar orçamento exato de tokens (ignora esforço)",
+                "Tokens de reasoning (ignora esforço)",
                 value=st.session_state.thinking_budget is not None,
             )
             thinking_budget = st.number_input(
-                "Orçamento de tokens de reasoning",
+                "",
                 min_value=1024, max_value=32000, step=1024,
                 value=st.session_state.thinking_budget or 32000,
                 disabled=not use_budget,
-                help="Define exatamente quantos tokens o modelo pode gastar "
-                     "em raciocínio. O OpenRouter traduz para o formato "
-                     "nativo de cada modelo.",
             )
     else:
         thinking_effort = None
