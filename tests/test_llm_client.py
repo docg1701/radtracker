@@ -341,6 +341,50 @@ class TestGenerateStream:
         assert llm.reasoning is None  # second call has no reasoning
 
 
+class TestBuildPayload:
+    """Tests for _build_payload() reasoning parameter construction."""
+
+    def test_build_payload_no_max_tokens_sent(self):
+        """max_tokens is never sent — model uses its own default."""
+        llm = LLMClient("sk-test", "test/model")
+        payload = llm._build_payload([], stream=False)
+        assert "max_tokens" not in payload
+
+    def test_build_payload_reasoning_omitted_by_default(self):
+        """With thinking enabled and no effort/budget, no reasoning key."""
+        llm = LLMClient("sk-test", "test/model")
+        payload = llm._build_payload(
+            [], stream=False, thinking_enabled=True,
+        )
+        assert "reasoning" not in payload
+
+    def test_build_payload_reasoning_disabled(self):
+        llm = LLMClient("sk-test", "test/model")
+        payload = llm._build_payload(
+            [], stream=False, thinking_enabled=False,
+        )
+        assert payload["reasoning"] == {"enabled": False}
+        assert "max_tokens" not in payload
+
+    def test_build_payload_reasoning_effort(self):
+        llm = LLMClient("sk-test", "test/model")
+        payload = llm._build_payload(
+            [], stream=False,
+            thinking_enabled=True, thinking_effort="xhigh",
+        )
+        assert payload["reasoning"] == {"effort": "xhigh"}
+        assert "max_tokens" not in payload
+
+    def test_build_payload_reasoning_budget(self):
+        llm = LLMClient("sk-test", "test/model")
+        payload = llm._build_payload(
+            [], stream=False,
+            thinking_enabled=True, thinking_budget=32000,
+        )
+        assert payload["reasoning"] == {"max_tokens": 32000}
+        assert "max_tokens" not in payload
+
+
 class TestBuildRagContext:
     def test_build_rag_context_includes_template_sections(self):
         stats = _minimal_stats()

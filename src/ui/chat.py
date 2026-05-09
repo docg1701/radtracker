@@ -240,7 +240,13 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             ":material/psychology: Processando...", expanded=False
         )
         llm = LLMClient(api_key, model=llm_model)
-        stream = llm.generate_stream(st.session_state.messages)
+        stream = llm.generate_stream(
+            st.session_state.messages,
+            thinking_enabled=st.session_state.get("thinking_enabled", True),
+            thinking_effort=st.session_state.get("thinking_effort"),
+            thinking_budget=st.session_state.get("thinking_budget"),
+            temperature=st.session_state.get("temperature", 0.3),
+        )
         safe_stream = (sanitize_token(token) for token in stream)
         try:
             response = st.write_stream(safe_stream)

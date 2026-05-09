@@ -48,6 +48,16 @@ def ensure_settings(conn: Any) -> None:
         st.session_state.llm_prompt = load_setting(conn, "llm_prompt", "")
     if "llm_model" not in st.session_state:
         st.session_state.llm_model = load_setting(conn, "llm_model", "")
+    if "thinking_enabled" not in st.session_state:
+        raw = load_setting(conn, "thinking_enabled", "1")
+        st.session_state.thinking_enabled = raw in ("1", "true", "True")
+    if "thinking_effort" not in st.session_state:
+        st.session_state.thinking_effort = load_setting(conn, "thinking_effort", "high")
+    if "thinking_budget" not in st.session_state:
+        raw = load_setting(conn, "thinking_budget", "")
+        st.session_state.thinking_budget = int(raw) if raw else None
+    if "temperature" not in st.session_state:
+        st.session_state.temperature = float(load_setting(conn, "temperature", "0.3"))
 
 
 _DEFAULT_LLM_PROMPT = (
@@ -334,6 +344,55 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
             icon=":material/warning:",
         )
 
+    st.subheader(":material/psychology: Thinking (reasoning)")
+
+    thinking_enabled = st.toggle(
+        "Ativar thinking mode",
+        value=st.session_state.thinking_enabled,
+        help="Modelo gera raciocínio interno antes da resposta. "
+             "Mais qualidade analítica, maior custo de tokens.",
+    )
+
+    if thinking_enabled:
+        thinking_effort = st.selectbox(
+            "Nível de esforço",
+            options=["low", "medium", "high", "xhigh"],
+            index=["low", "medium", "high", "xhigh"].index(
+                st.session_state.thinking_effort
+            ),
+            help="Controla quantos tokens o modelo gasta pensando. "
+                 "xhigh = análise mais profunda. "
+                 "O OpenRouter traduz para o formato nativo de cada modelo.",
+        )
+
+        use_budget = st.checkbox(
+            "Usar orçamento exato de tokens (anula o esforço)",
+            value=st.session_state.thinking_budget is not None,
+        )
+        thinking_budget = None
+        if use_budget:
+            thinking_budget = st.number_input(
+                "Orçamento de tokens de reasoning",
+                min_value=1024, max_value=32000, step=1024,
+                value=st.session_state.thinking_budget or 32000,
+                help="Define exatamente quantos tokens o modelo pode gastar "
+                     "em raciocínio. O OpenRouter traduz para o formato "
+                     "nativo de cada modelo.",
+            )
+    else:
+        thinking_effort = None
+        thinking_budget = None
+
+    st.subheader(":material/thermostat: Temperatura")
+    temperature = st.slider(
+        "Temperatura",
+        min_value=0.0, max_value=2.0, step=0.1,
+        value=st.session_state.get("temperature", 0.3),
+        help="Controla aleatoriedade (0 = determinístico, 2 = criativo). "
+             "Alguns modelos ignoram com thinking ligado. "
+             "Recomendado: 0.3 para análises.",
+    )
+
     system_prompt = st.text_area(
         "Prompt da IA", value=current_prompt, height=200, key="cfg_prompt",
         placeholder=_DEFAULT_LLM_PROMPT,
@@ -344,6 +403,7 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
         ":material/save: Salvar configurações", type="primary",
         on_click=lambda: _save_llm_settings(
             conn, year_month, goal, user_name, api_key, llm_model, system_prompt,
+            thinking_enabled, thinking_effort, thinking_budget, temperature,
         ),
     )
 
@@ -356,6 +416,10 @@ def _save_llm_settings(
     api_key: str,
     llm_model: str,
     system_prompt: str,
+    thinking_enabled: bool,
+    thinking_effort: str | None,
+    thinking_budget: int | None,
+    temperature: float,
 ) -> None:
     """Persist LLM settings to DB + session_state. Validates required fields."""
     errors: list[str] = []
@@ -382,6 +446,12 @@ def _save_llm_settings(
     save_setting(conn, "api_key", api_key.strip())
     save_setting(conn, "llm_model", llm_model.strip())
     save_setting(conn, "llm_prompt", system_prompt.strip())
+    save_setting(conn, "thinking_enabled", "1" if thinking_enabled else "0")
+    if thinking_effort:
+        save_setting(conn, "thinking_effort", thinking_effort)
+    if thinking_budget is not None:
+        save_setting(conn, "thinking_budget", str(thinking_budget))
+    save_setting(conn, "temperature", str(temperature))
 
     st.session_state.pop("historical_cache", None)
     st.session_state.goal = goal
@@ -389,6 +459,10 @@ def _save_llm_settings(
     st.session_state.api_key = api_key
     st.session_state.llm_model = llm_model.strip()
     st.session_state.llm_prompt = system_prompt
+    st.session_state.thinking_enabled = thinking_enabled
+    st.session_state.thinking_effort = thinking_effort
+    st.session_state.thinking_budget = thinking_budget
+    st.session_state.temperature = temperature
     st.toast(":material/check_circle: Configurações salvas!")
 
 

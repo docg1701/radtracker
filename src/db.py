@@ -143,6 +143,8 @@ def init_db(conn: Any) -> None:
     _migrate_v1_3_to_v1_4_defaults(conn)
     # Run v1→v2 migration if needed
     _migrate_v1_to_v2(conn)
+    # Seed reasoning settings for thinking/temperature configuration
+    _seed_reasoning_settings(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -512,6 +514,22 @@ def save_setting(conn: Any, key: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 # Private: seed + migration
 # ---------------------------------------------------------------------------
+
+def _seed_reasoning_settings(conn: Any) -> None:
+    """Seed reasoning-related user_settings if absent. Idempotent.
+
+    Called from init_db() after tables are created.
+    """
+    defaults = [
+        ("thinking_enabled", "1"),
+        ("thinking_effort", "high"),
+        ("thinking_budget", ""),        # empty = budget not set
+        ("temperature", "0.3"),
+    ]
+    for key, default in defaults:
+        if not load_setting(conn, key):
+            save_setting(conn, key, default)
+
 
 def _seed_modalities(conn: Any) -> None:
     """Insert the 5 predefined modalities with production values if the table is empty."""
