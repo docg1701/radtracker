@@ -79,7 +79,8 @@ def render_settings_tab(conn: Any) -> None:
 
     ensure_settings(conn)
     _render_modality_grid(conn)
-    _render_llm_section(conn, year_month)
+    _render_personalization_section(conn, year_month)
+    _render_ai_section(conn)
     _render_danger_zone()
 
 
@@ -297,46 +298,61 @@ def _save_modalities(
 
 
 # ---------------------------------------------------------------------------
-# LLM section (goal + model + api key + prompt)
+# Personalization section (name + monthly goal)
+# ---------------------------------------------------------------------------
+
+
+@st.fragment
+def _render_personalization_section(conn: Any, year_month: str) -> None:
+    """Fragment: user name and monthly goal side by side."""
+    current_goal = st.session_state.goal
+    current_name = st.session_state.get("user_name", "")
+
+    st.subheader(":material/person: Personalização")
+    col_name, col_goal = st.columns(2)
+    with col_name:
+        st.text_input(
+            "Seu nome", value=current_name, key="cfg_name",
+            placeholder="Seu nome",
+        )
+    with col_goal:
+        st.number_input(
+            "Meta mensal (R$)", min_value=0.0, step=100.0,
+            value=current_goal, key="cfg_goal",
+        )
+
+
+# ---------------------------------------------------------------------------
+# AI section (api key + model + thinking + temperature + prompt)
 # ---------------------------------------------------------------------------
 
 @st.fragment
-def _render_llm_section(conn: Any, year_month: str) -> None:
-    """Fragment: monthly goal, LLM model, API key, system prompt."""
-    current_goal = st.session_state.goal
-    current_name = st.session_state.get("user_name", "")
+def _render_ai_section(conn: Any) -> None:
+    """Fragment: OpenRouter API key, model, thinking, temperature, prompt."""
     current_api_key = st.session_state.get("api_key", "")
     current_prompt = st.session_state.get("llm_prompt", "")
     current_model = st.session_state.get("llm_model", "")
 
-    st.subheader(":material/target: Meta mensal *")
-    goal = st.number_input(
-        "Meta mensal (R$)", min_value=0.0, step=100.0,
-        value=current_goal, key="cfg_goal",
-    )
+    st.subheader(":material/smart_toy: Inteligência Artificial")
 
-    st.subheader(":material/person: Personalização *")
-    user_name = st.text_input("Seu nome", value=current_name, key="cfg_name",
-                              placeholder="Seu nome")
-
-    st.subheader(":material/smart_toy: IA — OpenRouter *")
-    api_key = st.text_input(
-        "Chave API OpenRouter", type="password",
-        value=current_api_key, key="cfg_apikey",
-        placeholder="sk-or-v1-...",
-    )
-    st.caption("[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)")
-
-    llm_model = st.text_input(
-        "Modelo OpenRouter (slug completo)",
-        value=current_model,
-        key="cfg_llm_model",
-        placeholder="openai/gpt-oss-120b:free",
-    )
-    st.caption(
-        "Digite o slug exato do modelo como aparece no site do OpenRouter "
-        "(google/gemini-2.5-flash, anthropic/claude-sonnet-4)."
-    )
+    col_api, col_model = st.columns(2)
+    with col_api:
+        api_key = st.text_input(
+            "Chave API OpenRouter", type="password",
+            value=current_api_key, key="cfg_apikey",
+            placeholder="sk-or-v1-...",
+        )
+    with col_model:
+        llm_model = st.text_input(
+            "Modelo OpenRouter (slug completo)",
+            value=current_model,
+            key="cfg_llm_model",
+            placeholder="openai/gpt-oss-120b:free",
+        )
+        st.caption(
+            "Digite o slug exato do modelo como aparece no site do OpenRouter "
+            "(google/gemini-2.5-flash, anthropic/claude-sonnet-4)."
+        )
     if llm_model and "/" not in llm_model:
         st.warning(
             "Slug inválido: use o formato provedor/modelo "
@@ -344,6 +360,7 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
             icon=":material/warning:",
         )
 
+    st.divider()
     st.subheader(":material/psychology: Thinking (reasoning)")
 
     thinking_enabled = st.toggle(
@@ -354,27 +371,37 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
     )
 
     if thinking_enabled:
-        thinking_effort = st.selectbox(
-            "Nível de esforço",
-            options=["low", "medium", "high", "xhigh"],
-            index=["low", "medium", "high", "xhigh"].index(
-                st.session_state.thinking_effort
-            ),
-            help="Controla quantos tokens o modelo gasta pensando. "
-                 "xhigh = análise mais profunda. "
-                 "O OpenRouter traduz para o formato nativo de cada modelo.",
-        )
-
-        use_budget = st.checkbox(
-            "Usar orçamento exato de tokens (anula o esforço)",
-            value=st.session_state.thinking_budget is not None,
-        )
-        thinking_budget = None
-        if use_budget:
+        col_effort, col_temp, col_budget = st.columns(3)
+        with col_effort:
+            thinking_effort = st.selectbox(
+                "Nível de esforço",
+                options=["low", "medium", "high", "xhigh"],
+                index=["low", "medium", "high", "xhigh"].index(
+                    st.session_state.thinking_effort
+                ),
+                help="Controla quantos tokens o modelo gasta pensando. "
+                     "xhigh = análise mais profunda. "
+                     "O OpenRouter traduz para o formato nativo de cada modelo.",
+            )
+        with col_temp:
+            temperature = st.slider(
+                "Temperatura",
+                min_value=0.0, max_value=2.0, step=0.1,
+                value=st.session_state.get("temperature", 0.3),
+                help="Controla aleatoriedade (0 = determinístico, 2 = criativo). "
+                     "Alguns modelos ignoram com thinking ligado. "
+                     "Recomendado: 0.3 para análises.",
+            )
+        with col_budget:
+            use_budget = st.checkbox(
+                "Usar orçamento exato de tokens (ignora esforço)",
+                value=st.session_state.thinking_budget is not None,
+            )
             thinking_budget = st.number_input(
                 "Orçamento de tokens de reasoning",
                 min_value=1024, max_value=32000, step=1024,
                 value=st.session_state.thinking_budget or 32000,
+                disabled=not use_budget,
                 help="Define exatamente quantos tokens o modelo pode gastar "
                      "em raciocínio. O OpenRouter traduz para o formato "
                      "nativo de cada modelo.",
@@ -382,19 +409,18 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
     else:
         thinking_effort = None
         thinking_budget = None
+        temperature = st.slider(
+            "Temperatura",
+            min_value=0.0, max_value=2.0, step=0.1,
+            value=st.session_state.get("temperature", 0.3),
+            help="Controla aleatoriedade (0 = determinístico, 2 = criativo). "
+                 "Alguns modelos ignoram com thinking ligado. "
+                 "Recomendado: 0.3 para análises.",
+        )
 
-    st.subheader(":material/thermostat: Temperatura")
-    temperature = st.slider(
-        "Temperatura",
-        min_value=0.0, max_value=2.0, step=0.1,
-        value=st.session_state.get("temperature", 0.3),
-        help="Controla aleatoriedade (0 = determinístico, 2 = criativo). "
-             "Alguns modelos ignoram com thinking ligado. "
-             "Recomendado: 0.3 para análises.",
-    )
-
+    st.subheader(":material/edit_note: Prompt inicial")
     system_prompt = st.text_area(
-        "Prompt da IA", value=current_prompt, height=200, key="cfg_prompt",
+        "Prompt inicial", value=current_prompt, height=200, key="cfg_prompt",
         placeholder=_DEFAULT_LLM_PROMPT,
     )
     st.caption("Use {user_name} como placeholder para o nome do usuário.")
@@ -402,7 +428,8 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
     st.button(
         ":material/save: Salvar configurações", type="primary",
         on_click=lambda: _save_llm_settings(
-            conn, year_month, goal, user_name, api_key, llm_model, system_prompt,
+            conn, st.session_state.cfg_goal, st.session_state.cfg_name,
+            api_key, llm_model, system_prompt,
             thinking_enabled, thinking_effort, thinking_budget, temperature,
         ),
     )
@@ -410,7 +437,6 @@ def _render_llm_section(conn: Any, year_month: str) -> None:
 
 def _save_llm_settings(
     conn: Any,
-    year_month: str,
     goal: float,
     user_name: str,
     api_key: str,
@@ -422,6 +448,7 @@ def _save_llm_settings(
     temperature: float,
 ) -> None:
     """Persist LLM settings to DB + session_state. Validates required fields."""
+    year_month = date.today().isoformat()[:7]
     errors: list[str] = []
     if not user_name.strip():
         errors.append("Nome do usuário é obrigatório.")
@@ -430,7 +457,7 @@ def _save_llm_settings(
     if not api_key.strip():
         errors.append("Chave API OpenRouter é obrigatória.")
     if not system_prompt.strip():
-        errors.append("Prompt da IA é obrigatório.")
+        errors.append("Prompt inicial é obrigatório.")
     if not llm_model.strip():
         errors.append("Modelo LLM é obrigatório.")
     if "/" not in llm_model.strip():
