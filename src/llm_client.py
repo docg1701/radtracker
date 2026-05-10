@@ -304,7 +304,10 @@ class LLMClient:
                             # DeepSeek V4 via OpenRouter uses "reasoning_content" in the native
                             # format; other providers (Anthropic, Qwen, Gemini) use "reasoning"
                             # as normalized by OpenRouter. Both are handled model-agnostically.
-                            reasoning_token = delta.get("reasoning_content") or delta.get("reasoning", "")
+                            reasoning_token = (
+                                delta.get("reasoning_content")
+                                or delta.get("reasoning", "")
+                            )
                             if reasoning_token:
                                 self._reasoning_buffer.append(reasoning_token)
                                 yield ("reasoning", reasoning_token)

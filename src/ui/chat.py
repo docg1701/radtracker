@@ -250,17 +250,13 @@ def _stream_response(api_key: str, llm_model: str) -> None:
 
         reasoning_acc = ""   # acumula p/ snippet no status
 
-                    if snippet:
-                        status_ph.status(
-                            f":material/psychology: {snippet}",
-                            expanded=False,
-                        )
+        def content_stream():
             """Wrapper: reasoning → side effect, content → pass through."""
             nonlocal reasoning_acc
             for token_type, token in raw_stream:
                 if token_type == "reasoning":
                     reasoning_acc += token
-                    # Mostra a última frase completa (até 100 chars)
+                    # Mostra a última frase completa (até 45 chars)
                     last_period = reasoning_acc.rfind(". ")
                     if last_period > 0:
                         sentence = reasoning_acc[last_period + 2:]
