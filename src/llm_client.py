@@ -91,6 +91,8 @@ def _enrich_stats(
 
     MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+              "Sexta-feira", "Sábado", "Domingo"]
 
     def _month_name(ym: str) -> str:
         try:
@@ -200,7 +202,10 @@ def _enrich_stats(
             full_daily_table = "\n".join(daily_rows)
 
     return {
-        "today": date.today().strftime("%d de %B de %Y (%A)"),
+        "today": (
+            f"{date.today().day} de {MESES[date.today().month]}"
+            f" de {date.today().year} ({SEMANA[date.today().weekday()]})"
+        ),
         "goal": fmt_brl(float(current_stats.get("goal", 0))),
         "mtd_earnings": fmt_brl(float(current_stats.get("mtd_earnings", 0))),
         "remaining_days": str(current_stats.get("remaining_calendar_days", 0)),
