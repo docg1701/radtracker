@@ -17,7 +17,7 @@ from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
-_REASONING_STATUS_MAX_CHARS = 100  # truncamento do snippet de thinking
+_REASONING_STATUS_MAX_CHARS = 45  # truncamento do snippet de thinking (uma linha no status)
 
 _SUGGESTIONS = [
     "Qual dia foi mais produtivo?",
@@ -250,14 +250,11 @@ def _stream_response(api_key: str, llm_model: str) -> None:
 
         reasoning_acc = ""   # acumula p/ snippet no status
 
-        # Evita quebra de linha no texto do status de thinking
-        st.markdown("""
-        <style>
-        [data-testid="stStatus"] p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        </style>
-        """, unsafe_allow_html=True)
-
-        def content_stream():
+                    if snippet:
+                        status_ph.status(
+                            f":material/psychology: {snippet}",
+                            expanded=False,
+                        )
             """Wrapper: reasoning → side effect, content → pass through."""
             nonlocal reasoning_acc
             for token_type, token in raw_stream:
