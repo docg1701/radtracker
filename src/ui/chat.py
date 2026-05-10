@@ -17,7 +17,7 @@ from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
-_REASONING_STATUS_MAX_CHARS = 45  # truncamento do snippet de thinking (uma linha no status)
+_REASONING_STATUS_MAX_CHARS = 80  # truncamento do snippet de thinking (uma linha no status)
 
 _SUGGESTIONS = [
     "Qual dia foi mais produtivo?",
@@ -263,6 +263,8 @@ def _stream_response(api_key: str, llm_model: str) -> None:
                     else:
                         sentence = reasoning_acc
                     snippet = sentence[:_REASONING_STATUS_MAX_CHARS]
+                    # Remove quebras de linha literais do reasoning_content
+                    snippet = snippet.replace("\n", " ")
                     if len(sentence) > _REASONING_STATUS_MAX_CHARS:
                         snippet = snippet.rstrip() + "…"
                     if snippet:
