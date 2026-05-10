@@ -388,7 +388,10 @@ def _render_ai_section(conn: Any) -> None:
         with col_budget:
             with st.container(horizontal=True, vertical_alignment="center", gap="xsmall"):
                 st.markdown(
-                    "<span style='font-size:14px;font-weight:400'>"
+                    "<span style='font-size:14px;font-weight:400' "
+                    "title='Define exatamente quantos tokens o modelo pode "
+                    "gastar em raciocínio. O OpenRouter traduz para "
+                    "o formato nativo de cada modelo.'>"
                     "Tokens de reasoning (ignora esforço)</span>",
                     unsafe_allow_html=True,
                 )
@@ -396,9 +399,6 @@ def _render_ai_section(conn: Any) -> None:
                     "",
                     label_visibility="collapsed",
                     value=st.session_state.thinking_budget is not None,
-                    help="Define exatamente quantos tokens o modelo pode gastar "
-                         "em raciocínio. O OpenRouter traduz para o formato "
-                         "nativo de cada modelo.",
                 )
             thinking_budget = st.number_input(
                 "",
