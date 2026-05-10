@@ -17,7 +17,7 @@ from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
-_REASONING_STATUS_MAX_CHARS = 150  # truncamento do snippet de thinking
+_REASONING_STATUS_MAX_CHARS = 100  # truncamento do snippet de thinking
 
 _SUGGESTIONS = [
     "Qual dia foi mais produtivo?",
@@ -256,14 +256,20 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             for token_type, token in raw_stream:
                 if token_type == "reasoning":
                     reasoning_acc += token
-                    # Mostra início do pensamento, uma linha
-                    snippet = reasoning_acc[:_REASONING_STATUS_MAX_CHARS]
-                    if len(reasoning_acc) > _REASONING_STATUS_MAX_CHARS:
+                    # Mostra a última frase completa (até 100 chars)
+                    last_period = reasoning_acc.rfind(". ")
+                    if last_period > 0:
+                        sentence = reasoning_acc[last_period + 2:]
+                    else:
+                        sentence = reasoning_acc
+                    snippet = sentence[:_REASONING_STATUS_MAX_CHARS]
+                    if len(sentence) > _REASONING_STATUS_MAX_CHARS:
                         snippet = snippet.rstrip() + "…"
-                    status_ph.status(
-                        f":material/psychology: {snippet}",
-                        expanded=False,
-                    )
+                    if snippet:
+                        status_ph.status(
+                            f":material/psychology: {snippet}",
+                            expanded=False,
+                        )
                 else:  # "content"
                     status_ph.empty()  # limpa reasoning
                     yield sanitize_token(token)
