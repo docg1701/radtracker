@@ -239,6 +239,7 @@ class LLMClient:
         thinking_enabled: bool = True,
         thinking_effort: str | None = None,   # low|medium|high|xhigh
         thinking_budget: int | None = None,   # 1024–32000
+        thinking_mode: str = "effort",        # "effort"|"budget"
         temperature: float = 0.3,
     ) -> Generator[tuple[str, str], None, None]:
         """Chama OpenRouter com stream=True e faz yield de tuplas (tipo, token).
@@ -252,6 +253,7 @@ class LLMClient:
                 Ignorado se thinking_budget for definido.
             thinking_budget: Orçamento exato de tokens de reasoning (1024–32000).
                 Tem precedência sobre thinking_effort.
+            thinking_mode: Qual parâmetro usar ("effort" ou "budget").
             temperature: Controla aleatoriedade (0.0–2.0).
 
         Yields:
@@ -275,6 +277,7 @@ class LLMClient:
             thinking_enabled=thinking_enabled,
             thinking_effort=thinking_effort,
             thinking_budget=thinking_budget,
+            thinking_mode=thinking_mode,
             temperature=temperature,
         )
         yielded_any = False
@@ -350,6 +353,7 @@ class LLMClient:
         thinking_enabled: bool = True,
         thinking_effort: str | None = None,
         thinking_budget: int | None = None,
+        thinking_mode: str = "effort",
         temperature: float = 0.3,
     ) -> dict[str, Any]:
         """Monta o payload para generate_stream() seguindo especificação OpenRouter.
@@ -360,7 +364,7 @@ class LLMClient:
             thinking_enabled: Se False, envia reasoning.enabled=False.
             thinking_effort: Nível de esforço (low|medium|high|xhigh).
             thinking_budget: Orçamento exato de tokens (1024–32000).
-                Tem precedência sobre thinking_effort.
+            thinking_mode: Qual usar ("effort" ou "budget").
             temperature: Controla aleatoriedade (0.0–2.0).
 
         Returns:
@@ -368,7 +372,7 @@ class LLMClient:
 
         Note:
             max_tokens NÃO é enviado — cada modelo decide seu próprio teto de output.
-            budget > effort (quando ambos definidos, budget vence).
+            thinking_mode decide se usa effort ou budget.
 
         Example:
             >>> llm = LLMClient("sk-test", "model")
@@ -385,9 +389,9 @@ class LLMClient:
 
         if not thinking_enabled:
             payload["reasoning"] = {"enabled": False}
-        elif thinking_budget:
+        elif thinking_mode == "budget" and thinking_budget:
             payload["reasoning"] = {"max_tokens": thinking_budget}
-        elif thinking_effort:
+        elif thinking_mode == "effort" and thinking_effort:
             payload["reasoning"] = {"effort": thinking_effort}
         # else: no reasoning key → model default behavior
 

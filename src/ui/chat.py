@@ -243,6 +243,7 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             thinking_enabled=st.session_state.get("thinking_enabled", True),
             thinking_effort=st.session_state.get("thinking_effort"),
             thinking_budget=st.session_state.get("thinking_budget"),
+            thinking_mode=st.session_state.get("thinking_mode", "effort"),
             temperature=st.session_state.get("temperature", 0.3),
         )
 

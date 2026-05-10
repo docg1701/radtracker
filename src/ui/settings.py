@@ -56,6 +56,8 @@ def ensure_settings(conn: Any) -> None:
     if "thinking_budget" not in st.session_state:
         raw = load_setting(conn, "thinking_budget", "")
         st.session_state.thinking_budget = int(raw) if raw else None
+    if "thinking_mode" not in st.session_state:
+        st.session_state.thinking_mode = load_setting(conn, "thinking_mode", "effort")
     if "temperature" not in st.session_state:
         st.session_state.temperature = float(load_setting(conn, "temperature", "0.3"))
 
@@ -327,36 +329,6 @@ def _render_personalization_section(conn: Any, year_month: str) -> None:
 # ---------------------------------------------------------------------------
 
 @st.fragment
-# ---------------------------------------------------------------------------
-# Thinking mode toggle callbacks
-# ---------------------------------------------------------------------------
-
-
-def _on_effort_toggle() -> None:
-    """Callback: usuário interagiu com o toggle 'Esforço de pensamento'."""
-    if st.session_state.cfg_effort_mode:
-        st.session_state.thinking_mode = "effort"
-        st.session_state.cfg_budget_mode = False
-    else:
-        # Desligou esforço → liga orçamento
-        st.session_state.thinking_mode = "budget"
-        st.session_state.cfg_budget_mode = True
-
-
-def _on_budget_toggle() -> None:
-    """Callback: usuário interagiu com o toggle 'Orçamento de tokens'."""
-    if st.session_state.cfg_budget_mode:
-        st.session_state.thinking_mode = "budget"
-        st.session_state.cfg_effort_mode = False
-    else:
-        # Desligou orçamento → liga esforço
-        st.session_state.thinking_mode = "effort"
-        st.session_state.cfg_effort_mode = True
-
-
-# ---------------------------------------------------------------------------
-# AI section
-# ---------------------------------------------------------------------------
 
 
 def _render_ai_section(conn: Any) -> None:
@@ -398,28 +370,17 @@ def _render_ai_section(conn: Any) -> None:
     # Mode toggles — mutualmente exclusivos via callbacks
     if "thinking_mode" not in st.session_state:
         st.session_state.thinking_mode = "effort"
-        st.session_state.cfg_effort_mode = True
-        st.session_state.cfg_budget_mode = False
 
     if thinking_enabled:
-        col_eff, col_bud = st.columns(2)
-        with col_eff:
-            effort_toggle = st.toggle(
-                "Esforço de pensamento",
-                value=st.session_state.thinking_mode == "effort",
-                key="cfg_effort_mode",
-                on_change=_on_effort_toggle,
-            )
-        with col_bud:
-            budget_toggle = st.toggle(
-                "Orçamento de tokens",
-                value=st.session_state.thinking_mode == "budget",
-                key="cfg_budget_mode",
-                on_change=_on_budget_toggle,
-            )
-
-        use_effort = st.session_state.thinking_mode == "effort"
-        use_budget = st.session_state.thinking_mode == "budget"
+        thinking_mode = st.radio(
+            "modo_pensamento",
+            options=["effort", "budget"],
+            format_func={"effort": "Esforço de pensamento",
+                         "budget": "Orçamento de tokens"}.get,
+            horizontal=True,
+            key="thinking_mode",
+            label_visibility="collapsed",
+        )
 
         col_effort, col_budget, col_temp = st.columns(3)
         with col_effort:
@@ -429,7 +390,6 @@ def _render_ai_section(conn: Any) -> None:
                 index=["low", "medium", "high", "xhigh"].index(
                     st.session_state.thinking_effort
                 ),
-                disabled=not use_effort,
                 help="Controla quantos tokens o modelo gasta pensando. "
                      "xhigh = análise mais profunda. "
                      "O OpenRouter traduz para o formato nativo de cada modelo.",
@@ -439,7 +399,6 @@ def _render_ai_section(conn: Any) -> None:
                 "Tokens de reasoning",
                 min_value=1024, max_value=32000, step=1024,
                 value=st.session_state.thinking_budget or 32000,
-                disabled=not use_budget,
                 help="Define exatamente quantos tokens o modelo pode gastar "
                      "em raciocínio. O OpenRouter traduz para o formato "
                      "nativo de cada modelo.",
@@ -530,6 +489,7 @@ def _save_llm_settings(
         save_setting(conn, "thinking_effort", thinking_effort)
     if thinking_budget is not None:
         save_setting(conn, "thinking_budget", str(thinking_budget))
+    save_setting(conn, "thinking_mode", st.session_state.thinking_mode)
     save_setting(conn, "temperature", str(temperature))
 
     st.session_state.pop("historical_cache", None)

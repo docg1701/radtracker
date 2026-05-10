@@ -427,7 +427,7 @@ class TestBuildPayload:
         llm = LLMClient("sk-test", "test/model")
         payload = llm._build_payload(
             [], stream=False,
-            thinking_enabled=True, thinking_budget=32000,
+            thinking_enabled=True, thinking_mode="budget", thinking_budget=32000,
         )
         assert payload["reasoning"] == {"max_tokens": 32000}
         assert "max_tokens" not in payload
