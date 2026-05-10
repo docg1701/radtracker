@@ -327,6 +327,38 @@ def _render_personalization_section(conn: Any, year_month: str) -> None:
 # ---------------------------------------------------------------------------
 
 @st.fragment
+# ---------------------------------------------------------------------------
+# Thinking mode toggle callbacks
+# ---------------------------------------------------------------------------
+
+
+def _on_effort_toggle() -> None:
+    """Callback: usuário interagiu com o toggle 'Esforço de pensamento'."""
+    if st.session_state.cfg_effort_mode:
+        st.session_state.thinking_mode = "effort"
+        st.session_state.cfg_budget_mode = False
+    else:
+        # Desligou esforço → liga orçamento
+        st.session_state.thinking_mode = "budget"
+        st.session_state.cfg_budget_mode = True
+
+
+def _on_budget_toggle() -> None:
+    """Callback: usuário interagiu com o toggle 'Orçamento de tokens'."""
+    if st.session_state.cfg_budget_mode:
+        st.session_state.thinking_mode = "budget"
+        st.session_state.cfg_effort_mode = False
+    else:
+        # Desligou orçamento → liga esforço
+        st.session_state.thinking_mode = "effort"
+        st.session_state.cfg_effort_mode = True
+
+
+# ---------------------------------------------------------------------------
+# AI section
+# ---------------------------------------------------------------------------
+
+
 def _render_ai_section(conn: Any) -> None:
     """Fragment: OpenRouter API key, model, thinking, temperature, prompt."""
     current_api_key = st.session_state.get("api_key", "")
@@ -363,8 +395,33 @@ def _render_ai_section(conn: Any) -> None:
              "Mais qualidade analítica, maior custo de tokens.",
     )
 
+    # Mode toggles — mutualmente exclusivos via callbacks
+    if "thinking_mode" not in st.session_state:
+        st.session_state.thinking_mode = "effort"
+        st.session_state.cfg_effort_mode = True
+        st.session_state.cfg_budget_mode = False
+
     if thinking_enabled:
-        col_effort, col_temp, col_budget = st.columns(3)
+        col_eff, col_bud = st.columns(2)
+        with col_eff:
+            effort_toggle = st.toggle(
+                "Esforço de pensamento",
+                value=st.session_state.thinking_mode == "effort",
+                key="cfg_effort_mode",
+                on_change=_on_effort_toggle,
+            )
+        with col_bud:
+            budget_toggle = st.toggle(
+                "Orçamento de tokens",
+                value=st.session_state.thinking_mode == "budget",
+                key="cfg_budget_mode",
+                on_change=_on_budget_toggle,
+            )
+
+        use_effort = st.session_state.thinking_mode == "effort"
+        use_budget = st.session_state.thinking_mode == "budget"
+
+        col_effort, col_budget, col_temp = st.columns(3)
         with col_effort:
             thinking_effort = st.selectbox(
                 "Nível de esforço",
@@ -372,9 +429,21 @@ def _render_ai_section(conn: Any) -> None:
                 index=["low", "medium", "high", "xhigh"].index(
                     st.session_state.thinking_effort
                 ),
+                disabled=not use_effort,
                 help="Controla quantos tokens o modelo gasta pensando. "
                      "xhigh = análise mais profunda. "
                      "O OpenRouter traduz para o formato nativo de cada modelo.",
+            )
+        with col_budget:
+            thinking_budget = st.number_input(
+                "Tokens de reasoning",
+                min_value=1024, max_value=32000, step=1024,
+                value=st.session_state.thinking_budget or 32000,
+                disabled=not use_budget,
+                help="Define exatamente quantos tokens o modelo pode gastar "
+                     "em raciocínio. O OpenRouter traduz para o formato "
+                     "nativo de cada modelo.",
+                key="cfg_budget",
             )
         with col_temp:
             temperature = st.slider(
@@ -385,23 +454,11 @@ def _render_ai_section(conn: Any) -> None:
                      "Alguns modelos ignoram com thinking ligado. "
                      "Recomendado: 0.3 para análises.",
             )
-        with col_budget:
-            use_budget = st.toggle(
-                "Tokens de reasoning (ignora esforço)",
-                value=st.session_state.thinking_budget is not None,
-                help="Define exatamente quantos tokens o modelo pode gastar "
-                     "em raciocínio. O OpenRouter traduz para o formato "
-                     "nativo de cada modelo.",
-                key="cfg_use_budget",
-            )
-            thinking_budget = st.number_input(
-                "",
-                min_value=1024, max_value=32000, step=1024,
-                value=st.session_state.thinking_budget or 32000,
-                disabled=not use_budget,
-                label_visibility="collapsed",
-                key="cfg_budget",
-            )
+
+        if not use_effort:
+            thinking_effort = None
+        if not use_budget:
+            thinking_budget = None
     else:
         thinking_effort = None
         thinking_budget = None
