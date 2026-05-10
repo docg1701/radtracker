@@ -15,6 +15,7 @@ Usage:
 
 import json
 from collections.abc import Generator
+from datetime import date
 from typing import Any
 
 import httpx
@@ -30,6 +31,9 @@ class LLMUnavailableError(Exception):
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _RAG_TEMPLATE = """\
+=== DATA ATUAL ===
+{today}
+
 === DADOS ATUAIS PARA ANÁLISE ===
 Os dados abaixo são fatos. Use-os para fundamentar suas estratégias.
 
@@ -196,6 +200,7 @@ def _enrich_stats(
             full_daily_table = "\n".join(daily_rows)
 
     return {
+        "today": date.today().strftime("%d de %B de %Y (%A)"),
         "goal": fmt_brl(float(current_stats.get("goal", 0))),
         "mtd_earnings": fmt_brl(float(current_stats.get("mtd_earnings", 0))),
         "remaining_days": str(current_stats.get("remaining_calendar_days", 0)),

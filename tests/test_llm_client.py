@@ -453,7 +453,7 @@ class TestBuildRagContext:
         """String vazia resulta em system prompt vazio (sem fallback)."""
         stats = _minimal_stats()
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="")
-        assert ctx.startswith("\n\n=== DADOS ATUAIS")
+        assert ctx.startswith("\n\n=== DATA ATUAL")
 
 
 # ── Helpers ──
