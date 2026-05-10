@@ -413,11 +413,6 @@ def _render_ai_section(conn: Any) -> None:
                      "Alguns modelos ignoram com thinking ligado. "
                      "Recomendado: 0.3 para análises.",
             )
-
-        if not use_effort:
-            thinking_effort = None
-        if not use_budget:
-            thinking_budget = None
     else:
         thinking_effort = None
         thinking_budget = None
@@ -441,7 +436,8 @@ def _render_ai_section(conn: Any) -> None:
         on_click=lambda: _save_llm_settings(
             conn, st.session_state.cfg_goal, st.session_state.cfg_name,
             api_key, llm_model, system_prompt,
-            thinking_enabled, thinking_effort, thinking_budget, temperature,
+            thinking_enabled, thinking_effort, thinking_budget,
+            thinking_mode, temperature,
         ),
     )
 

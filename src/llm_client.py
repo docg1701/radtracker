@@ -250,10 +250,10 @@ class LLMClient:
                 contexto RAG.
             thinking_enabled: Se False, envia reasoning.enabled=False.
             thinking_effort: Nível de esforço do reasoning (low|medium|high|xhigh).
-                Ignorado se thinking_budget for definido.
+                Só usado quando thinking_mode="effort".
             thinking_budget: Orçamento exato de tokens de reasoning (1024–32000).
-                Tem precedência sobre thinking_effort.
-            thinking_mode: Qual parâmetro usar ("effort" ou "budget").
+                Só usado quando thinking_mode="budget".
+            thinking_mode: Qual usar ("effort" ou "budget").
             temperature: Controla aleatoriedade (0.0–2.0).
 
         Yields:
