@@ -250,6 +250,13 @@ def _stream_response(api_key: str, llm_model: str) -> None:
 
         reasoning_acc = ""   # acumula p/ snippet no status
 
+        # Evita quebra de linha no texto do status de thinking
+        st.markdown("""
+        <style>
+        [data-testid="stStatus"] p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        </style>
+        """, unsafe_allow_html=True)
+
         def content_stream():
             """Wrapper: reasoning → side effect, content → pass through."""
             nonlocal reasoning_acc
