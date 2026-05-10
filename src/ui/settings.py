@@ -386,29 +386,21 @@ def _render_ai_section(conn: Any) -> None:
                      "Recomendado: 0.3 para análises.",
             )
         with col_budget:
-            with st.container(horizontal=True, vertical_alignment="center", gap="xsmall"):
-                st.markdown(
-                    "<span style='font-size:14px;font-weight:400'>"
-                    "Tokens de reasoning (ignora esforço)</span>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    "<span title='Define exatamente quantos tokens o modelo "
-                    "pode gastar em raciocínio.' style='cursor:help;"
-                    "font-size:12px;opacity:0.5'>ⓘ</span>",
-                    unsafe_allow_html=True,
-                )
-                use_budget = st.toggle(
-                    "",
-                    label_visibility="collapsed",
-                    value=st.session_state.thinking_budget is not None,
-                )
+            use_budget = st.toggle(
+                "Tokens de reasoning (ignora esforço)",
+                value=st.session_state.thinking_budget is not None,
+                help="Define exatamente quantos tokens o modelo pode gastar "
+                     "em raciocínio. O OpenRouter traduz para o formato "
+                     "nativo de cada modelo.",
+                key="cfg_use_budget",
+            )
             thinking_budget = st.number_input(
                 "",
                 min_value=1024, max_value=32000, step=1024,
                 value=st.session_state.thinking_budget or 32000,
                 disabled=not use_budget,
                 label_visibility="collapsed",
+                key="cfg_budget",
             )
             thinking_budget = st.number_input(
                 "",
