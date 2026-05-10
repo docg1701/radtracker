@@ -260,9 +260,9 @@ def _stream_response(api_key: str, llm_model: str) -> None:
                     snippet = reasoning_acc[:_REASONING_STATUS_MAX_CHARS]
                     if len(reasoning_acc) > _REASONING_STATUS_MAX_CHARS:
                         snippet = snippet.rstrip() + "…"
-                    status_ph.markdown(
-                        f":material/psychology: <span style='white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%'>{snippet}</span>",
-                        unsafe_allow_html=True,
+                    status_ph.status(
+                        f":material/psychology: {snippet}",
+                        expanded=False,
                     )
                 else:  # "content"
                     status_ph.empty()  # limpa reasoning
