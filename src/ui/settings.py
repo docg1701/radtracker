@@ -73,6 +73,10 @@ _DEFAULT_LLM_PROMPT = (
     "cite valores exatos e compare com períodos anteriores."
 )
 
+# Budget constraints (OpenRouter docs: 1024–32000)
+_MIN_REASONING_BUDGET = 1024
+_MAX_REASONING_BUDGET = 32000
+
 
 def render_settings_tab(conn: Any) -> None:
     """Render the complete Settings tab."""
@@ -367,12 +371,13 @@ def _render_ai_section(conn: Any) -> None:
              "Mais qualidade analítica, maior custo de tokens.",
     )
 
-    # Mode toggles — mutualmente exclusivos via callbacks
     if "thinking_mode" not in st.session_state:
         st.session_state.thinking_mode = "effort"
 
+    thinking_mode = st.session_state.thinking_mode
+
     if thinking_enabled:
-        thinking_mode = st.radio(
+        st.radio(
             "modo_pensamento",
             options=["effort", "budget"],
             format_func={"effort": "Esforço de pensamento",
@@ -397,8 +402,8 @@ def _render_ai_section(conn: Any) -> None:
         with col_budget:
             thinking_budget = st.number_input(
                 "Tokens de reasoning",
-                min_value=1024, max_value=32000, step=1024,
-                value=st.session_state.thinking_budget or 32000,
+                min_value=_MIN_REASONING_BUDGET, max_value=_MAX_REASONING_BUDGET, step=1024,
+                value=st.session_state.thinking_budget or _MAX_REASONING_BUDGET,
                 help="Define exatamente quantos tokens o modelo pode gastar "
                      "em raciocínio. O OpenRouter traduz para o formato "
                      "nativo de cada modelo.",
@@ -450,6 +455,7 @@ def _save_llm_settings(
     llm_model: str,
     system_prompt: str,
     thinking_enabled: bool,
+    thinking_mode: str,
     thinking_effort: str | None,
     thinking_budget: int | None,
     temperature: float,

@@ -376,7 +376,7 @@ class LLMClient:
 
         Example:
             >>> llm = LLMClient("sk-test", "model")
-            >>> p = llm._build_payload([], thinking_effort="xhigh")
+            >>> p = llm._build_payload([], thinking_mode="effort", thinking_effort="xhigh")
             >>> p["reasoning"]
             {'effort': 'xhigh'}
         """
