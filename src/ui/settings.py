@@ -402,13 +402,6 @@ def _render_ai_section(conn: Any) -> None:
                 label_visibility="collapsed",
                 key="cfg_budget",
             )
-            thinking_budget = st.number_input(
-                "",
-                min_value=1024, max_value=32000, step=1024,
-                value=st.session_state.thinking_budget or 32000,
-                disabled=not use_budget,
-                label_visibility="collapsed",
-            )
     else:
         thinking_effort = None
         thinking_budget = None
