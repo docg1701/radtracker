@@ -256,13 +256,13 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             for token_type, token in raw_stream:
                 if token_type == "reasoning":
                     reasoning_acc += token
-                    # Mostra últimos ~150 chars, truncado com "…"
-                    snippet = reasoning_acc[-_REASONING_STATUS_MAX_CHARS:]
+                    # Mostra início do pensamento, uma linha
+                    snippet = reasoning_acc[:_REASONING_STATUS_MAX_CHARS]
                     if len(reasoning_acc) > _REASONING_STATUS_MAX_CHARS:
-                        snippet = "…" + snippet
-                    status_ph.status(
-                        f":material/psychology: {snippet}",
-                        expanded=False,
+                        snippet = snippet.rstrip() + "…"
+                    status_ph.markdown(
+                        f":material/psychology: <span style='white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%'>{snippet}</span>",
+                        unsafe_allow_html=True,
                     )
                 else:  # "content"
                     status_ph.empty()  # limpa reasoning
