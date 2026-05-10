@@ -386,7 +386,7 @@ def _render_ai_section(conn: Any) -> None:
                      "Recomendado: 0.3 para análises.",
             )
         with col_budget:
-            use_budget = st.checkbox(
+            use_budget = st.toggle(
                 "Tokens de reasoning (ignora esforço)",
                 value=st.session_state.thinking_budget is not None,
             )
@@ -395,6 +395,7 @@ def _render_ai_section(conn: Any) -> None:
                 min_value=1024, max_value=32000, step=1024,
                 value=st.session_state.thinking_budget or 32000,
                 disabled=not use_budget,
+                label_visibility="collapsed",
             )
     else:
         thinking_effort = None
