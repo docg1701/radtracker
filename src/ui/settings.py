@@ -52,7 +52,9 @@ def ensure_settings(conn: Any) -> None:
         raw = load_setting(conn, "thinking_enabled", "1")
         st.session_state.thinking_enabled = raw in ("1", "true", "True")
     if "thinking_effort" not in st.session_state:
-        st.session_state.thinking_effort = load_setting(conn, "thinking_effort", "high")
+        raw = load_setting(conn, "thinking_effort", "high")
+        valid_efforts = {"low", "medium", "high", "xhigh"}
+        st.session_state.thinking_effort = raw if raw in valid_efforts else "high"
     if "thinking_budget" not in st.session_state:
         raw = load_setting(conn, "thinking_budget", "")
         try:
@@ -60,7 +62,9 @@ def ensure_settings(conn: Any) -> None:
         except (ValueError, TypeError):
             st.session_state.thinking_budget = None
     if "thinking_mode" not in st.session_state:
-        st.session_state.thinking_mode = load_setting(conn, "thinking_mode", "effort")
+        raw = load_setting(conn, "thinking_mode", "effort")
+        valid_modes = {"effort", "budget"}
+        st.session_state.thinking_mode = raw if raw in valid_modes else "effort"
     if "temperature" not in st.session_state:
         st.session_state.temperature = float(load_setting(conn, "temperature", "0.3"))
 
@@ -397,7 +401,7 @@ def _render_ai_section(conn: Any) -> None:
                 options=["low", "medium", "high", "xhigh"],
                 index=["low", "medium", "high", "xhigh"].index(
                     st.session_state.thinking_effort
-                ),
+                ) if st.session_state.thinking_effort in ("low", "medium", "high", "xhigh") else 2,
                 help="Controla quantos tokens o modelo gasta pensando. "
                      "xhigh = análise mais profunda. "
                      "O OpenRouter traduz para o formato nativo de cada modelo.",
