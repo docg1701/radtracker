@@ -55,7 +55,10 @@ def ensure_settings(conn: Any) -> None:
         st.session_state.thinking_effort = load_setting(conn, "thinking_effort", "high")
     if "thinking_budget" not in st.session_state:
         raw = load_setting(conn, "thinking_budget", "")
-        st.session_state.thinking_budget = int(raw) if raw else None
+        try:
+            st.session_state.thinking_budget = int(raw) if raw else None
+        except (ValueError, TypeError):
+            st.session_state.thinking_budget = None
     if "thinking_mode" not in st.session_state:
         st.session_state.thinking_mode = load_setting(conn, "thinking_mode", "effort")
     if "temperature" not in st.session_state:
@@ -441,8 +444,8 @@ def _render_ai_section(conn: Any) -> None:
         on_click=lambda: _save_llm_settings(
             conn, st.session_state.cfg_goal, st.session_state.cfg_name,
             api_key, llm_model, system_prompt,
-            thinking_enabled, thinking_effort, thinking_budget,
-            thinking_mode, temperature,
+            thinking_enabled, thinking_mode, thinking_effort, thinking_budget,
+            temperature,
         ),
     )
 
@@ -491,7 +494,7 @@ def _save_llm_settings(
         save_setting(conn, "thinking_effort", thinking_effort)
     if thinking_budget is not None:
         save_setting(conn, "thinking_budget", str(thinking_budget))
-    save_setting(conn, "thinking_mode", st.session_state.thinking_mode)
+    save_setting(conn, "thinking_mode", thinking_mode)
     save_setting(conn, "temperature", str(temperature))
 
     st.session_state.pop("historical_cache", None)
