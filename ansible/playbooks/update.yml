@@ -77,7 +77,7 @@
     - name: Run DB migrations (init_db) in container
       community.docker.docker_compose_v2_exec:
         project_src: "{{ radtracker_dir }}"
-        service: radtracker
+        service: streamlit
         command: "python scripts/migrate.py"
       register: db_migrate
       changed_when: false
