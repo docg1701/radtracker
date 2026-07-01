@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from src.db import (
     DEFAULT_GOAL,
     DEFAULT_LLM_MODEL,
+    _backfill_price_vigencies,
     add_modality,
     deactivate_modality,
     init_db,
@@ -17,10 +18,13 @@ from src.db import (
     load_goal,
     load_month,
     load_month_items,
+    load_price_vigencies,
     load_prices,
+    load_prices_at,
     load_setting,
     save_goal,
     save_modality,
+    save_price_vigency,
     save_prices,
     save_setting,
     slugify,
@@ -827,3 +831,95 @@ class TestMigrationV14OneShot:
         tc = next(m for m in mods if m["slug"] == "tc_geral")
         assert tc["active"] == 0
         assert tc["price"] == 0.0
+
+
+# ── v2.1: price vigency (modality_prices) ──
+
+
+class TestPriceVigency:
+    """Price-by-date: editing a price today must not recompute the past."""
+
+    def test_table_created_by_init_db(self, conn):
+        init_db(conn)
+        df = conn.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='modality_prices'"
+        )
+        assert len(df) == 1
+
+    def test_save_and_load_prices_at(self, conn):
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-01-01")
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-07-01")
+        assert load_prices_at(conn, "2026-03-15")["tc_geral"] == 25.0
+        assert load_prices_at(conn, "2026-07-15")["tc_geral"] == 30.0
+        # exactly on effective_from boundary: the newer vigency wins
+        assert load_prices_at(conn, "2026-07-01")["tc_geral"] == 30.0
+
+    def test_load_prices_at_before_first_vigency_returns_oldest(self, conn):
+        save_price_vigency(conn, "ressonancia_magnetica", 35.0, "2026-03-01")
+        # date before the only vigency -> oldest (35) as fallback
+        assert load_prices_at(conn, "2026-01-01")["ressonancia_magnetica"] == 35.0
+
+    def test_load_prices_at_empty_table(self, conn):
+        assert load_prices_at(conn, "2026-03-15") == {}
+
+    def test_load_price_vigencies_ordered(self, conn):
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-01-01")
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-07-01")
+        vigs = load_price_vigencies(conn)
+        assert len(vigs) == 2
+        assert vigs[0]["effective_from"] == "2026-01-01"
+
+    def test_backfill_seeds_current_price_since_first_item(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        upsert_daily_items(conn, "2026-02-10", {"tc_geral": 5})
+        upsert_daily_items(conn, "2026-02-15", {"tc_geral": 3})
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        tc = [v for v in vigs if v["slug"] == "tc_geral"]
+        assert len(tc) == 1
+        assert tc[0]["price"] == 30.0
+        assert tc[0]["effective_from"] == "2026-02-10"
+
+    def test_backfill_idempotent(self, conn):
+        add_modality(conn, "extra", "Extra", 20.0, 5.0, 1)
+        upsert_daily_items(conn, "2026-04-01", {"extra": 2})
+        _backfill_price_vigencies(conn)
+        _backfill_price_vigencies(conn)  # second run must not duplicate
+        vigs = load_price_vigencies(conn)
+        extras = [v for v in vigs if v["slug"] == "extra"]
+        assert len(extras) == 1
+
+    def test_backfill_skips_zero_price_modality(self, conn):
+        add_modality(conn, "zero_mod", "Zero", 0.0, 0.0, 0)
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        assert not any(v["slug"] == "zero_mod" for v in vigs)
+
+    def test_backfill_without_items_uses_created_at(self, conn):
+        add_modality(conn, "noitems", "No Items", 15.0, 5.0, 1)
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        ni = [v for v in vigs if v["slug"] == "noitems"]
+        assert len(ni) == 1
+        assert ni[0]["price"] == 15.0
+        # effective_from falls back to the modality created_at date (YYYY-MM-DD)
+        assert len(ni[0]["effective_from"]) == 10
+
+
+class TestSaveModalityVigency:
+    """save_modality records a new price vigency only on a real price change."""
+
+    def test_price_change_creates_new_vigency(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")  # historical
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)  # price change today
+        vigs = [v for v in load_price_vigencies(conn) if v["slug"] == "tc_geral"]
+        assert len(vigs) == 2
+        assert sorted(v["price"] for v in vigs) == [30.0, 40.0]
+
+    def test_same_price_does_not_create_new_vigency(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        save_modality(conn, "tc_geral", 30.0, 10.0, 1)  # same price
+        vigs = [v for v in load_price_vigencies(conn) if v["slug"] == "tc_geral"]
+        assert len(vigs) == 1

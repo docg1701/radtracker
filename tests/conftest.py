@@ -70,6 +70,15 @@ DB_CREATE_SQL = [
         updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     """,
+    """
+    CREATE TABLE IF NOT EXISTS modality_prices (
+        slug            TEXT NOT NULL,
+        price           REAL NOT NULL,
+        effective_from  TEXT NOT NULL,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        PRIMARY KEY (slug, effective_from)
+    );
+    """,
 ]
 
 

@@ -124,6 +124,15 @@ def init_db(conn: Any) -> None:
         updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     """
+    create_modality_prices = """
+    CREATE TABLE IF NOT EXISTS modality_prices (
+        slug            TEXT NOT NULL,
+        price           REAL NOT NULL,
+        effective_from  TEXT NOT NULL,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        PRIMARY KEY (slug, effective_from)
+    );
+    """
 
     os.makedirs("data", exist_ok=True)
     with conn.connect() as db_conn:
@@ -133,6 +142,7 @@ def init_db(conn: Any) -> None:
         db_conn.execute(sa.text(create_daily_items))
         db_conn.execute(sa.text(create_goals))
         db_conn.execute(sa.text(create_settings))
+        db_conn.execute(sa.text(create_modality_prices))
         db_conn.commit()
 
     # Add color column if missing (must run before seed so seed can set colors)
@@ -143,6 +153,8 @@ def init_db(conn: Any) -> None:
     _migrate_v1_3_to_v1_4_defaults(conn)
     # Run v1→v2 migration if needed
     _migrate_v1_to_v2(conn)
+    # Backfill price vigencies (one-shot) so the past is immutable
+    _backfill_price_vigencies(conn)
     # Seed reasoning settings for thinking/temperature configuration
     _seed_reasoning_settings(conn)
 
@@ -207,6 +219,14 @@ def save_modality(
     When label is None (default), the label column is left unchanged.
     When color is None (default), the color column is left unchanged.
     """
+    # Read the current price first so we only record a new vigency on a real
+    # price change (label/color/active edits must NOT rewrite price history).
+    before = conn.query(
+        "SELECT price FROM modalities WHERE slug = :slug",
+        params={"slug": slug}, ttl=0,
+    )
+    old_price = float(before.iloc[0]["price"]) if not before.empty else None
+
     set_clauses = [
         "price = :price",
         "exams_per_hour = :eph",
@@ -229,6 +249,16 @@ def save_modality(
             params,
         )
         db_conn.commit()
+
+    # A real price change opens a new vigency from today; the past keeps its
+    # own vigency and is never recomputed.
+    new_price = float(price)
+    if (
+        old_price is not None
+        and new_price > 0
+        and abs(new_price - old_price) > 0.001
+    ):
+        save_price_vigency(conn, slug, new_price, date.today().isoformat())
 
 
 def add_modality(
@@ -545,8 +575,115 @@ def save_setting(conn: Any, key: str, value: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# v2.1: Price vigency (modality_prices)
+# ---------------------------------------------------------------------------
+
+def save_price_vigency(conn: Any, slug: str, price: float, effective_from: str) -> None:
+    """UPSERT a price-vigency row: `price` valid for `slug` from `effective_from`.
+
+    A price change creates a new vigency from today; the past keeps the previous
+    vigency. On conflict (slug, effective_from) the price is updated.
+
+    Example:
+        >>> save_price_vigency(conn, "tc_geral", 30.0, "2026-07-01")
+    """
+    with conn.connect() as db_conn:
+        db_conn.execute(
+            sa.text("""
+                INSERT INTO modality_prices (slug, price, effective_from, created_at)
+                VALUES (:slug, :price, :eff, datetime('now','localtime'))
+                ON CONFLICT(slug, effective_from) DO UPDATE SET
+                    price = excluded.price
+            """),
+            {"slug": slug, "price": price, "eff": effective_from},
+        )
+        db_conn.commit()
+
+
+def load_prices_at(conn: Any, date_str: str) -> dict[str, float]:
+    """Return slug->price valid at `date_str` (most recent vigency <= date).
+
+    Slugs without any vigency are omitted (caller treats missing as 0). If a
+    slug has vigencies but none <= date_str, the oldest one is used as fallback.
+
+    Example:
+        >>> load_prices_at(conn, "2026-03-15")
+        {'tc_geral': 25.0, 'ressonancia_magnetica': 35.0}
+    """
+    df = conn.query(
+        "SELECT slug, effective_from, price FROM modality_prices",
+        ttl=0,
+    )
+    if df.empty:
+        return {}
+    result: dict[str, float] = {}
+    for slug, grp in df.groupby("slug"):
+        prior = grp[grp["effective_from"] <= date_str]
+        if not prior.empty:
+            best = prior.loc[prior["effective_from"].idxmax()]
+        else:
+            best = grp.loc[grp["effective_from"].idxmin()]
+        result[str(slug)] = float(best["price"])
+    return result
+
+
+def load_price_vigencies(conn: Any) -> list[dict[str, Any]]:
+    """Return all price-vigency rows ordered by slug, effective_from."""
+    df = conn.query(
+        "SELECT slug, effective_from, price FROM modality_prices "
+        "ORDER BY slug, effective_from",
+        ttl=0,
+    )
+    return df.to_dict("records")
+
+
+# ---------------------------------------------------------------------------
 # Private: seed + migration
 # ---------------------------------------------------------------------------
+
+def _backfill_price_vigencies(conn: Any) -> None:
+    """One-shot: seed modality_prices with each modality's current price, valid
+    since its first production record (or its created_at when it has no items).
+
+    Idempotent: skips when any vigency already exists. The user confirmed the
+    current prices are the real prices practiced since the start of the year, so
+    freezing them as the historical vigency preserves the past from being
+    recalculated when a price is later changed.
+
+    Example:
+        >>> _backfill_price_vigencies(conn)  # first run seeds all modalities
+    """
+    existing = conn.query("SELECT DISTINCT slug FROM modality_prices", ttl=0)
+    if not existing.empty:
+        return
+    mods = conn.query("SELECT slug, price, created_at FROM modalities", ttl=0)
+    if mods.empty:
+        return
+    items = conn.query(
+        "SELECT modality_slug AS slug, MIN(date) AS first_date "
+        "FROM daily_production_items GROUP BY modality_slug",
+        ttl=0,
+    )
+    first_by_slug: dict[str, str] = {}
+    if not items.empty:
+        first_by_slug = dict(zip(items["slug"].astype(str), items["first_date"].astype(str)))
+    with conn.connect() as db_conn:
+        for _, m in mods.iterrows():
+            slug = str(m["slug"])
+            price = float(m["price"])
+            if price <= 0:
+                continue
+            eff = first_by_slug.get(slug) or str(m["created_at"])[:10]
+            db_conn.execute(
+                sa.text("""
+                    INSERT OR IGNORE INTO modality_prices
+                        (slug, price, effective_from, created_at)
+                    VALUES (:slug, :price, :eff, datetime('now','localtime'))
+                """),
+                {"slug": slug, "price": price, "eff": eff},
+            )
+        db_conn.commit()
+
 
 def _seed_reasoning_settings(conn: Any) -> None:
     """Seed reasoning-related user_settings if absent. Idempotent.
