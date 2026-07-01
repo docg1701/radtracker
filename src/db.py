@@ -235,26 +235,43 @@ def add_modality(
     conn: Any, slug: str, label: str, price: float, exams_per_hour: float,
     active: int, color: str = "#64748B",
 ) -> bool:
-    """Insert a new modality into the modalities table.
+    """Insert a new modality, or reactivate an inactive one with the same slug.
 
-    Generates sort_order as MAX(sort_order) + 1. Returns True if inserted,
-    False if a modality with the same slug already exists.
+    A brand-new slug gets sort_order = MAX(sort_order) + 1. If the slug already
+    exists, an ACTIVE row is left untouched (returns False); an INACTIVE row is
+    reactivated with the new label/price/eph/color (returns True), preserving all
+    production history under that slug.
 
     Example:
         >>> add_modality(conn, "tomografia_cranio", "Tomografia de Crânio", 25.0, 5.0, 1)
         True
     """
     with conn.connect() as db_conn:
-        # Check for duplicate slug
-        result = db_conn.execute(
-            sa.text("SELECT COUNT(*) AS cnt FROM modalities WHERE slug = :slug"),
+        existing = db_conn.execute(
+            sa.text("SELECT active FROM modalities WHERE slug = :slug"),
             {"slug": slug},
         )
-        row = result.fetchone()
-        if row and row[0] > 0:
-            return False
+        row = existing.fetchone()
+        if row is not None:
+            if bool(row[0]):
+                # Already active — do not overwrite an in-use modality.
+                return False
+            # Inactive — reactivate with the new values, keeping production history.
+            db_conn.execute(
+                sa.text("""
+                    UPDATE modalities
+                    SET label = :label, price = :price, exams_per_hour = :eph,
+                        active = :active, color = :color,
+                        updated_at = datetime('now','localtime')
+                    WHERE slug = :slug
+                """),
+                {"slug": slug, "label": label, "price": price,
+                 "eph": exams_per_hour, "active": active, "color": color},
+            )
+            db_conn.commit()
+            return True
 
-        # Calculate next sort_order
+        # New slug — insert with the next sort_order.
         result = db_conn.execute(
             sa.text("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM modalities"),
         )
@@ -277,21 +294,18 @@ def add_modality(
     return True
 
 
-def delete_modality(conn: Any, slug: str) -> bool:
-    """Delete a modality and its daily_production_items in a single transaction.
+def deactivate_modality(conn: Any, slug: str) -> bool:
+    """Soft-delete a modality: mark it inactive, preserving all production history.
 
-    IMPORTANT: SQLite does NOT have ON DELETE CASCADE enabled by default, and
-    our schema does not declare it. Therefore we explicitly delete from
-    daily_production_items FIRST, then from modalities, within a transaction.
-
-    Returns True if deleted, False if slug did not exist.
+    The row stays in `modalities` (so the slug stays reserved and the modality
+    can be reactivated later by adding it again) and `daily_production_items` is
+    never touched. Returns True if the modality existed, False otherwise.
 
     Example:
-        >>> delete_modality(conn, "tc_abdome_total")
+        >>> deactivate_modality(conn, "tc_abdome_total")
         True
     """
     with conn.connect() as db_conn:
-        # Check existence first
         result = db_conn.execute(
             sa.text("SELECT COUNT(*) AS cnt FROM modalities WHERE slug = :slug"),
             {"slug": slug},
@@ -299,14 +313,11 @@ def delete_modality(conn: Any, slug: str) -> bool:
         row = result.fetchone()
         if not row or row[0] == 0:
             return False
-
-        # Delete children first, then parent, in one transaction
         db_conn.execute(
-            sa.text("DELETE FROM daily_production_items WHERE modality_slug = :slug"),
-            {"slug": slug},
-        )
-        db_conn.execute(
-            sa.text("DELETE FROM modalities WHERE slug = :slug"),
+            sa.text(
+                "UPDATE modalities SET active = 0, "
+                "updated_at = datetime('now','localtime') WHERE slug = :slug"
+            ),
             {"slug": slug},
         )
         db_conn.commit()
@@ -609,10 +620,12 @@ def _migrate_v1_3_to_v1_4_defaults(conn: Any) -> None:
     """One-shot migration: apply production defaults to the 5 standard modalities.
 
     Only updates modalities that still have price=0 AND active=0 (untouched by
-    the user). Modalities the user already configured are preserved as-is.
-
-    Idempotent — safe to call multiple times.
+    the user). Guarded by a user_settings flag so it runs exactly once — a user
+    who later deactivates and zeroes a seed modality is not silently re-activated
+    on the next boot.
     """
+    if load_setting(conn, "migration_v1_4_defaults_done") == "1":
+        return
     with conn.connect() as db_conn:
         for slug, (label, price, eph) in _PRODUCTION_DEFAULTS.items():
             db_conn.execute(
@@ -630,6 +643,7 @@ def _migrate_v1_3_to_v1_4_defaults(conn: Any) -> None:
                 {"slug": slug, "label": label, "price": price, "eph": eph},
             )
         db_conn.commit()
+    save_setting(conn, "migration_v1_4_defaults_done", "1")
 
 
 def _migrate_v1_to_v2(conn: Any) -> None:

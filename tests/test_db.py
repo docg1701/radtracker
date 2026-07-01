@@ -8,7 +8,7 @@ from src.db import (
     DEFAULT_GOAL,
     DEFAULT_LLM_MODEL,
     add_modality,
-    delete_modality,
+    deactivate_modality,
     init_db,
     load_active_modalities,
     load_all_modalities,
@@ -597,50 +597,6 @@ class TestAddModality:
         assert extra2["sort_order"] == 7
 
 
-# ── v1.4: delete_modality ──
-
-
-class TestDeleteModality:
-    def test_delete_modality_success(self, conn):
-        init_db(conn)
-        result = delete_modality(conn, "tc_abdome_total")
-        assert result is True
-        mods = load_all_modalities(conn)
-        assert len(mods) == 4
-        slugs = {m["slug"] for m in mods}
-        assert "tc_abdome_total" not in slugs
-
-    def test_delete_nonexistent_modality(self, conn):
-        init_db(conn)
-        result = delete_modality(conn, "slug_inexistente")
-        assert result is False
-        mods = load_all_modalities(conn)
-        assert len(mods) == 5  # unchanged
-
-    def test_delete_modality_cascades_to_daily_items(self, conn):
-        init_db(conn)
-        # Create some daily production items first
-        upsert_daily_items(conn, "2026-05-01", {"tc_abdome_total": 10})
-        upsert_daily_items(conn, "2026-05-02", {"tc_abdome_total": 5,
-                                                  "tc_geral": 8})
-
-        # Verify items exist
-        assert load_daily_items(conn, "2026-05-01") == {"tc_abdome_total": 10}
-        assert load_daily_items(conn, "2026-05-02") == {"tc_abdome_total": 5,
-                                                         "tc_geral": 8}
-
-        # Delete the modality
-        result = delete_modality(conn, "tc_abdome_total")
-        assert result is True
-
-        # tc_abdome_total items should be gone
-        items_after_1 = load_daily_items(conn, "2026-05-01")
-        assert items_after_1 == {}
-
-        # tc_geral items should survive
-        items_after_2 = load_daily_items(conn, "2026-05-02")
-        assert items_after_2 == {"tc_geral": 8}
-
 
 # ── v1.4: save_modality with label ──
 
@@ -806,3 +762,68 @@ class TestMigrationV134:
         first_slugs = {(m["slug"], m["label"]) for m in mods_first}
         second_slugs = {(m["slug"], m["label"]) for m in mods_second}
         assert first_slugs == second_slugs
+
+
+# ── v1.8: soft-delete (deactivate) + reactivate + one-shot migration ──
+
+
+class TestDeactivateModality:
+    """Soft-delete: deactivating a modality preserves its row and production history."""
+
+    def test_deactivate_preserves_row_and_items(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-01", {"tc_abdome_total": 10})
+        result = deactivate_modality(conn, "tc_abdome_total")
+        assert result is True
+        # Row survives, now inactive
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_abdome_total")
+        assert tc["active"] == 0
+        # Not in active list anymore
+        active = load_active_modalities(conn)
+        assert all(m["slug"] != "tc_abdome_total" for m in active)
+        # Production history preserved
+        assert load_daily_items(conn, "2026-05-01") == {"tc_abdome_total": 10}
+
+    def test_deactivate_nonexistent_returns_false(self, conn):
+        init_db(conn)
+        assert deactivate_modality(conn, "slug_inexistente") is False
+
+
+class TestAddModalityReactivate:
+    """Adding a modality whose slug already exists (inactive) reactivates it."""
+
+    def test_add_reactivates_inactive_slug(self, conn):
+        init_db(conn)
+        deactivate_modality(conn, "tc_geral")
+        # Re-add with same name -> reactivates with new values
+        result = add_modality(conn, "tc_geral", "TC Geral", 40.0, 12.0, 1)
+        assert result is True
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["active"] == 1
+        assert tc["price"] == 40.0
+        assert tc["exams_per_hour"] == 12.0
+
+    def test_add_active_slug_still_returns_false(self, conn):
+        # Existing behavior preserved: an already-active slug is not overwritten.
+        init_db(conn)
+        add_modality(conn, "novo_exame", "Novo Exame", 10.0, 5.0, 1)
+        result = add_modality(conn, "novo_exame", "Outro Nome", 20.0, 10.0, 0)
+        assert result is False
+
+
+class TestMigrationV14OneShot:
+    """The v1.3->v1.4 defaults migration runs once; a later deactivation+zero
+    of a seed modality is not silently re-activated on reboot."""
+
+    def test_migration_does_not_reactivate_deactivated_seed(self, conn):
+        init_db(conn)  # seeds + runs migration once (sets the one-shot flag)
+        # User deactivates AND zeroes a seed modality
+        save_modality(conn, "tc_geral", 0.0, 0.0, 0)
+        # Reboot: init_db again must not re-activate it
+        init_db(conn)
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["active"] == 0
+        assert tc["price"] == 0.0

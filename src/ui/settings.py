@@ -12,7 +12,7 @@ import streamlit as st
 
 from src.db import (
     add_modality,
-    delete_modality,
+    deactivate_modality,
     load_active_modalities,
     load_all_modalities,
     load_goal,
@@ -191,18 +191,22 @@ def _render_modality_grid(conn: Any) -> None:
         with col_del:
             if st.button(
                 ":material/delete:", key=f"mod_del_btn_{slug}",
-                help=f"Remover {label}",
+                help=f"Desativar {label}",
             ):
                 st.session_state.confirm_delete_slug = slug
                 st.rerun()
 
         # Inline delete confirmation for this row
         if st.session_state.get("confirm_delete_slug") == slug:
-            st.warning(f"Remover **{label}**? Dados de produção serão perdidos.")
+            st.warning(
+            f"Desativar **{label}**? A produção histórica é preservada "
+            f"(a modalidade fica inativa e pode ser reativada ao "
+            f"adicioná-la de novo)."
+        )
             col_yes, col_no = st.columns(2)
             with col_yes:
-                if st.button("Confirmar", key=f"mod_del_confirm_{slug}"):
-                    delete_modality(conn, slug)
+                if st.button("Desativar", key=f"mod_del_confirm_{slug}"):
+                    deactivate_modality(conn, slug)
                     _reload_modalities(conn)
                     st.session_state.confirm_delete_slug = None
                     st.rerun()
