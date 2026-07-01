@@ -170,25 +170,29 @@ def _render_kpi_row(
             )
 
 
-def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
-    """Show a warning if behind pace."""
+def _should_show_rhythm_alert(stats: dict[str, Any], goal: float) -> bool:
+    """True when the user is behind pace enough to warrant a warning.
+
+    Early-month suppression is based on elapsed calendar days (not days
+    worked), consistent with the per-calendar-day productivity model where
+    every day counts as a potential production day.
+    """
     total = stats["total_calendar_days"]
     if total == 0:
-        return
-
-    days_worked = stats["days_worked"]
-    if days_worked < 5:
-        return
-
+        return False
+    if stats["elapsed_days"] < 5:
+        return False
     if stats["mtd_earnings"] >= goal:
-        return
-
+        return False
     if stats["remaining_days"] == 0:
-        return
-
-    pct_goal = stats["pct_goal"]
+        return False
     expected_pct = (stats["elapsed_days"] / total) * 100.0
-    if pct_goal >= expected_pct:
+    return stats["pct_goal"] < expected_pct
+
+
+def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
+    """Show a warning if behind pace."""
+    if not _should_show_rhythm_alert(stats, goal):
         return
 
     missing = goal - stats["mtd_earnings"]
