@@ -346,6 +346,44 @@ class TestGoal:
         assert goal == 50000.0
 
 
+class TestGoalCarryForward:
+    """Regression: a month with no goal row carries forward the most recent
+    prior month's goal, instead of falling back to DEFAULT_GOAL.
+
+    Reproduces the report that the goal reverts to R$45.000 on every month
+    turnover even when the user always sets R$50.000.
+    """
+
+    def test_carry_forward_from_prior_month(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-05", 50000.0)
+        # June has no row → carry forward May's 50000, not DEFAULT_GOAL
+        assert load_goal(conn, "2026-06") == 50000.0
+
+    def test_carry_forward_picks_most_recent_prior(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-04", 45000.0)
+        save_goal(conn, "2026-05", 50000.0)
+        # July has no row → most recent prior is May (50000), not April (45000)
+        assert load_goal(conn, "2026-07") == 50000.0
+
+    def test_empty_table_returns_default(self, conn):
+        init_db(conn)
+        # No goals ever recorded → DEFAULT_GOAL
+        assert load_goal(conn, "2026-06") == DEFAULT_GOAL
+
+    def test_future_goal_not_borrowed(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-07", 60000.0)
+        # June has no row and no PRIOR month → default (must not borrow future July)
+        assert load_goal(conn, "2026-06") == DEFAULT_GOAL
+
+    def test_exact_month_still_direct(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-05", 50000.0)
+        assert load_goal(conn, "2026-05") == 50000.0
+
+
 class TestSettings:
     def test_save_and_load_setting(self, conn):
         init_db(conn)

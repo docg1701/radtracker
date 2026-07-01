@@ -456,15 +456,37 @@ def save_prices(conn: Any, rm_price: float, tc_price: float, rx_price: float) ->
 # ---------------------------------------------------------------------------
 
 def load_goal(conn: Any, year_month: str) -> float:
-    """Return monthly goal for a year-month. Falls back to DEFAULT_GOAL."""
+    """Return monthly goal for a year-month with carry-forward semantics.
+
+    If no row exists for ``year_month``, returns the goal from the most recent
+    prior month that has one, so the previous month's goal persists across a
+    month turnover. Falls back to DEFAULT_GOAL only when no goal has ever been
+    recorded.
+
+    Example:
+        >>> save_goal(conn, "2026-05", 50000.0)
+        >>> load_goal(conn, "2026-06")  # June has no row → carries May's 50000
+        50000.0
+    """
     df = conn.query(
         "SELECT goal_reais FROM monthly_goals WHERE year_month = :ym",
         params={"ym": year_month},
         ttl=0,
     )
-    if df.empty:
-        return DEFAULT_GOAL
-    return float(df.iloc[0]["goal_reais"])
+    if not df.empty:
+        return float(df.iloc[0]["goal_reais"])
+
+    # Carry-forward: most recent prior month with a goal (never a future one).
+    prior = conn.query(
+        "SELECT goal_reais FROM monthly_goals "
+        "WHERE year_month < :ym ORDER BY year_month DESC LIMIT 1",
+        params={"ym": year_month},
+        ttl=0,
+    )
+    if not prior.empty:
+        return float(prior.iloc[0]["goal_reais"])
+
+    return DEFAULT_GOAL
 
 
 def save_goal(conn: Any, year_month: str, goal: float) -> None:
