@@ -87,10 +87,9 @@ def _enrich_stats(
     template can surface them to the LLM.
     """
     df: pd.DataFrame = stats.get("df", pd.DataFrame())
+    # items_df carries price-vigent revenue (from compute_historical_stats);
+    # the per-modality breakdown MUST use it, never the current modalities.price.
     items_df: pd.DataFrame = stats.get("items_df", pd.DataFrame())
-    has_items_revenue = (
-        items_df is not None and not items_df.empty and "revenue" in items_df.columns
-    )
     current_ym = stats.get("year_month") or ""
     current_stats = stats.get("current_month_stats", {})
 
@@ -140,18 +139,16 @@ def _enrich_stats(
         mod_lines: list[str] = []
         for m in active_modalities:
             slug = m["slug"]
-            price = float(m.get("price", 0))
             eph = float(m.get("exams_per_hour", 0))
-            if has_items_revenue:
-                mi = items_df[
-                    (items_df["date"].str[:7] == ym)
-                    & (items_df["modality_slug"] == slug)
-                ]
-                count = int(mi["count"].sum()) if not mi.empty else 0
-                slug_rev = float(mi["revenue"].sum()) if not mi.empty else 0.0
-            else:
-                count = int(month_df[slug].sum()) if slug in month_df.columns else 0
-                slug_rev = count * price
+            mi = items_df[
+                (items_df["date"].str[:7] == ym)
+                & (items_df["modality_slug"] == slug)
+            ] if not items_df.empty else pd.DataFrame()
+            count = int(mi["count"].sum()) if not mi.empty else 0
+            slug_rev = (
+                float(mi["revenue"].sum())
+                if (not mi.empty and "revenue" in mi.columns) else 0.0
+            )
             total_exames_mes += count
             if eph > 0 and count > 0:
                 horas_mes += count / eph

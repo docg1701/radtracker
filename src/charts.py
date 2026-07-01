@@ -374,23 +374,20 @@ def build_monthly_modality_donut(
     Build a donut chart showing monthly revenue share by modality.
 
     Args:
-        df: DataFrame from load_month_items() with columns:
-            date, modality_slug, count.
+        df: DataFrame with columns date, modality_slug, count, revenue
+            (revenue from attach_revenue — price-vigent per date).
         active_modalities: List of active modality dicts with slug, label, price.
     """
-    prices = {m["slug"]: float(m["price"]) for m in active_modalities}
     labels_lookup = {m["slug"]: m["label"] for m in active_modalities}
-    has_revenue = (not df.empty) and ("revenue" in df.columns)
 
-    # Compute revenue per modality (price-vigent when caller attached revenue)
+    # Revenue per modality MUST come from the price-vigent 'revenue' column;
+    # never recompute with the current modalities.price (that would rewrite
+    # history when a price changes).
     rev: dict[str, float] = {}
-    if not df.empty:
+    if not df.empty and "revenue" in df.columns:
         for _, row in df.iterrows():
             slug = str(row["modality_slug"])
-            if has_revenue:
-                rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
-            elif slug in prices:
-                rev[slug] = rev.get(slug, 0.0) + int(row["count"]) * prices[slug]
+            rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
 
     slugs: list[str] = []
     values: list[float] = []

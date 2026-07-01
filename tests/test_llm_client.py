@@ -25,6 +25,27 @@ _ACTIVE_MODS = [
 ]
 
 
+_PRICE_BY_SLUG = {m["slug"]: m["price"] for m in _ACTIVE_MODS}
+
+
+def _items_df_from_wide(df):
+    """Build a long items_df (date, modality_slug, count, revenue) from the
+    wide df used by the stats mocks. revenue = count * price (vigency-free
+    scenario, since these mocks have no reajust)."""
+    import pandas as pd
+    rows = []
+    for _, r in df.iterrows():
+        d = r["date"]
+        for slug in ("ressonancia_magnetica", "tc_geral", "radiografia"):
+            if slug not in r.index:
+                continue
+            c = int(r[slug])
+            if c > 0:
+                rows.append({"date": d, "modality_slug": slug,
+                             "count": c, "revenue": c * _PRICE_BY_SLUG[slug]})
+    return pd.DataFrame(rows, columns=["date", "modality_slug", "count", "revenue"])
+
+
 class TestLlmClientSuccess:
     @respx.mock
     def test_generate_stream_success(self):
@@ -483,6 +504,7 @@ def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
     })
     return {
         "df": df,
+        "items_df": _items_df_from_wide(df),
         "year_month": "2026-04",
         "current_month_stats": {
             "mtd_earnings": 22500.0,
@@ -527,6 +549,7 @@ def _multi_month_stats():
     })
     return {
         "df": df,
+        "items_df": _items_df_from_wide(df),
         "year_month": "2026-04",
         "current_month_stats": {
             "mtd_earnings": 910.0,
@@ -548,3 +571,51 @@ def _multi_month_stats():
         "modality_mix_historical": {},
         "consecutive_below_target": 0,
     }
+
+
+# ── v2.1: price-vigency regression in the RAG context ──
+
+class TestEnrichStatsVigency:
+    """The RAG per-modality breakdown uses price-vigent revenue (items_df.revenue),
+    never the current modalities.price — so a price change does not rewrite the
+    past in the LLM context."""
+
+    def _base_stats(self):
+        import pandas as pd
+        items_df = pd.DataFrame([
+            {"date": "2026-03-01", "modality_slug": "tc_geral",
+             "count": 10, "revenue": 250.0},  # 10 * 25 (vigent price)
+        ])
+        return {
+            "df": pd.DataFrame({
+                "date": ["2026-03-01"], "earnings": [250.0],
+                "ressonancia_magnetica": [0], "tc_geral": [10], "radiografia": [0],
+                "ma7": [250.0], "ma30": [250.0],
+            }),
+            "items_df": items_df,
+            "year_month": "2026-03",
+            "current_month_stats": {
+                "mtd_earnings": 250.0, "pct_goal": 50.0, "days_worked": 1,
+                "remaining_days": 0, "total_calendar_days": 31, "elapsed_days": 31,
+                "daily_avg": 250.0, "daily_target_needed": 0.0,
+                "projection_month_end": 250.0, "goal": 500.0,
+            },
+            "wow_change_pct": None, "mom_change_pct": None,
+            "modality_mix_current": {}, "modality_mix_historical": {},
+            "consecutive_below_target": 0, "current_month_daily_std": None,
+            "prev_month_earnings": None,
+        }
+
+    def test_rag_per_modality_uses_vigent_revenue_not_current_price(self):
+        base = self._base_stats()
+        mods_25 = [_ACTIVE_MODS[1]]  # tc_geral at price 25
+        detail_25 = _enrich_stats(base, mods_25)["monthly_detail"]
+        # "Raise" tc_geral to 40 — items_df.revenue stays 250, must NOT become 400.
+        mods_40 = [dict(_ACTIVE_MODS[1], price=40.0)]
+        detail_40 = _enrich_stats(base, mods_40)["monthly_detail"]
+        assert "R$ 250,00" in detail_25
+        assert "R$ 250,00" in detail_40
+        assert "R$ 400,00" not in detail_40
+        # ticket stays 25 (250/10), not 40
+        assert "R$ 25.00/exame" in detail_25
+        assert "R$ 25.00/exame" in detail_40
