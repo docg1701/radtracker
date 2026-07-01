@@ -271,6 +271,28 @@ class TestMonthlyStatsDayCounting:
         assert stats["remaining_days"] == 30
         assert stats["daily_avg"] == 0.0
 
+    def test_last_day_of_month_with_data_remaining_zero(self, conn, active_modalities):
+        init_db(conn)
+        # June 2026 (30 days); today=30/06 with production → nothing left.
+        upsert_daily_items(conn, "2026-06-30", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 30)
+        )
+        assert stats["elapsed_days"] == 30
+        assert stats["remaining_days"] == 0
+        assert stats["daily_target_needed"] == 0.0
+
+    def test_31_day_month_today_on_day_31_with_data(self, conn, active_modalities):
+        init_db(conn)
+        # July 2026 (31 days); today=31/07 with production.
+        upsert_daily_items(conn, "2026-07-31", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-07", 45000.0, active_modalities, today=date(2026, 7, 31)
+        )
+        assert stats["total_calendar_days"] == 31
+        assert stats["elapsed_days"] == 31
+        assert stats["remaining_days"] == 0
+
 
 # ── Historical stats ──
 

@@ -1,5 +1,9 @@
 """Tests for src.insights_rules — v2 dynamic modality insights."""
 
+from datetime import date
+
+from src.calculations import compute_monthly_stats
+from src.db import init_db, upsert_daily_items
 from src.insights_rules import generate_rule_insights
 
 
@@ -17,8 +21,11 @@ def _make_stats(
     module_mix_current=None,
     modality_mix_historical=None,
     consecutive_below_target=0,
+    elapsed_days=None,
 ):
     """Factory for stats dict matching compute_historical_stats output."""
+    if elapsed_days is None:
+        elapsed_days = total_calendar_days - remaining_days
     return {
         "current_month_stats": {
             "mtd_earnings": mtd_earnings,
@@ -26,6 +33,7 @@ def _make_stats(
             "days_worked": days_worked,
             "remaining_days": remaining_days,
             "total_calendar_days": total_calendar_days,
+            "elapsed_days": elapsed_days,
             "daily_avg": daily_avg,
             "daily_target_needed": daily_target_needed,
             "projection_month_end": projection_month_end,
@@ -53,6 +61,27 @@ class TestGenerateRuleInsights:
         stats = _make_stats(days_worked=0)
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
         assert "barra lateral" in result.lower()
+
+    def test_integration_real_compute_monthly_stats(self, conn):
+        """Pipe real compute_monthly_stats output into generate_rule_insights.
+
+        Guards against dict-shape drift between the calculator and the
+        insights engine (the unit tests above use a hand-built factory that
+        could mask a key rename).
+        """
+        init_db(conn)
+        for d in (5, 8, 12, 15, 18, 22):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"ressonancia_magnetica": 8})
+        current = compute_monthly_stats(
+            conn, "2026-06", 45000.0, DEFAULT_ACTIVE_MODS, today=date(2026, 6, 22)
+        )
+        stats = {"current_month_stats": current, "wow_change_pct": None,
+                 "mom_change_pct": None, "modality_mix_current": {},
+                 "modality_mix_historical": {}, "consecutive_below_target": 0}
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        # Must mention the real MTD (8*35*6 = 1680) and days worked (6)
+        assert "1.680,00" in result
+        assert "6" in result and "trabalhad" in result.lower()
 
     def test_success_tone(self):
         stats = _make_stats(

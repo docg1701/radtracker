@@ -63,7 +63,8 @@ def generate_rule_insights(
         else:
             tone = "on_track"
     else:
-        expected_pct = (days_worked / total_days) * 100
+        elapsed = current.get("elapsed_days", 0)
+        expected_pct = (elapsed / total_days) * 100
         if pct >= expected_pct * 1.1:
             tone = "success"
         elif pct >= expected_pct:
