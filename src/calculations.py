@@ -390,6 +390,7 @@ def compute_historical_stats(
 
     # MoM
     mom_change_pct: float | None = None
+    prev_month_earnings: float | None = None
     monthly_idx = monthly.set_index("ym")
     if year_month in monthly_idx.index:
         pos = monthly_idx.index.get_loc(year_month)
@@ -399,6 +400,7 @@ def compute_historical_stats(
             curr_total = float(monthly_idx.loc[year_month, "total_earnings"])
             if prev_total > 0:
                 mom_change_pct = float((curr_total - prev_total) / prev_total * 100)
+                prev_month_earnings = float(prev_total)
 
     # Modality mix from v2 items
     def _modality_mix(ym: str) -> dict[str, float]:
@@ -415,6 +417,11 @@ def compute_historical_stats(
         return {slug: round(val / total * 100, 1) for slug, val in rev.items()}
 
     current_month_df = df[df["date"].str[:7] == year_month]
+    # Std of daily earnings (worked days) for projection scenarios; None if <3 days
+    if len(current_month_df) >= 3:
+        current_month_daily_std = float(current_month_df["earnings"].std(ddof=0))
+    else:
+        current_month_daily_std = None
     modality_mix_current = _modality_mix(year_month)
 
     modality_mix_historical: dict[str, dict[str, float]] = {}
@@ -444,6 +451,8 @@ def compute_historical_stats(
         "consecutive_below_target": consecutive_below_target,
         "current_month_stats": current_stats,
         "items_df": items_df,
+        "current_month_daily_std": current_month_daily_std,
+        "prev_month_earnings": prev_month_earnings,
     }
 
 
@@ -492,4 +501,6 @@ def _empty_historical_stats(
         "consecutive_below_target": 0,
         "current_month_stats": current_stats,
         "items_df": pd.DataFrame(columns=["date", "modality_slug", "count", "revenue"]),
+        "current_month_daily_std": None,
+        "prev_month_earnings": None,
     }

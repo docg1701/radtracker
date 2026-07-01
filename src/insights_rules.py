@@ -1,7 +1,11 @@
 """
 Rule-based insights engine for radtracker — v2 dynamic modalities.
 
-Pure function: stats dict + active_modalities → Portuguese markdown string.
+Factual, dense output: percentages, absolute BRL, projection scenarios, and
+real comparisons (MoM, modality mix). No tone adjectives, no "you did it"
+phrases, no generic suggestions — only the numbers that matter.
+
+Pure function: stats dict + active_modalities -> Portuguese markdown string.
 Zero database or external dependencies.
 """
 
@@ -10,25 +14,43 @@ from typing import Any
 from src.formatting import fmt_brl
 
 
+def _gap_label(value: float, goal: float) -> str:
+    """Return 'R$ X acima' or 'R$ X abaixo' relative to the goal."""
+    diff = value - goal
+    word = "acima" if diff >= 0 else "abaixo"
+    return f"{fmt_brl(abs(diff))} {word}"
+
+
+def _projection_scenarios(
+    mtd: float, daily_avg: float, remaining: int,
+    std: float | None, base: float,
+) -> tuple[float, float, float]:
+    """Return (conservative, base, optimistic) month-end projections."""
+    if std is not None and std > 0 and remaining > 0:
+        conserv = mtd + max(0.0, daily_avg - std) * remaining
+        optim = mtd + (daily_avg + std) * remaining
+    else:
+        conserv = base
+        optim = base
+    return conserv, base, optim
+
+
 def generate_rule_insights(
     stats: dict[str, Any],
     active_modalities: list[dict[str, Any]],
 ) -> str:
-    """
-    Generate Portuguese-language insights from historical statistics.
-
-    Tone is determined by whether the current pace can realistically
-    hit the goal, not just by a fixed pct_goal threshold.
+    """Generate factual Portuguese insights from historical statistics.
 
     Args:
         stats: Dict from compute_historical_stats() with keys:
-            current_month_stats, wow_change_pct, mom_change_pct,
-            modality_mix_current, modality_mix_historical,
-            consecutive_below_target.
+            current_month_stats, current_month_daily_std, prev_month_earnings,
+            mom_change_pct, modality_mix_current, consecutive_below_target.
         active_modalities: List of active modality dicts (slug, label, price).
 
     Returns:
-        Markdown-formatted Portuguese insight string.
+        Markdown-formatted Portuguese insight string: % of goal, worked/elapsed/
+        remaining days, daily average, 3 projection scenarios, required per-day,
+        MoM, top-3 modality mix, and consecutive-below-target streak.
     """
     current = stats.get("current_month_stats")
     if current is None or current.get("days_worked", 0) == 0:
@@ -38,211 +60,71 @@ def generate_rule_insights(
             "tiver pelo menos alguns dias de trabalho."
         )
 
-    pct = current["pct_goal"]
     mtd = current["mtd_earnings"]
+    pct = current["pct_goal"]
     days_worked = current["days_worked"]
+    elapsed = current.get("elapsed_days", 0)
     remaining = current["remaining_days"]
-    total_days = current["total_calendar_days"]
     daily_avg = current.get("daily_avg", 0.0)
     daily_needed = max(0.0, current.get("daily_target_needed", 0.0))
-    projection = current.get("projection_month_end", 0.0)
-    goal = (mtd / pct * 100) if pct > 0 else 0.0
-
-    # ── Tone ──
-    if remaining == 0:
-        tone = "success" if pct >= 100 else "danger"
-    elif daily_needed <= 0:
-        tone = "success"
-    elif days_worked >= 5:
-        if daily_avg > 0 and daily_needed <= daily_avg * 1.1:
-            tone = "on_track"
-        elif daily_avg > 0 and daily_needed <= daily_avg * 1.5:
-            tone = "warning"
-        elif daily_avg > 0:
-            tone = "danger"
-        else:
-            tone = "on_track"
-    else:
-        elapsed = current.get("elapsed_days", 0)
-        expected_pct = (elapsed / total_days) * 100
-        if pct >= expected_pct * 1.1:
-            tone = "success"
-        elif pct >= expected_pct:
-            tone = "on_track"
-        elif pct >= expected_pct * 0.5:
-            tone = "warning"
-        else:
-            tone = "danger"
+    base = current.get("projection_month_end", 0.0)
+    goal = current.get("goal") or ((mtd / pct * 100) if pct > 0 else 0.0)
+    std = stats.get("current_month_daily_std")
+    prev_earnings = stats.get("prev_month_earnings")
+    mom = stats.get("mom_change_pct")
+    mix = stats.get("modality_mix_current", {})
+    below = stats.get("consecutive_below_target", 0)
 
     lines: list[str] = []
 
-    def _dia(n: int) -> str:
-        return "dia" if n == 1 else "dias"
-
-    def _restar(n: int) -> str:
-        return "Resta" if n == 1 else "Restam"
-
-    # ── Opening ──
+    # ── Cabeçalho factual ──
+    lines.append(f"**{pct:.0f}%** da meta — {fmt_brl(mtd)} de {fmt_brl(goal)}.")
     lines.append(
-        f"**{pct:.0f}%** da meta ({fmt_brl(mtd)} de {fmt_brl(goal)}) "
-        f"em **{days_worked}** {_dia(days_worked)} trabalhados."
+        f"{days_worked} dias trabalhados · {elapsed} decorridos · "
+        f"{remaining} restantes · média {fmt_brl(daily_avg)}/dia corrido."
     )
 
-    # ── Projection ──
+    # ── Projeção de fechamento em 3 cenários ──
+    conserv, base_proj, optim = _projection_scenarios(
+        mtd, daily_avg, remaining, std, base,
+    )
     if remaining > 0:
-        if tone == "success":
-            lines.append(
-                f"Com apenas **{remaining}** {_dia(remaining)} "
-                f"{_restar(remaining).lower()} e faturamento de "
-                f"{fmt_brl(mtd)}, faltam "
-                f"**{fmt_brl(max(0, goal - mtd))}**. "
-                f"Sua projeção é fechar em "
-                f"**{fmt_brl(projection)}**."
-            )
-        elif tone == "on_track":
-            lines.append(
-                f"{_restar(remaining)} **{remaining}** "
-                f"{_dia(remaining)}. Seu ritmo atual de "
-                f"**{fmt_brl(daily_avg)}/dia** "
-                f"projeta **{fmt_brl(projection)}** — suficiente "
-                f"para bater a meta."
-            )
-        elif tone == "warning":
-            gap = daily_needed - daily_avg
-            lines.append(
-                f"{_restar(remaining)} **{remaining}** "
-                f"{_dia(remaining)}. Para bater a meta, você "
-                f"precisa de **{fmt_brl(daily_needed)}/dia**, "
-                f"mas sua média atual é "
-                f"**{fmt_brl(daily_avg)}/dia** "
-                f"({fmt_brl(gap)}/dia acima do seu ritmo). "
-                f"Projeção atual: **{fmt_brl(projection)}**."
-            )
-        else:
-            missing = goal - projection
-            lines.append(
-                f"{_restar(remaining)} **{remaining}** "
-                f"{_dia(remaining)}. Você precisaria de "
-                f"**{fmt_brl(daily_needed)}/dia**, "
-                f"mas sua média é **{fmt_brl(daily_avg)}/dia**. "
-                f"No ritmo atual, fecharia em "
-                f"**{fmt_brl(projection)}** "
-                f"— **{fmt_brl(missing)}** abaixo da meta."
-            )
-
-    # ── Tone assessment ──
-    if tone == "success":
+        lines.append("")
+        lines.append("**Projeção de fechamento:**")
+        lines.append(f"• Conservador: {fmt_brl(conserv)} — {_gap_label(conserv, goal)}.")
         lines.append(
-            "\n:material/check_circle: **Você já bateu a meta!** "
-            "O ritmo foi excelente este mês."
+            f"• Base (média atual): {fmt_brl(base_proj)} — {_gap_label(base_proj, goal)}."
         )
-    elif tone == "on_track":
+        lines.append(f"• Otimista: {fmt_brl(optim)} — {_gap_label(optim, goal)}.")
+        lines.append("Mais provável: **base**.")
+        missing = max(0.0, goal - mtd)
+        if missing > 0:
+            lines.append(
+                f"Faltam {fmt_brl(missing)}: {fmt_brl(daily_needed)}/dia "
+                f"nos {remaining} restantes."
+            )
+    else:
         lines.append(
-            "\n:material/check_circle: **Ritmo adequado.** "
-            "Mantendo a média atual, a meta será atingida."
+            f"Projeção de fechamento: {fmt_brl(mtd)} ({_gap_label(mtd, goal)} da meta)."
         )
 
-    # ── WoW trend ──
-    wow = stats.get("wow_change_pct")
-    if wow is not None:
-        if wow > 0:
-            direction = ":material/trending_up:"
-            trend_word = "crescimento"
-        elif wow < 0:
-            direction = ":material/trending_down:"
-            trend_word = "queda"
-        else:
-            direction = ":material/trending_flat:"
-            trend_word = "estável"
-        lines.append(
-            f"\n{direction} **Semana a semana:** "
-            f"{trend_word} de **{abs(wow):.1f}%** no faturamento."
-        )
-
-    # ── MoM trend ──
-    mom = stats.get("mom_change_pct")
+    # ── MoM ──
     if mom is not None:
-        if mom > 0:
-            direction = ":material/trending_up:"
-            trend_word = "crescimento"
-        elif mom < 0:
-            direction = ":material/trending_down:"
-            trend_word = "queda"
-        else:
-            direction = ":material/trending_flat:"
-            trend_word = "estável"
-        lines.append(
-            f"\n{direction} **Mês a mês:** "
-            f"{trend_word} de **{abs(mom):.1f}%** "
-            f"em relação ao mês anterior."
-        )
+        sign = "+" if mom >= 0 else ""
+        mom_str = f"{mom:.1f}".replace(".", ",")
+        prev_str = fmt_brl(prev_earnings) if prev_earnings is not None else "—"
+        lines.append(f"MoM: {sign}{mom_str}% ({fmt_brl(mtd)} vs {prev_str}).")
 
-    # ── Modality mix shift (dynamic) ──
-    mix_current = stats.get("modality_mix_current", {})
-    mix_history = stats.get("modality_mix_historical", {})
-    if days_worked > 0 and mix_history and len(mix_history) >= 2:
-        months_sorted = sorted(mix_history.keys())
-        current_ym = max(months_sorted)
-        past_months = [m for m in months_sorted if m != current_ym]
-        if past_months:
-            slug_to_label = {m["slug"]: m["label"] for m in active_modalities}
-            avg_mix: dict[str, float] = {}
-            all_slugs = set()
-            for mh in mix_history.values():
-                all_slugs.update(mh.keys())
-            for slug in all_slugs:
-                vals = [mix_history[pm].get(slug, 0.0) for pm in past_months]
-                avg_mix[slug] = sum(vals) / len(vals) if vals else 0.0
+    # ── Mix de modalidades (top 3 por share) ──
+    slug_to_label = {m["slug"]: m["label"] for m in active_modalities}
+    if mix:
+        top = sorted(mix.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        parts = [f"{slug_to_label.get(s, s)} {p:.0f}%" for s, p in top if p > 0]
+        if parts:
+            lines.append("Mix: " + " · ".join(parts) + ".")
 
-            shifts: list[str] = []
-            for slug in all_slugs:
-                diff = mix_current.get(slug, 0.0) - avg_mix.get(slug, 0.0)
-                if abs(diff) > 10:
-                    dir_word = "aumento" if diff > 0 else "redução"
-                    label = slug_to_label.get(slug, slug)
-                    shifts.append(
-                        f"{label}: {dir_word} de {abs(diff):.1f} p.p. "
-                        f"(média histórica {avg_mix[slug]:.1f}%)"
-                    )
-            if shifts:
-                lines.append(
-                    "\n**Mudança no mix de modalidades:** "
-                    + "; ".join(shifts) + "."
-                )
-
-    # ── Consecutive below target ──
-    below = stats.get("consecutive_below_target", 0)
+    # ── Dias consecutivos abaixo da meta diária ──
     if below >= 3:
-        lines.append(
-            f"\n:material/warning: **{below}** {_dia(below)} consecutivos "
-            f"abaixo da meta diária. Pode ser um bom momento para "
-            f"revisar a carga de trabalho."
-        )
-
-    # ── Suggestions ──
-    if tone == "success":
-        lines.append(
-            "\n:material/lightbulb: **Sugestão:** O momento é de "
-            "consolidar o bom ritmo. Documente o que funcionou "
-            "bem este mês para replicar nos próximos."
-        )
-    elif tone == "on_track":
-        lines.append(
-            f"\n:material/lightbulb: **Sugestão:** Continue no ritmo "
-            f"atual. Se conseguir alguns dias acima de "
-            f"**{fmt_brl(daily_avg)}**, você fecha com folga."
-        )
-    elif tone in ("warning", "danger"):
-        # Find highest-paying modality
-        highest = max(active_modalities, key=lambda m: m["price"]) if active_modalities else None
-        highest_label = highest["label"] if highest else "exames de maior valor"
-        lines.append(
-            f"\n:material/lightbulb: **Sugestão:** Para melhorar o "
-            f"faturamento, priorize **{highest_label}** "
-            f"(maior remuneração). Se a demanda não permitir, "
-            f"considere ajustar a meta na aba "
-            f"**:material/settings: Configuração** para refletir "
-            f"a realidade atual."
-        )
+        lines.append(f"{below} dias consecutivos abaixo da meta diária.")
 
     return "\n".join(lines)
