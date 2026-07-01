@@ -380,13 +380,16 @@ def build_monthly_modality_donut(
     """
     prices = {m["slug"]: float(m["price"]) for m in active_modalities}
     labels_lookup = {m["slug"]: m["label"] for m in active_modalities}
+    has_revenue = (not df.empty) and ("revenue" in df.columns)
 
-    # Compute revenue per modality
+    # Compute revenue per modality (price-vigent when caller attached revenue)
     rev: dict[str, float] = {}
     if not df.empty:
         for _, row in df.iterrows():
             slug = str(row["modality_slug"])
-            if slug in prices:
+            if has_revenue:
+                rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
+            elif slug in prices:
                 rev[slug] = rev.get(slug, 0.0) + int(row["count"]) * prices[slug]
 
     slugs: list[str] = []

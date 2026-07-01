@@ -14,7 +14,7 @@ from streamlit_extras.star_rating import star_rating
 from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
-    _build_lookups,
+    attach_revenue,
     compute_daily_target,
     compute_monthly_stats,
 )
@@ -66,8 +66,7 @@ def render_month_tab(conn: Any) -> None:
     _maybe_celebrate(pct_goal, year_month)
 
     # ── Build daily earnings dataframe from items ──
-    prices, _ = _build_lookups(active_mods)
-    earn_df = _build_earnings_dataframe(conn, year_month, prices)
+    earn_df = _build_earnings_dataframe(conn, year_month)
 
     # ── Charts ──
     col_left, col_right = st.columns(2)
@@ -84,7 +83,7 @@ def render_month_tab(conn: Any) -> None:
 
     with col_right:
         st.subheader(":material/pie_chart: Receita por Modalidade")
-        items_df = load_month_items(conn, year_month)
+        items_df = attach_revenue(conn, load_month_items(conn, year_month))
         donut = build_monthly_modality_donut(items_df, active_mods)
         st.plotly_chart(donut, width="stretch")
 
@@ -112,18 +111,14 @@ def _render_empty_state(message: str) -> None:
 
 
 def _build_earnings_dataframe(
-    conn: Any, year_month: str, prices: dict[str, float],
+    conn: Any, year_month: str,
 ) -> pd.DataFrame:
-    """Build a daily earnings DataFrame from daily_production_items."""
+    """Build a daily earnings DataFrame (price-vigent revenue) from items."""
     items_df = load_month_items(conn, year_month)
     if items_df.empty:
         return pd.DataFrame()
 
-    items_df = items_df.copy()
-    items_df["revenue"] = items_df.apply(
-        lambda r: int(r["count"]) * prices.get(str(r["modality_slug"]), 0.0),
-        axis=1,
-    )
+    items_df = attach_revenue(conn, items_df)
     daily = items_df.groupby("date", as_index=False).agg(earnings=("revenue", "sum"))
     return daily
 

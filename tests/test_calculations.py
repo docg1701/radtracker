@@ -15,7 +15,7 @@ from src.calculations import (
     compute_monthly_stats,
     estimate_hours,
 )
-from src.db import init_db, upsert_daily_items
+from src.db import init_db, save_modality, save_price_vigency, upsert_daily_items
 
 # ── Fixtures from conftest ──
 
@@ -380,3 +380,72 @@ class TestHistoricalStats:
         assert len(df) == 2
         # 5*35 + 10*30 = 175+300 = 475
         assert df["earnings"].iloc[0] == 475.0
+
+
+
+# ── v2.1: price vigency in calculations (Bug 3a regression) ──
+
+
+class TestPriceVigencyInCalculations:
+    """A price change today must not recompute past months' faturamento."""
+
+    def test_save_modality_price_change_does_not_recompute_past(self, conn, active_modalities):
+        init_db(conn)
+        # January production: 10 tc_geral at the seed price of 30 -> 300
+        upsert_daily_items(conn, "2026-01-10", {"tc_geral": 10})
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        before = compute_monthly_stats(
+            conn, "2026-01", 45000.0, active_modalities, today=date(2026, 1, 31)
+        )
+        assert before["mtd_earnings"] == 300.0
+        # Raise tc_geral to 40 in July (save_modality updates modalities.price
+        # AND opens a new vigency from today).
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)
+        # January must be UNCHANGED: still 300, NOT 400.
+        after = compute_monthly_stats(
+            conn, "2026-01", 45000.0, active_modalities, today=date(2026, 1, 31)
+        )
+        assert after["mtd_earnings"] == 300.0
+
+    def test_price_change_reflects_in_current_month_from_today(self, conn, active_modalities):
+        init_db(conn)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        upsert_daily_items(conn, "2026-06-10", {"tc_geral": 10})  # 10*30 = 300
+        # Raise to 40 from 2026-06-15; items on/after 15 use 40, before use 30.
+        save_price_vigency(conn, "tc_geral", 40.0, "2026-06-15")
+        upsert_daily_items(conn, "2026-06-20", {"tc_geral": 10})  # 10*40 = 400
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 30)
+        )
+        # 300 (before 15th) + 400 (after 15th) = 700
+        assert stats["mtd_earnings"] == 700.0
+
+
+class TestPriceVigencyHistoricalAndDaily:
+    """Faturamento histórico e diário usam preço vigente por data, nunca o atual."""
+
+    def test_price_change_does_not_inflate_historical(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-01-10", {"tc_geral": 10})  # 10 * 30 = 300
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        before = compute_historical_stats(conn, "2026-01", 45000.0, active_modalities)
+        jan_df = before["df"][before["df"]["date"].str[:7] == "2026-01"]
+        jan_before = float(jan_df["earnings"].sum())
+        assert jan_before == 300.0
+        # Raise tc_geral to 40 today
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)
+        after = compute_historical_stats(conn, "2026-01", 45000.0, active_modalities)
+        jan_df_after = after["df"][after["df"]["date"].str[:7] == "2026-01"]
+        jan_after = float(jan_df_after["earnings"].sum())
+        assert jan_after == 300.0  # unchanged, not 400
+
+    def test_yesterday_earnings_use_vigent_price(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-06-10", {"tc_geral": 10})  # yesterday
+        upsert_daily_items(conn, "2026-06-11", {"tc_geral": 10})  # today
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-06-01")
+        save_price_vigency(conn, "tc_geral", 40.0, "2026-06-11")  # raise from today
+        stats = compute_daily_stats(conn, "2026-06-11", active_modalities)
+        # today (11/06) uses 40 -> 400; yesterday (10/06) uses 25 -> 250
+        assert stats["earnings_today"] == 400.0
+        assert stats["yesterday_earnings"] == 250.0

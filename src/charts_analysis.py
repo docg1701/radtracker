@@ -86,14 +86,14 @@ def build_moving_averages_chart(
 # ---------------------------------------------------------------------------
 
 def build_wow_comparison_chart(
-    df: pd.DataFrame,
+    items_df: pd.DataFrame,
     active_modalities: list[dict[str, Any]],
 ) -> go.Figure:
     """
     Grouped bar chart: current partial week vs last complete week, per modality.
 
-    Shows revenue comparison so the user sees real-time progress against
-    the previous week. Week labels use actual date ranges (e.g. "28/04 – 04/05").
+    Shows price-vigent revenue comparison so the user sees real-time progress
+    against the previous week. Week labels use actual date ranges.
     """
     today = pd.Timestamp.now().normalize()
 
@@ -121,10 +121,9 @@ def build_wow_comparison_chart(
         slug = m["slug"]
         labels.append(m["label"])
         mod_colors.append(color_for_modality(slug, active_modalities))
-        price = float(m["price"])
 
-        prev_rev = _week_revenue(df, slug, price, prev_monday, prev_sunday)
-        curr_rev = _week_revenue(df, slug, price, curr_start, curr_end)
+        prev_rev = _week_revenue(items_df, slug, prev_monday, prev_sunday)
+        curr_rev = _week_revenue(items_df, slug, curr_start, curr_end)
         prev_revs.append(prev_rev)
         curr_revs.append(curr_rev)
 
@@ -161,21 +160,21 @@ def build_wow_comparison_chart(
 
 
 def _week_revenue(
-    df: pd.DataFrame, slug: str, price: float,
+    items_df: pd.DataFrame, slug: str,
     week_start: pd.Timestamp, week_end: pd.Timestamp,
 ) -> float:
-    """Sum revenue for a modality in a given date range."""
-    if df.empty or "date_dt" not in df.columns:
+    """Sum price-vigent revenue for a modality in a given date range."""
+    if items_df.empty or "revenue" not in items_df.columns:
         return 0.0
 
-    week_df = df[
-        (df["date_dt"] >= pd.Timestamp(week_start))
-        & (df["date_dt"] <= pd.Timestamp(week_end))
+    start_str = week_start.strftime("%Y-%m-%d")
+    end_str = week_end.strftime("%Y-%m-%d")
+    week_df = items_df[
+        (items_df["modality_slug"] == slug)
+        & (items_df["date"] >= start_str)
+        & (items_df["date"] <= end_str)
     ]
-
-    if slug in week_df.columns:
-        return float(week_df[slug].sum()) * price
-    return 0.0
+    return float(week_df["revenue"].sum()) if not week_df.empty else 0.0
 
 
 # ---------------------------------------------------------------------------

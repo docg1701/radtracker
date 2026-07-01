@@ -87,6 +87,10 @@ def _enrich_stats(
     template can surface them to the LLM.
     """
     df: pd.DataFrame = stats.get("df", pd.DataFrame())
+    items_df: pd.DataFrame = stats.get("items_df", pd.DataFrame())
+    has_items_revenue = (
+        items_df is not None and not items_df.empty and "revenue" in items_df.columns
+    )
     current_ym = stats.get("year_month") or ""
     current_stats = stats.get("current_month_stats", {})
 
@@ -138,17 +142,27 @@ def _enrich_stats(
             slug = m["slug"]
             price = float(m.get("price", 0))
             eph = float(m.get("exams_per_hour", 0))
-            count = int(month_df[slug].sum()) if slug in month_df.columns else 0
+            if has_items_revenue:
+                mi = items_df[
+                    (items_df["date"].str[:7] == ym)
+                    & (items_df["modality_slug"] == slug)
+                ]
+                count = int(mi["count"].sum()) if not mi.empty else 0
+                slug_rev = float(mi["revenue"].sum()) if not mi.empty else 0.0
+            else:
+                count = int(month_df[slug].sum()) if slug in month_df.columns else 0
+                slug_rev = count * price
             total_exames_mes += count
             if eph > 0 and count > 0:
                 horas_mes += count / eph
             if count > 0:
-                pct = (count * price / mtd * 100) if mtd > 0 else 0.0
-                rec_hora = price * eph if eph > 0 else 0.0
+                pct = (slug_rev / mtd * 100) if mtd > 0 else 0.0
+                ticket_exame = slug_rev / count
+                rec_hora = ticket_exame * eph if eph > 0 else 0.0
                 mod_lines.append(
                     f"  {m['label']}: {count} exames, "
-                    f"{fmt_brl(count * price)} ({pct:.0f}%), "
-                    f"R$ {price:.2f}/exame, "
+                    f"{fmt_brl(slug_rev)} ({pct:.0f}%), "
+                    f"ticket R$ {ticket_exame:.2f}/exame, "
                     f"{eph:.1f}e/h ≈ R$ {rec_hora:.2f}/h"
                 )
 

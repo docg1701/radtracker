@@ -7,6 +7,7 @@ v2: dynamic modalities, configurable LLM model.
 from datetime import date
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 from streamlit_extras.skeleton import skeleton
 
@@ -88,7 +89,8 @@ def render_analysis_tab(conn: Any) -> None:
     with col_right:
         st.subheader(":material/analytics: Comparação semanal")
         if not df.empty:
-            wow_chart = build_wow_comparison_chart(df, active_mods)
+            wow_items = stats.get("items_df", pd.DataFrame())
+            wow_chart = build_wow_comparison_chart(wow_items, active_mods)
             st.plotly_chart(wow_chart, width="stretch")
         else:
             st.info("Dados insuficientes para comparação semanal.")

@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.db import load_daily_items, load_month_items
+from src.db import load_daily_items, load_month_items, load_prices_at
 
 # ---------------------------------------------------------------------------
 # Helper: build slug→price and slug→exams_per_hour lookups
@@ -106,7 +106,7 @@ def compute_daily_stats(
       modality_counts (slug→count),
       modality_labels (slug→label), yesterday_earnings, delta_pct, has_data.
     """
-    prices, eph = _build_lookups(active_modalities)
+    _, eph = _build_lookups(active_modalities)
     counts = load_daily_items(conn, date_str)
     has_data = bool(counts)
 
@@ -122,16 +122,20 @@ def compute_daily_stats(
             "has_data": False,
         }
 
-    earnings_today = compute_earnings(counts, prices)
+    # Price vigent on today's date (not the current modalities.price)
+    prices_today = load_prices_at(conn, date_str)
+    earnings_today = compute_earnings(counts, prices_today)
     hours = estimate_hours(counts, eph)
     exam_count_today = sum(counts.values())
 
-    # Yesterday
+    # Yesterday — uses the price vigent on yesterday's date
     yesterday_str = _yesterday_str(date_str)
     yesterday_counts = load_daily_items(conn, yesterday_str)
     yesterday_earnings: float | None = None
     if yesterday_counts:
-        yesterday_earnings = compute_earnings(yesterday_counts, prices)
+        yesterday_earnings = compute_earnings(
+            yesterday_counts, load_prices_at(conn, yesterday_str)
+        )
 
     delta_pct = compute_delta_pct(earnings_today, yesterday_earnings)
 
@@ -197,6 +201,35 @@ def daily_avg_for_month(
     return mtd_earnings / elapsed if elapsed > 0 else 0.0
 
 
+def attach_revenue(conn: Any, items_df: pd.DataFrame) -> pd.DataFrame:
+    """Add a 'revenue' column to items_df using the price vigent on each date.
+
+    items_df must have columns date, modality_slug, count. Each row's revenue is
+    count * price_vigent_on(date) from modality_prices. A slug with no vigency on
+    or before the date falls back to its oldest vigency; a slug with no vigency at
+    all yields 0. The past is never recomputed when a price changes later.
+
+    Example:
+        >>> df = attach_revenue(conn, load_month_items(conn, "2026-01"))
+        >>> float(df["revenue"].sum())
+        12345.6
+    """
+    if items_df.empty:
+        return items_df.assign(revenue=[])
+    if "revenue" in items_df.columns:
+        return items_df
+    df = items_df.copy()
+    prices_cache: dict[str, dict[str, float]] = {}
+    for d in df["date"].astype(str).unique():
+        prices_cache[d] = load_prices_at(conn, d)
+    revenues = [
+        int(row["count"]) * prices_cache[str(row["date"])].get(str(row["modality_slug"]), 0.0)
+        for _, row in df.iterrows()
+    ]
+    df["revenue"] = revenues
+    return df
+
+
 def compute_monthly_stats(
     conn: Any,
     year_month: str,
@@ -216,16 +249,12 @@ def compute_monthly_stats(
     daily_target_needed and projection all use dias corridos so the units stay
     consistent (R$/dia corrido in both numerator and denominator).
     """
-    prices, _ = _build_lookups(active_modalities)
     month_df = load_month_items(conn, year_month)
 
-    # Compute MTD earnings
+    # Compute MTD earnings using the price vigent on each date (past is immutable)
     mtd_earnings = 0.0
     if not month_df.empty:
-        for _, row in month_df.iterrows():
-            slug = row["modality_slug"]
-            if slug in prices:
-                mtd_earnings += int(row["count"]) * prices[slug]
+        mtd_earnings = float(attach_revenue(conn, month_df)["revenue"].sum())
 
     pct_goal = (mtd_earnings / goal * 100.0) if goal > 0 else 0.0
 
@@ -281,8 +310,6 @@ def compute_historical_stats(
 
     Uses daily_production_items (v2 normalized schema).
     """
-    prices, _ = _build_lookups(active_modalities)
-
     # Build a daily earnings dataframe from items table
     months_df = conn.query(
         "SELECT DISTINCT substr(date, 1, 7) AS ym "
@@ -306,9 +333,10 @@ def compute_historical_stats(
         return _empty_historical_stats(conn, year_month, goal, active_modalities)
 
     items_df = pd.concat(frames, ignore_index=True)
+    items_df = attach_revenue(conn, items_df)
 
-    # Pivot to daily earnings
-    daily_earnings = _compute_daily_earnings_from_items(items_df, prices)
+    # Pivot to daily earnings (price-vigent revenue)
+    daily_earnings = _compute_daily_earnings_from_items(conn, items_df)
     if daily_earnings.empty:
         return _empty_historical_stats(conn, year_month, goal, active_modalities)
 
@@ -380,8 +408,7 @@ def compute_historical_stats(
         rev: dict[str, float] = {}
         for _, row in ym_items.iterrows():
             slug = str(row["modality_slug"])
-            if slug in prices:
-                rev[slug] = rev.get(slug, 0.0) + int(row["count"]) * prices[slug]
+            rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
         total = sum(rev.values())
         if total == 0.0:
             return {m["slug"]: 0.0 for m in active_modalities}
@@ -416,24 +443,23 @@ def compute_historical_stats(
         "modality_mix_historical": modality_mix_historical,
         "consecutive_below_target": consecutive_below_target,
         "current_month_stats": current_stats,
+        "items_df": items_df,
     }
 
 
 def _compute_daily_earnings_from_items(
-    items_df: pd.DataFrame, prices: dict[str, float]
+    conn: Any, items_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Aggregate daily_production_items rows into daily earnings + per-modality counts.
+    """Aggregate items into daily earnings (price-vigent revenue) + per-modality counts.
 
-    Returns DataFrame with columns: date, earnings, plus one count column per slug.
+    Attaches a 'revenue' column using the price vigent on each date, so the past
+    is never recomputed when a price changes later. Returns a DataFrame with
+    columns: date, earnings, plus one count column per slug.
     """
     if items_df.empty:
         return pd.DataFrame()
 
-    # Compute revenue per row
-    items_df = items_df.copy()
-    items_df["revenue"] = items_df.apply(
-        lambda r: int(r["count"]) * prices.get(str(r["modality_slug"]), 0.0), axis=1
-    )
+    items_df = attach_revenue(conn, items_df)
 
     # Sum revenue by date → earnings
     daily = items_df.groupby("date", as_index=False).agg(earnings=("revenue", "sum"))
@@ -465,4 +491,5 @@ def _empty_historical_stats(
         "modality_mix_historical": {},
         "consecutive_below_target": 0,
         "current_month_stats": current_stats,
+        "items_df": pd.DataFrame(columns=["date", "modality_slug", "count", "revenue"]),
     }

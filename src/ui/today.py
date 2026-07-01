@@ -165,9 +165,6 @@ def _build_sparkline_figure(
     conn: Any, year_month: str, active_mods: list[dict[str, Any]],
 ):
     """Load recent 7 days of earnings and build sparkline."""
-    from src.calculations import _build_lookups
-
-    prices, _ = _build_lookups(active_mods)
 
     current_items = load_month_items(conn, year_month)
 
@@ -175,7 +172,7 @@ def _build_sparkline_figure(
     if current_items.empty:
         return None
 
-    daily = _compute_daily_earnings_from_items(current_items, prices)
+    daily = _compute_daily_earnings_from_items(conn, current_items)
     if daily.empty:
         return None
 
@@ -188,7 +185,7 @@ def _build_sparkline_figure(
             prev_ym = f"{y}-{m - 1:02d}"
         prev_items = load_month_items(conn, prev_ym)
         if not prev_items.empty:
-            prev_daily = _compute_daily_earnings_from_items(prev_items, prices)
+            prev_daily = _compute_daily_earnings_from_items(conn, prev_items)
             daily = pd.concat([prev_daily, daily], ignore_index=True)
 
     daily = daily.sort_values("date").tail(7)
