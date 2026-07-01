@@ -7,7 +7,7 @@ def _make_stats(
     mtd_earnings=0.0,
     pct_goal=0.0,
     days_worked=0,
-    remaining_calendar_days=0,
+    remaining_days=0,
     total_calendar_days=30,
     daily_avg=0.0,
     daily_target_needed=0.0,
@@ -24,7 +24,7 @@ def _make_stats(
             "mtd_earnings": mtd_earnings,
             "pct_goal": pct_goal,
             "days_worked": days_worked,
-            "remaining_calendar_days": remaining_calendar_days,
+            "remaining_days": remaining_days,
             "total_calendar_days": total_calendar_days,
             "daily_avg": daily_avg,
             "daily_target_needed": daily_target_needed,
@@ -57,7 +57,7 @@ class TestGenerateRuleInsights:
     def test_success_tone(self):
         stats = _make_stats(
             mtd_earnings=50000, pct_goal=111.1, days_worked=20,
-            remaining_calendar_days=0, total_calendar_days=30,
+            remaining_days=0, total_calendar_days=30,
         )
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
         assert "bateu a meta" in result.lower()
@@ -65,7 +65,7 @@ class TestGenerateRuleInsights:
     def test_on_track(self):
         stats = _make_stats(
             mtd_earnings=30000, pct_goal=66.7, days_worked=20,
-            remaining_calendar_days=10, total_calendar_days=30,
+            remaining_days=10, total_calendar_days=30,
             daily_avg=1500, daily_target_needed=1500,
         )
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
@@ -74,7 +74,7 @@ class TestGenerateRuleInsights:
     def test_warning_tone(self):
         stats = _make_stats(
             mtd_earnings=15000, pct_goal=33.3, days_worked=15,
-            remaining_calendar_days=15, total_calendar_days=30,
+            remaining_days=15, total_calendar_days=30,
             daily_avg=1400, daily_target_needed=2000,
         )
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
@@ -83,7 +83,7 @@ class TestGenerateRuleInsights:
     def test_danger_tone(self):
         stats = _make_stats(
             mtd_earnings=5000, pct_goal=11.1, days_worked=10,
-            remaining_calendar_days=20, total_calendar_days=30,
+            remaining_days=20, total_calendar_days=30,
             daily_avg=500, daily_target_needed=2000,
         )
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
@@ -92,7 +92,7 @@ class TestGenerateRuleInsights:
     def test_wow_trend(self):
         stats = _make_stats(
             mtd_earnings=20000, pct_goal=44.4, days_worked=15,
-            remaining_calendar_days=15, total_calendar_days=30,
+            remaining_days=15, total_calendar_days=30,
             daily_avg=1333, daily_target_needed=1667,
             wow_change_pct=12.5,
         )
@@ -103,7 +103,7 @@ class TestGenerateRuleInsights:
     def test_consecutive_below_target(self):
         stats = _make_stats(
             mtd_earnings=20000, pct_goal=44.4, days_worked=15,
-            remaining_calendar_days=15, total_calendar_days=30,
+            remaining_days=15, total_calendar_days=30,
             daily_avg=1333, daily_target_needed=1667,
             consecutive_below_target=4,
         )
@@ -113,7 +113,7 @@ class TestGenerateRuleInsights:
     def test_modality_mix_shift(self):
         stats = _make_stats(
             mtd_earnings=20000, pct_goal=44.4, days_worked=20,
-            remaining_calendar_days=10, total_calendar_days=30,
+            remaining_days=10, total_calendar_days=30,
             daily_avg=1000, daily_target_needed=2500,
             module_mix_current={
                 "ressonancia_magnetica": 60.0,
@@ -139,7 +139,7 @@ class TestGenerateRuleInsights:
     def test_suggestion_has_highest_price_modality(self):
         stats = _make_stats(
             mtd_earnings=5000, pct_goal=11.1, days_worked=10,
-            remaining_calendar_days=20, total_calendar_days=30,
+            remaining_days=20, total_calendar_days=30,
             daily_avg=500, daily_target_needed=2000,
         )
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
@@ -149,7 +149,7 @@ class TestGenerateRuleInsights:
         """Verify the insight uses modality labels from active_modalities list."""
         stats = _make_stats(
             mtd_earnings=20000, pct_goal=44.4, days_worked=20,
-            remaining_calendar_days=10, total_calendar_days=30,
+            remaining_days=10, total_calendar_days=30,
             daily_avg=1000, daily_target_needed=2500,
             module_mix_current={
                 "ressonancia_magnetica": 50.0,

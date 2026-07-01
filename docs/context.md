@@ -308,10 +308,10 @@ Uses Streamlit's `st.connection()` pattern for managed SQLite. Key patterns:
 | Function | Returns | Used By |
 |----------|---------|---------|
 | `compute_daily_stats(conn, date_str, active_modalities)` | dict with 8 keys | `today.py` |
-| `compute_monthly_stats(conn, year_month, goal, active_modalities)` | dict with 9 keys | `month.py`, insights |
+| `compute_monthly_stats(conn, year_month, goal, active_modalities, today=None)` | dict with 10 keys (dias corridos) | `month.py`, insights |
 | `compute_historical_stats(conn, year_month, goal, active_modalities)` | dict with 11 keys (v2 items schema) | `analysis.py`, insights, LLM, chat RAG |
 
-Key: all functions accept `active_modalities: list[dict]` — no hardcoded RM/TC/RX. `compute_historical_stats()` pivots from `daily_production_items` table. `_compute_daily_earnings_from_items()` aggregates items into daily earnings with per-modality count columns.
+Key: all functions accept `active_modalities: list[dict]` — no hardcoded RM/TC/RX. `compute_monthly_stats` counts in **dias corridos** (every day is work-eligible): `daily_avg = mtd/elapsed_days`, `remaining_days = total - elapsed` (today excluded from remaining when it already has production), `days_worked` (days with ≥1 exam) is a displayed statistic only. `today` is injectable for deterministic tests. `compute_historical_stats()` pivots from `daily_production_items` table. `_compute_daily_earnings_from_items()` aggregates items into daily earnings with per-modality count columns.
 
 ### 5.4 `src/chart_colors.py` (Color System, ~85 lines)
 

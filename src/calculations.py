@@ -157,18 +157,64 @@ def _yesterday_str(date_str: str) -> str:
 # Monthly stats
 # ---------------------------------------------------------------------------
 
+def _month_time_window(
+    year_month: str, today: date, has_today_data: bool,
+) -> tuple[int, int]:
+    """Return (elapsed_days, remaining_days) for a year-month in dias corridos.
+
+    Every day is work-eligible. For the current month, today counts as elapsed
+    (and NOT remaining) when it already has production; otherwise today counts
+    as remaining (and not elapsed). Past or other months are fully elapsed with
+    zero remaining. ``elapsed_days + remaining_days == total_calendar_days``.
+
+    Example:
+        >>> _month_time_window("2026-06", date(2026, 6, 29), has_today_data=True)
+        (29, 1)
+    """
+    year, month = int(year_month[:4]), int(year_month[5:7])
+    total = calendar.monthrange(year, month)[1]
+    if year_month != today.isoformat()[:7]:
+        return total, 0
+    if has_today_data:
+        return today.day, total - today.day
+    elapsed = max(0, today.day - 1)
+    return elapsed, total - elapsed
+
+
+def daily_avg_for_month(
+    mtd_earnings: float, year_month: str, today: date, has_today_data: bool,
+) -> float:
+    """Productivity per dia corrido for a month.
+
+    Current month uses elapsed days (today counts when it has production);
+    past months use the full month length. Returns 0.0 when no days elapsed.
+
+    Example:
+        >>> daily_avg_for_month(1000.0, "2026-06", date(2026,6,15), True)
+        66.666...  # 1000 / 15 elapsed
+    """
+    elapsed, _ = _month_time_window(year_month, today, has_today_data)
+    return mtd_earnings / elapsed if elapsed > 0 else 0.0
+
+
 def compute_monthly_stats(
     conn: Any,
     year_month: str,
     goal: float,
     active_modalities: list[dict[str, Any]],
+    today: date | None = None,
 ) -> dict[str, Any]:
-    """
-    Compute aggregate statistics for a year-month.
+    """Compute aggregate statistics for a year-month in dias corridos.
+
+    ``today`` is injectable for deterministic tests; defaults to date.today().
 
     Returns: mtd_earnings, pct_goal, days_worked, total_calendar_days,
-             remaining_calendar_days, daily_avg, daily_target_needed,
+             elapsed_days, remaining_days, daily_avg, daily_target_needed,
              projection_month_end.
+
+    days_worked (days with >=1 exam) is a displayed statistic only; daily_avg,
+    daily_target_needed and projection all use dias corridos so the units stay
+    consistent (R$/dia corrido in both numerator and denominator).
     """
     prices, _ = _build_lookups(active_modalities)
     month_df = load_month_items(conn, year_month)
@@ -183,30 +229,28 @@ def compute_monthly_stats(
 
     pct_goal = (mtd_earnings / goal * 100.0) if goal > 0 else 0.0
 
-    # Days worked = distinct dates in the month
+    # Days worked = distinct dates with production (displayed statistic only)
     days_worked = month_df["date"].nunique() if not month_df.empty else 0
 
-    year, month = int(year_month[:4]), int(year_month[5:7])
-    last_day = calendar.monthrange(year, month)[1]
-    total_calendar_days = last_day
+    today = today or date.today()
+    today_str = today.isoformat()
+    has_today_data = (
+        not month_df.empty and today_str in set(month_df["date"].tolist())
+    )
+    elapsed_days, remaining_days = _month_time_window(
+        year_month, today, has_today_data
+    )
+    total_calendar_days = elapsed_days + remaining_days
 
-    today = date.today()
-    current_ym = today.isoformat()[:7]
-    if year_month == current_ym:
-        remaining_calendar_days = max(0, last_day - today.day + 1)
-    else:
-        remaining_calendar_days = 0
-
-    daily_avg = mtd_earnings / days_worked if days_worked > 0 else 0.0
+    # Productivity per dia corrido (gaps count as zero-production days)
+    daily_avg = mtd_earnings / elapsed_days if elapsed_days > 0 else 0.0
 
     remaining_needed = max(0.0, goal - mtd_earnings)
     daily_target_needed = (
-        remaining_needed / remaining_calendar_days
-        if remaining_calendar_days > 0
-        else 0.0
+        remaining_needed / remaining_days if remaining_days > 0 else 0.0
     )
 
-    projection_month_end = mtd_earnings + (daily_avg * remaining_calendar_days)
+    projection_month_end = mtd_earnings + (daily_avg * remaining_days)
 
     return {
         "goal": goal,
@@ -214,7 +258,8 @@ def compute_monthly_stats(
         "pct_goal": pct_goal,
         "days_worked": days_worked,
         "total_calendar_days": total_calendar_days,
-        "remaining_calendar_days": remaining_calendar_days,
+        "elapsed_days": elapsed_days,
+        "remaining_days": remaining_days,
         "daily_avg": daily_avg,
         "daily_target_needed": daily_target_needed,
         "projection_month_end": projection_month_end,

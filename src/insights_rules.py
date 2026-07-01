@@ -41,7 +41,7 @@ def generate_rule_insights(
     pct = current["pct_goal"]
     mtd = current["mtd_earnings"]
     days_worked = current["days_worked"]
-    remaining = current["remaining_calendar_days"]
+    remaining = current["remaining_days"]
     total_days = current["total_calendar_days"]
     daily_avg = current.get("daily_avg", 0.0)
     daily_needed = max(0.0, current.get("daily_target_needed", 0.0))

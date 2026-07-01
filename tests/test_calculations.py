@@ -1,5 +1,7 @@
 """Tests for src.calculations — v2 dynamic modality functions."""
 
+from datetime import date
+
 import pytest
 
 from src.calculations import (
@@ -159,7 +161,7 @@ class TestComputeMonthlyStats:
         assert stats["mtd_earnings"] == 0.0
         assert stats["pct_goal"] == 0.0
         assert stats["days_worked"] == 0
-        assert stats["remaining_calendar_days"] == 0
+        assert stats["remaining_days"] == 0
 
     def test_with_data(self, conn, active_modalities):
         init_db(conn)
@@ -195,6 +197,79 @@ class TestComputeMonthlyStats:
         init_db(conn)
         stats = compute_monthly_stats(conn, "2026-02", 45000.0, active_modalities)
         assert stats["total_calendar_days"] == 28
+
+
+class TestMonthlyStatsDayCounting:
+    """Day counting in dias corridos: every day is work-eligible.
+
+    - today counts as ELAPSED (not remaining) when it already has production,
+      reproducing the 29/06 23:00 report where the app said "2 dias restantes"
+      instead of 1.
+    - daily_avg is mtd / elapsed_days (all days, gaps as zero-production),
+      NOT mtd / days_worked. days_worked stays a displayed statistic only.
+    """
+
+    def test_remaining_excludes_today_when_today_has_data(self, conn, active_modalities):
+        init_db(conn)
+        # June 2026 (30 days); today=29/06 with production on the 29th.
+        upsert_daily_items(conn, "2026-06-29", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 29)
+        )
+        assert stats["remaining_days"] == 1          # only the 30th
+        assert stats["elapsed_days"] == 29
+        assert stats["total_calendar_days"] == 30
+
+    def test_remaining_includes_today_when_today_has_no_data(self, conn, active_modalities):
+        init_db(conn)
+        # today=29/06, production only on the 28th (today not yet recorded)
+        upsert_daily_items(conn, "2026-06-28", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 29)
+        )
+        assert stats["remaining_days"] == 2          # 29th + 30th still workable
+        assert stats["elapsed_days"] == 28
+
+    def test_daily_avg_over_elapsed_days_not_worked(self, conn, active_modalities):
+        init_db(conn)
+        # 15 elapsed days, worked only 4 (gaps as zero-production days)
+        for d in (5, 8, 12, 15):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        # mtd = 8*35*4 = 1120; daily_avg = mtd / elapsed(15), not mtd / days_worked(4)
+        assert stats["daily_avg"] == pytest.approx(1120 / 15, rel=1e-4)
+        assert stats["days_worked"] == 4   # statistic only, not used in avg
+
+    def test_projection_uses_elapsed_daily_avg_times_remaining(self, conn, active_modalities):
+        init_db(conn)
+        for d in (5, 8, 12, 15):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        # projection = mtd + daily_avg * remaining = 1120 + (1120/15)*15 = 2240
+        assert stats["projection_month_end"] == pytest.approx(2240.0, rel=1e-4)
+
+    def test_past_month_elapsed_full_remaining_zero(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-03-10", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-03", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        assert stats["elapsed_days"] == 31  # March full month
+        assert stats["remaining_days"] == 0
+        assert stats["daily_avg"] == pytest.approx(280 / 31, rel=1e-4)
+
+    def test_first_of_month_no_data_full_remaining(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 1)
+        )
+        assert stats["elapsed_days"] == 0
+        assert stats["remaining_days"] == 30
+        assert stats["daily_avg"] == 0.0
 
 
 # ── Historical stats ──

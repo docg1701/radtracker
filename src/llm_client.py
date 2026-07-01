@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 import pandas as pd
 
+from src.calculations import daily_avg_for_month
 from src.formatting import fmt_brl
 
 
@@ -38,10 +39,10 @@ _RAG_TEMPLATE = """\
 Os dados abaixo são fatos. Use-os para fundamentar suas estratégias.
 
 === META E SITUAÇÃO DO MÊS ===
-Meta mensal: {goal} | Dias úteis restantes: {remaining_days}
+Meta mensal: {goal} | Dias restantes: {remaining_days}
 Faturamento atual (MTD): {mtd_earnings}
 Projeção no ritmo atual: {projection_month_end}
-Necessário por dia útil restante para bater a meta: {daily_target_needed}
+Necessário por dia restante para bater a meta: {daily_target_needed}
 
 === RESUMO DO ANO (YTD) ===
 Faturamento acumulado: {ytd_earnings} | Média mensal: {ytd_avg_monthly}
@@ -122,7 +123,12 @@ def _enrich_stats(
 
         mtd = float(month_df["earnings"].sum())
         days_worked = month_df["date"].nunique()
-        daily_avg = mtd / days_worked if days_worked > 0 else 0.0
+        today = date.today()
+        today_str = today.isoformat()
+        has_today_data = (
+            ym == today_str[:7] and today_str in set(month_df["date"].tolist())
+        )
+        daily_avg = daily_avg_for_month(mtd, ym, today, has_today_data)
 
         # Total exames + per modality
         total_exames_mes = 0
@@ -208,7 +214,7 @@ def _enrich_stats(
         ),
         "goal": fmt_brl(float(current_stats.get("goal", 0))),
         "mtd_earnings": fmt_brl(float(current_stats.get("mtd_earnings", 0))),
-        "remaining_days": str(current_stats.get("remaining_calendar_days", 0)),
+        "remaining_days": str(current_stats.get("remaining_days", 0)),
         "daily_target_needed": fmt_brl(float(current_stats.get("daily_target_needed", 0))),
         "projection_month_end": fmt_brl(float(current_stats.get("projection_month_end", 0))),
         "ytd_earnings": fmt_brl(ytd_earnings),

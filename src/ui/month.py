@@ -161,7 +161,7 @@ def _render_kpi_row(
             st.metric(
                 label=":material/calendar_month: Dias trabalhados",
                 value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
-                delta=f"{stats['remaining_calendar_days']} restantes",
+                delta=f"{stats['remaining_days']} restantes",
                 delta_color="off",
             )
 
@@ -188,16 +188,16 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     if stats["mtd_earnings"] >= goal:
         return
 
-    if stats["remaining_calendar_days"] == 0:
+    if stats["remaining_days"] == 0:
         return
 
     pct_goal = stats["pct_goal"]
-    expected_pct = (days_worked / total) * 100.0
+    expected_pct = (stats["elapsed_days"] / total) * 100.0
     if pct_goal >= expected_pct:
         return
 
     missing = goal - stats["mtd_earnings"]
-    remaining = stats["remaining_calendar_days"]
+    remaining = stats["remaining_days"]
     needed = stats["daily_target_needed"]
 
     day_text = "1 dia" if remaining == 1 else f"{remaining} dias"
