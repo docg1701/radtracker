@@ -295,7 +295,7 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             )
             st.error(response)
         # Apply full-string sanitization before storing (handles token-boundary issues)
-        clean_response = sanitize_text(response)
+        clean_response = sanitize_text(str(response))
         msg: dict[str, Any] = {"role": "assistant", "content": clean_response}
         reasoning = llm.reasoning
         if reasoning:

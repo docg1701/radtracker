@@ -68,28 +68,25 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 
 ---
 
-## Database Schema (6 tables, all in SQLite)
+## Database Schema (5 tables, all in SQLite)
 
 ### v2 tables (primary)
 
-- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `color` (TEXT, default `#64748B`), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 5 modalities with production values on `init_db()`. Colors customizable per-modality via Settings tab `st.color_picker`. Since v1.4.0: add/remove modalities dynamically.
+- **`modalities`** — `slug` (PK, TEXT), `label`, `price` (REAL), `exams_per_hour` (REAL), `active` (INTEGER), `color` (TEXT, default `#64748B`), `sort_order` (INTEGER), `created_at`, `updated_at`. Seeded with 5 modalities with production values on `init_db()`. Colors customizable per-modality via Settings tab `st.color_picker`. Since v1.4.0: add/remove modalities dynamically. Since v1.8: "remove" = soft-delete (`active=0`, preserving all production history); re-adding the same slug reactivates it.
 - **`daily_production_items`** — `date` (TEXT), `modality_slug` (TEXT), `count` (INTEGER), `created_at`, `updated_at`. PK: `(date, modality_slug)`. FK → `modalities(slug)`.
-
-### v1 tables (kept for migration)
-
-- **`daily_production`** — `date` (PK, TEXT), `rm_count`, `tc_count`, `rx_count`, `created_at`, `updated_at`
-- **`exam_prices`** — `id` (PK autoincrement), `rm_price`, `tc_price`, `rx_price`, `effective_from`, `created_at`
+- **`modality_prices`** — `slug` (TEXT), `price` (REAL), `effective_from` (TEXT "YYYY-MM-DD"), `created_at`. PK `(slug, effective_from)`. Price-by-vigency: the price vigent on a date is the row with the greatest `effective_from <= date` (oldest as fallback). Editing a price opens a new vigency from today; the past keeps its own vigency and is **never** recomputed. Backfilled once from each modality's current price valid since its first production record. Since v2.1.
 
 ### Shared tables
 
 - **`monthly_goals`** — `year_month` (PK, TEXT "YYYY-MM"), `goal_reais`, `updated_at`
 - **`user_settings`** — `key` (PK, TEXT), `value`, `updated_at` (keys: `user_name`, `api_key`, `llm_prompt`, `llm_model`)
 
-### Auto-migrations (run by `init_db()`, all idempotent)
+### Auto-migrations (run by `init_db()`, all idempotent; most are one-shot, flag-guarded in `user_settings`)
 
 1. **`_add_color_column()`** — Adds `color` column via `PRAGMA table_info` + `ALTER TABLE`, backfills from `MODALITY_COLORS`
-2. **`_migrate_v1_3_to_v1_4_defaults()`** — Applies production defaults to untouched modalities (price=0, active=0)
-3. **`_migrate_v1_to_v2()`** — Copies RM/TC/RX counts to `daily_production_items`, activates 3 legacy modalities
+2. **`_migrate_v1_3_to_v1_4_defaults()`** — One-shot (flag `migration_v1_4_defaults_done`): applies production defaults to untouched modalities (price=0, active=0)
+3. **`_backfill_price_vigencies()`** — One-shot: seeds `modality_prices` with each modality's current price valid since its first production record
+4. **`_migrate_v1_cleanup()`** — One-shot (flag `migration_v1_cleanup_done`): drops the v1 legacy tables (`daily_production`, `exam_prices`) once `daily_production_items` is populated
 
 ### Key CRUD Functions (src/db.py)
 
@@ -99,14 +96,17 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 | `load_all_modalities(conn)` | Read | All modalities ordered by label COLLATE NOCASE |
 | `load_active_modalities(conn)` | Read | `active=1 AND price>0 AND exams_per_hour>0` |
 | `save_modality(conn, slug, price, eph, active, label=None, color=None)` | Write | Updates single modality; label/color unchanged when None |
-| `add_modality(conn, slug, label, price, eph, active, color)` | Create | Auto sort_order; returns False if slug exists |
-| `delete_modality(conn, slug)` | Delete | Transactional: items first, then modalities |
+| `add_modality(conn, slug, label, price, eph, active, color)` | Create/Reactivate | New slug: insert with auto sort_order. Existing INACTIVE slug: reactivates with the new values (preserves production history). Existing ACTIVE slug: returns False. |
+| `deactivate_modality(conn, slug)` | Soft-delete | `active=0`, preserving the row and all `daily_production_items` (history intact; slug stays reserved). |
+| `save_modality(conn, slug, price, eph, active, label=None, color=None)` | Write | Updates a modality; a real price change (>0, != old) also opens a new price vigency from today in `modality_prices`. |
+| `save_price_vigency(conn, slug, price, effective_from)` | Write | UPSERT a `modality_prices` row (reajust). |
+| `load_prices_at(conn, date_str)` | Read | slug→price vigent on `date_str` (from `modality_prices`). |
+| `load_price_vigencies(conn)` | Read | All `modality_prices` rows ordered. |
 | `upsert_daily_items(conn, date_str, items)` | Write | Dict slug→count; zero → DELETE, non-zero → UPSERT |
 | `load_daily_items(conn, date_str)` | Read | Dict slug→count |
 | `load_month_items(conn, year_month)` | Read | DataFrame: date, modality_slug, count |
-| `load_goal` / `save_goal` | Read/Write | Per-month target, falls back to 45000.0 |
+| `load_goal` / `save_goal` | Read/Write | Per-month target with carry-forward: returns the most recent prior month's goal when the requested month has no row; falls back to 45000.0 only when no goal was ever recorded. |
 | `load_setting` / `save_setting` | Read/Write | Key-value store |
-| `load_prices(conn)` | Read | slug→price from active modalities |
 
 All query functions pass `ttl=0` — no Streamlit caching.
 
@@ -224,8 +224,9 @@ CHART_COLORS = {
 - 5 seeded modalities (see `_MODALITY_SEED` in `src/db.py`)
 - Production default prices: Angiotomografia=R$30, Radiografia=R$4, RM=R$35, TC Geral=R$30, TC Abdome Total=R$60
 - Production default exams/h: 4.0, 80.0, 8.0, 10.0, 5.0
-- Default monthly goal: R$45,000
-- Work starts at 08:00
+- Default monthly goal: R$45,000 (used only when no goal has ever been recorded; otherwise the most recent prior month's goal carries forward across a month turnover)
+- Production is counted in **dias corridos**: every day is work-eligible. `daily_avg = mtd / elapsed_days` (gaps count as zero-production days); `remaining_days` excludes today when today already has production. `days_worked` (days with ≥1 exam) is a displayed statistic only and never enters projection/rhythm/needed.
+- Price changes are vigency-based (`modality_prices`): a reajust today does not recompute past months' faturamento.
 - `_MAX_MESSAGE_PAIRS = 15` (chat history: system + 30 user/assistant)
 - Streaming timeout: 30s (vs 15s for one-shot)
 - SSE parser: safe accessor chain (`data.get("choices") or [{}]`, `choice.get("delta") or {}`)
