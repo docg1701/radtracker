@@ -300,7 +300,6 @@ Uses Streamlit's `st.connection()` pattern for managed SQLite. Key patterns:
 |----------|-----------------|---------|
 | `compute_earnings(counts, prices)` | dict[str,int] + dict[str,float] → float | `sum(count×price)` over all slugs |
 | `estimate_hours(counts, exams_per_hour)` | dict[str,int] + dict[str,float] → float | Sum of count/rate per modality |
-| `format_time_range(hours)` | float → str | `"~08:00 – HH:MM"` format |
 | `compute_delta_pct(today, yesterday)` | float + float\|None → float\|None | % change, returns None for zero/NULL |
 | `compute_daily_target(goal, days)` | float + int → float | `goal / days` |
 
@@ -308,14 +307,11 @@ Uses Streamlit's `st.connection()` pattern for managed SQLite. Key patterns:
 
 | Function | Returns | Used By |
 |----------|---------|---------|
-| `compute_daily_stats(conn, date_str, active_modalities)` | dict with 12 keys | `today.py` |
+| `compute_daily_stats(conn, date_str, active_modalities)` | dict with 11 keys | `today.py` |
 | `compute_monthly_stats(conn, year_month, goal, active_modalities)` | dict with 9 keys | `month.py`, insights |
 | `compute_historical_stats(conn, year_month, goal, active_modalities)` | dict with 11 keys (v2 items schema) | `analysis.py`, insights, LLM, chat RAG |
 
 Key: all functions accept `active_modalities: list[dict]` — no hardcoded RM/TC/RX. `compute_historical_stats()` pivots from `daily_production_items` table. `_compute_daily_earnings_from_items()` aggregates items into daily earnings with per-modality count columns.
-
-**Business constants:**
-- `WORK_START_HOUR = 8`, `WORK_START_MINUTE = 0`
 
 ### 5.4 `src/chart_colors.py` (Color System, ~85 lines)
 

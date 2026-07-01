@@ -12,7 +12,6 @@ from src.calculations import (
     compute_historical_stats,
     compute_monthly_stats,
     estimate_hours,
-    format_time_range,
 )
 from src.db import init_db, upsert_daily_items
 
@@ -74,17 +73,6 @@ class TestEstimateHours:
         eph = {"tc_geral": 0.0}
         result = estimate_hours(counts, eph)
         assert result == 0.0
-
-
-class TestFormatTimeRange:
-    def test_typical(self):
-        assert format_time_range(5.2) == "~08:00 – 13:12"
-
-    def test_zero(self):
-        assert format_time_range(0.0) == "~08:00 – 08:00"
-
-    def test_full_day(self):
-        assert format_time_range(14.5) == "~08:00 – 22:30"
 
 
 class TestComputeDeltaPct:

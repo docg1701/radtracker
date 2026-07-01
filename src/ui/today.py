@@ -134,12 +134,9 @@ def _render_kpi_row(
     with k3:
         with st.container(border=True, height="stretch"):
             hours = stats["estimated_hours"]
-            time_range = stats["estimated_time_range"]
             st.metric(
                 label=":material/timer: Horas estimadas",
                 value=f"{hours:.1f}h",
-                delta=time_range,
-                delta_color="off",
             )
 
     # ── Card 4: Meta Mensal ──

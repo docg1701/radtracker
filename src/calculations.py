@@ -13,11 +13,6 @@ import pandas as pd
 
 from src.db import load_daily_items, load_month_items
 
-# Default work start time for time-range display
-WORK_START_HOUR: int = 8
-WORK_START_MINUTE: int = 0
-
-
 # ---------------------------------------------------------------------------
 # Helper: build slug→price and slug→exams_per_hour lookups
 # ---------------------------------------------------------------------------
@@ -70,21 +65,6 @@ def estimate_hours(
     return round(total, 2)
 
 
-def format_time_range(hours: float) -> str:
-    """
-    Return a human-readable time range assuming work starts at 08:00.
-
-    Example:
-        >>> format_time_range(5.2)
-        '~08:00 – 13:12'
-    """
-    start_minutes = WORK_START_HOUR * 60 + WORK_START_MINUTE
-    end_minutes = start_minutes + round(hours * 60)
-    end_h = (end_minutes // 60) % 24
-    end_m = end_minutes % 60
-    return f"~{WORK_START_HOUR:02d}:{WORK_START_MINUTE:02d} – {end_h:02d}:{end_m:02d}"
-
-
 def compute_delta_pct(today: float, yesterday: float | None) -> float | None:
     """
     Compute percentage change vs yesterday. None if no basis.
@@ -123,7 +103,7 @@ def compute_daily_stats(
 
     Returns dict with:
       earnings_today, exam_count_today, estimated_hours,
-      estimated_time_range, modality_counts (slug→count),
+      modality_counts (slug→count),
       modality_labels (slug→label), yesterday_earnings, delta_pct, has_data.
     """
     prices, eph = _build_lookups(active_modalities)
@@ -135,7 +115,6 @@ def compute_daily_stats(
             "earnings_today": 0.0,
             "exam_count_today": 0,
             "estimated_hours": 0.0,
-            "estimated_time_range": format_time_range(0.0),
             "modality_counts": {},
             "modality_labels": {m["slug"]: m["label"] for m in active_modalities},
             "yesterday_earnings": None,
@@ -145,7 +124,6 @@ def compute_daily_stats(
 
     earnings_today = compute_earnings(counts, prices)
     hours = estimate_hours(counts, eph)
-    time_range = format_time_range(hours)
     exam_count_today = sum(counts.values())
 
     # Yesterday
@@ -161,7 +139,6 @@ def compute_daily_stats(
         "earnings_today": earnings_today,
         "exam_count_today": exam_count_today,
         "estimated_hours": hours,
-        "estimated_time_range": time_range,
         "modality_counts": counts,
         "modality_labels": {m["slug"]: m["label"] for m in active_modalities},
         "yesterday_earnings": yesterday_earnings,
