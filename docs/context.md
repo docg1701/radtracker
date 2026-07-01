@@ -307,7 +307,7 @@ Uses Streamlit's `st.connection()` pattern for managed SQLite. Key patterns:
 
 | Function | Returns | Used By |
 |----------|---------|---------|
-| `compute_daily_stats(conn, date_str, active_modalities)` | dict with 11 keys | `today.py` |
+| `compute_daily_stats(conn, date_str, active_modalities)` | dict with 8 keys | `today.py` |
 | `compute_monthly_stats(conn, year_month, goal, active_modalities)` | dict with 9 keys | `month.py`, insights |
 | `compute_historical_stats(conn, year_month, goal, active_modalities)` | dict with 11 keys (v2 items schema) | `analysis.py`, insights, LLM, chat RAG |
 

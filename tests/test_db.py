@@ -378,6 +378,13 @@ class TestGoalCarryForward:
         # June has no row and no PRIOR month → default (must not borrow future July)
         assert load_goal(conn, "2026-06") == DEFAULT_GOAL
 
+    def test_carry_forward_across_year_boundary(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-12", 50000.0)
+        # January 2027 has no row → carry forward December 2026 across the year
+        # boundary (string comparison of "YYYY-MM" must stay chronological).
+        assert load_goal(conn, "2027-01") == 50000.0
+
     def test_exact_month_still_direct(self, conn):
         init_db(conn)
         save_goal(conn, "2026-05", 50000.0)
