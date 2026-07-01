@@ -1,9 +1,11 @@
 """
-Rule-based insights engine for radtracker — v2 dynamic modalities.
+Rule-based insights engine for radtracker — natural-language analysis.
 
-Factual, dense output: percentages, absolute BRL, projection scenarios, and
-real comparisons (MoM, modality mix). No tone adjectives, no "you did it"
-phrases, no generic suggestions — only the numbers that matter.
+Produces a short human narrative of where the month stands against the goal:
+current total vs. target, comparison with the same point of the previous month,
+an end-of-month projection at the current pace, and the daily rate needed from
+here to hit the goal. No telegraphic number dumps and no statistics that don't
+make sense early in the month.
 
 Pure function: stats dict + active_modalities -> Portuguese markdown string.
 Zero database or external dependencies.
@@ -11,7 +13,7 @@ Zero database or external dependencies.
 
 from typing import Any
 
-from src.formatting import fmt_brl
+from src.formatting import MONTHS_PT, fmt_brl
 
 
 def _gap_label(value: float, goal: float) -> str:
@@ -21,126 +23,92 @@ def _gap_label(value: float, goal: float) -> str:
     return f"{fmt_brl(abs(diff))} {word}"
 
 
-def _projection_scenarios(
-    mtd: float, daily_avg: float, remaining: int,
-    std: float | None, base: float,
-) -> tuple[float, float, float]:
-    """Return (conservative, base, optimistic) month-end projections."""
-    if std is not None and std > 0 and remaining > 0:
-        conserv = mtd + max(0.0, daily_avg - std) * remaining
-        optim = mtd + (daily_avg + std) * remaining
-    else:
-        conserv = base
-        optim = base
-    return conserv, base, optim
-
-
 def _plural(value: int, singular: str, plural: str) -> str:
-    """Return the singular form for 1, the plural form otherwise."""
+    """Return '{value} {singular}' for 1, '{value} {plural}' otherwise."""
     return f"{value} {singular}" if value == 1 else f"{value} {plural}"
+
+
+def _prev_month_label(year_month: str) -> str:
+    """Return the lowercase Portuguese name of the month before year_month."""
+    _y, m = (int(x) for x in year_month.split("-"))
+    prev = m - 1 if m > 1 else 12
+    return MONTHS_PT[prev].lower()
 
 
 def generate_rule_insights(
     stats: dict[str, Any],
-    active_modalities: list[dict[str, Any]],
+    active_modalities: list[dict[str, Any]],  # kept for API stability
 ) -> str:
-    """Generate factual Portuguese insights from historical statistics.
+    """Generate a short human narrative of the month vs the goal.
 
-    Args:
-        stats: Dict from compute_historical_stats() with keys:
-            current_month_stats, current_month_daily_std, prev_month_earnings,
-            mom_change_pct, modality_mix_current, consecutive_below_target.
-        active_modalities: List of active modality dicts (slug, label, price).
-
-    Returns:
-        Markdown-formatted Portuguese insight string: % of goal, worked/elapsed/
-        remaining days, daily average, 3 projection scenarios, required per-day,
-        MoM, top-3 modality mix, and consecutive-below-target streak.
+    Covers: current total and % of goal; comparison with the same point of the
+    previous month (not a partial-vs-full apples-to-oranges); end-of-month
+    projection at the current pace; and the daily rate needed from here to hit
+    the goal. Projections are flagged as preliminary while the month has very
+    few days; the previous-month comparison is shown only when it exists.
     """
     current = stats.get("current_month_stats")
     if current is None or current.get("days_worked", 0) == 0:
         return (
-            "Nenhum registro ainda — registre sua produção "
-            "na **barra lateral** e volte aqui quando "
-            "tiver pelo menos alguns dias de trabalho."
+            "Nenhum registro ainda. Registre sua produção na **barra lateral** "
+            "e volte quando tiver alguns dias de trabalho."
         )
 
     mtd = current["mtd_earnings"]
     pct = current["pct_goal"]
-    days_worked = current["days_worked"]
-    elapsed = current.get("elapsed_days", 0)
     remaining = current["remaining_days"]
-    daily_avg = current.get("daily_avg", 0.0)
     daily_needed = max(0.0, current.get("daily_target_needed", 0.0))
-    base = current.get("projection_month_end", 0.0)
+    proj = current.get("projection_month_end", 0.0)
     goal = current.get("goal") or ((mtd / pct * 100) if pct > 0 else 0.0)
-    std = stats.get("current_month_daily_std")
-    prev_earnings = stats.get("prev_month_earnings")
+    elapsed = current.get("elapsed_days", 0)
+    prev_same = stats.get("prev_month_earnings")
     mom = stats.get("mom_change_pct")
-    mix = stats.get("modality_mix_current", {})
-    below = stats.get("consecutive_below_target", 0)
+    year_month = stats.get("year_month") or ""
 
-    blocks: list[str] = []
+    parts: list[str] = []
 
-    # ── Cabeçalho factual ──
-    blocks.append(f"**{pct:.0f}%** da meta — {fmt_brl(mtd)} de {fmt_brl(goal)}.")
-    blocks.append(
-        f"{_plural(days_worked, 'dia trabalhado', 'dias trabalhados')} · "
-        f"{_plural(elapsed, 'decorrido', 'decorridos')} · "
-        f"{_plural(remaining, 'restante', 'restantes')} · "
-        f"média {fmt_brl(daily_avg)}/dia corrido."
-    )
-
-    # ── Projeção de fechamento ──
-    if remaining > 0:
-        proj = ["**Projeção de fechamento:**", ""]
-        if std is not None and std > 0:
-            conserv, base_proj, optim = _projection_scenarios(
-                mtd, daily_avg, remaining, std, base,
-            )
-            proj.append(f"- Conservador: {fmt_brl(conserv)} — {_gap_label(conserv, goal)}.")
-            proj.append(
-                f"- Base (média atual): {fmt_brl(base_proj)} "
-                f"— {_gap_label(base_proj, goal)}."
-            )
-            proj.append(f"- Otimista: {fmt_brl(optim)} — {_gap_label(optim, goal)}.")
-            proj.append("")
-            proj.append("Mais provável: **base**.")
+    # ── Atual: quanto faturou vs meta ──
+    if remaining == 0:
+        if pct >= 100.0:
+            parts.append(f"**Meta batida** — {fmt_brl(mtd)} de {fmt_brl(goal)} ({pct:.0f}%).")
         else:
-            # Sem variância (poucos dias): só a projeção base é informativa —
-            # Conservador/Otimista seriam idênticos e só adicionam ruído.
-            proj.append(f"- Base (média atual): {fmt_brl(base)} — {_gap_label(base, goal)}.")
-        missing = max(0.0, goal - mtd)
-        if missing > 0:
-            proj.append("")
-            proj.append(
-                f"Faltam {fmt_brl(missing)}: {fmt_brl(daily_needed)}/dia "
-                f"nos {_plural(remaining, 'restante', 'restantes')}."
+            parts.append(
+                f"O mês fechou em {fmt_brl(mtd)} — {pct:.0f}% da meta de "
+                f"{fmt_brl(goal)} ({_gap_label(mtd, goal)})."
             )
-        blocks.append("\n".join(proj))
+    elif pct >= 100.0:
+        parts.append(
+            f"**Meta batida** — {fmt_brl(mtd)} de {fmt_brl(goal)} ({pct:.0f}%), "
+            f"com {_plural(remaining, 'dia restante', 'dias restantes')} pela frente."
+        )
     else:
-        blocks.append(
-            f"**Projeção de fechamento:** {fmt_brl(mtd)} "
-            f"({_gap_label(mtd, goal)} da meta)."
+        parts.append(
+            f"Hoje o faturamento está em **{fmt_brl(mtd)}** — {pct:.0f}% da meta "
+            f"de {fmt_brl(goal)}. Faltam {fmt_brl(goal - mtd)}."
         )
 
-    # ── MoM ──
-    if mom is not None:
-        sign = "+" if mom >= 0 else ""
-        mom_str = f"{mom:.1f}".replace(".", ",")
-        prev_str = fmt_brl(prev_earnings) if prev_earnings is not None else "—"
-        blocks.append(f"MoM: {sign}{mom_str}% ({fmt_brl(mtd)} vs {prev_str}).")
+    # ── Comparação com o mesmo ponto do mês anterior ──
+    if mom is not None and prev_same is not None and prev_same > 0 and year_month:
+        word = "acima" if mom >= 0 else "abaixo"
+        mom_str = f"{abs(mom):.1f}".replace(".", ",")
+        parts.append(
+            f"Isso é {mom_str}% {word} do mesmo ponto de "
+            f"{_prev_month_label(year_month)} ({fmt_brl(prev_same)})."
+        )
 
-    # ── Mix de modalidades (top 3 por share) ──
-    slug_to_label = {m["slug"]: m["label"] for m in active_modalities}
-    if mix:
-        top = sorted(mix.items(), key=lambda kv: kv[1], reverse=True)[:3]
-        parts = [f"{slug_to_label.get(s, s)} {p:.0f}%" for s, p in top if p > 0]
-        if parts:
-            blocks.append("Mix: " + " · ".join(parts) + ".")
+    # ── Projeção de fechamento + caminho até a meta ──
+    if remaining > 0 and pct < 100.0:
+        note = " (projeção preliminar, poucos dias)" if elapsed < 7 else ""
+        parts.append(
+            f"No ritmo atual, o mês fecha em ~{fmt_brl(proj)}{note} — "
+            f"{_gap_label(proj, goal)} da meta."
+        )
+        missing = max(0.0, goal - mtd)
+        if missing > 0:
+            parts.append(
+                f"Para bater a meta, faltam {fmt_brl(missing)} em "
+                f"{_plural(remaining, 'dia restante', 'dias restantes')}: "
+                f"{fmt_brl(daily_needed)}/dia daqui ao fim."
+            )
 
-    # ── Dias consecutivos abaixo da meta diária ──
-    if below >= 3:
-        blocks.append(f"{below} dias consecutivos abaixo da meta diária.")
-
-    return "\n\n".join(blocks)
+    return "\n\n".join(parts)

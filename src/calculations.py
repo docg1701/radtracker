@@ -299,11 +299,24 @@ def compute_monthly_stats(
 # Historical stats (multi-month)
 # ---------------------------------------------------------------------------
 
+def _same_point_earnings(month_rows: pd.DataFrame, day_of_month: int) -> float:
+    """Sum a month's earnings up to and including the given day-of-month.
+
+    Used for the same-point MoM comparison so a partial current month is
+    compared against the same slice of the previous month, not its full total.
+    """
+    if month_rows.empty:
+        return 0.0
+    days = pd.to_datetime(month_rows["date"]).dt.day
+    return float(month_rows.loc[days <= day_of_month, "earnings"].sum())
+
+
 def compute_historical_stats(
     conn: Any,
     year_month: str,
     goal: float,
     active_modalities: list[dict[str, Any]],
+    today: date | None = None,
 ) -> dict[str, Any]:
     """
     Load all months, compute MA7/MA30, WoW, MoM, modality mix, etc.
@@ -388,16 +401,25 @@ def compute_historical_stats(
     monthly.columns = ["ym", "total_earnings"]
     monthly = monthly.sort_values("ym")
 
-    # MoM
+    # MoM — compare against the same point of the previous month (today's
+    # day-of-month vs. the same days of the previous month) for the current
+    # month; full-month vs full-month for closed months. Avoids the
+    # apples-to-oranges of a partial month against a complete one.
     mom_change_pct: float | None = None
     prev_month_earnings: float | None = None
+    today = today or date.today()
+    is_current_month = year_month == today.isoformat()[:7]
     monthly_idx = monthly.set_index("ym")
     if year_month in monthly_idx.index:
         pos = monthly_idx.index.get_loc(year_month)
         if isinstance(pos, int) and pos > 0:
             prev_ym = monthly_idx.index[pos - 1]
-            prev_total = float(monthly_idx.loc[prev_ym, "total_earnings"])
             curr_total = float(monthly_idx.loc[year_month, "total_earnings"])
+            if is_current_month:
+                prev_rows = df[df["date"].str[:7] == prev_ym]
+                prev_total = _same_point_earnings(prev_rows, today.day)
+            else:
+                prev_total = float(monthly_idx.loc[prev_ym, "total_earnings"])
             if prev_total > 0:
                 mom_change_pct = float((curr_total - prev_total) / prev_total * 100)
                 prev_month_earnings = float(prev_total)

@@ -381,6 +381,25 @@ class TestHistoricalStats:
         # 5*35 + 10*30 = 175+300 = 475
         assert df["earnings"].iloc[0] == 475.0
 
+    def test_mom_same_point_not_full_month(self, conn, active_modalities):
+        # MoM must compare the current (partial) month against the previous
+        # month at the SAME point (same day-of-month), not the previous month
+        # in full — otherwise a partial month vs a full previous month gives
+        # an absurd figure (e.g. -97% on day 1).
+        init_db(conn)
+        # June: 10 tc_geral/day at 30 -> 300/day. Days 1-15 = 4500, days 16-30 = 4500.
+        for d in range(1, 31):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"tc_geral": 10})
+        # July (current): 20 tc_geral/day at 30 -> 600/day. Days 1-15 = 9000.
+        for d in range(1, 16):
+            upsert_daily_items(conn, f"2026-07-{d:02d}", {"tc_geral": 20})
+        result = compute_historical_stats(
+            conn, "2026-07", 45000.0, active_modalities, today=date(2026, 7, 15)
+        )
+        # Same-point of June = days 1-15 = 4500 (NOT the full 9000).
+        assert result["prev_month_earnings"] == 4500.0
+        # Current MTD = July days 1-15 = 9000 -> MoM = +100%.
+        assert result["mom_change_pct"] == 100.0
 
 
 # ── v2.1: price vigency in calculations (Bug 3a regression) ──
