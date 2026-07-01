@@ -232,6 +232,18 @@
       retries: 15
       delay: 5
 
+    - name: Run DB migrations (init_db) in container
+      community.docker.docker_compose_v2_exec:
+        project_src: "{{ radtracker_dir }}"
+        service: radtracker
+        command: "python scripts/migrate.py"
+      register: db_migrate
+      changed_when: false
+
+    - name: Show DB migration result
+      ansible.builtin.debug:
+        msg: "{{ db_migrate.stdout | default('migration ran') }}"
+
     - name: Deployment complete
       ansible.builtin.debug:
         msg: >-
