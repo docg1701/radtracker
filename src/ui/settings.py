@@ -577,9 +577,8 @@ def _delete_all_data() -> None:
     conn = st.connection("telerrad", type="sql")
     with conn.connect() as db_conn:
         db_conn.execute(sa.text("DELETE FROM daily_production_items"))
+        db_conn.execute(sa.text("DELETE FROM modality_prices"))
         db_conn.execute(sa.text("DELETE FROM modalities"))
-        db_conn.execute(sa.text("DELETE FROM daily_production"))
-        db_conn.execute(sa.text("DELETE FROM exam_prices"))
         db_conn.execute(sa.text("DELETE FROM monthly_goals"))
         db_conn.execute(sa.text("DELETE FROM user_settings"))
         db_conn.commit()

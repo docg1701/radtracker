@@ -17,11 +17,6 @@ import streamlit as st
 
 from src.chart_colors import MODALITY_COLORS
 
-DEFAULT_PRICES: dict[str, float] = {
-    "ressonancia_magnetica": 35.0,
-    "tc_geral": 30.0,
-    "radiografia": 4.0,
-}
 DEFAULT_GOAL: float = 45000.0
 DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b:free"
 
@@ -64,28 +59,6 @@ def init_db(conn: Any) -> None:
     v2 tables: modalities, daily_production_items.
     v1 tables: daily_production, exam_prices (kept for migration).
     """
-    # ── v1 tables (kept for migration) ──
-    create_daily_v1 = """
-    CREATE TABLE IF NOT EXISTS daily_production (
-        date        TEXT PRIMARY KEY,
-        rm_count    INTEGER NOT NULL DEFAULT 0,
-        tc_count    INTEGER NOT NULL DEFAULT 0,
-        rx_count    INTEGER NOT NULL DEFAULT 0,
-        created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """
-    create_prices = """
-    CREATE TABLE IF NOT EXISTS exam_prices (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        rm_price        REAL NOT NULL,
-        tc_price        REAL NOT NULL,
-        rx_price        REAL NOT NULL,
-        effective_from  TEXT NOT NULL,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """
-
     # ── v2 tables ──
     create_modalities = """
     CREATE TABLE IF NOT EXISTS modalities (
@@ -136,8 +109,6 @@ def init_db(conn: Any) -> None:
 
     os.makedirs("data", exist_ok=True)
     with conn.connect() as db_conn:
-        db_conn.execute(sa.text(create_daily_v1))
-        db_conn.execute(sa.text(create_prices))
         db_conn.execute(sa.text(create_modalities))
         db_conn.execute(sa.text(create_daily_items))
         db_conn.execute(sa.text(create_goals))
@@ -151,10 +122,10 @@ def init_db(conn: Any) -> None:
     _seed_modalities(conn)
     # Apply v1.4 production defaults to untouched modalities
     _migrate_v1_3_to_v1_4_defaults(conn)
-    # Run v1→v2 migration if needed
-    _migrate_v1_to_v2(conn)
     # Backfill price vigencies (one-shot) so the past is immutable
     _backfill_price_vigencies(conn)
+    # Drop v1 legacy tables once v2 is populated (one-shot, guarded)
+    _migrate_v1_cleanup(conn)
     # Seed reasoning settings for thinking/temperature configuration
     _seed_reasoning_settings(conn)
 
@@ -424,72 +395,6 @@ def load_month_items(conn: Any, year_month: str) -> pd.DataFrame:
         params={"prefix": f"{year_month}%"},
         ttl=0,
     )
-
-
-# ---------------------------------------------------------------------------
-# v1 (legacy) — kept for migration
-# ---------------------------------------------------------------------------
-
-def upsert_daily(conn: Any, date_str: str, rm: int, tc: int, rx: int) -> None:
-    """v1: Insert or update a daily production row. On conflict, overwrites counts."""
-    upsert_sql = """
-    INSERT INTO daily_production (date, rm_count, tc_count, rx_count, updated_at)
-    VALUES (:date, :rm, :tc, :rx, datetime('now','localtime'))
-    ON CONFLICT(date) DO UPDATE SET
-        rm_count = excluded.rm_count,
-        tc_count = excluded.tc_count,
-        rx_count = excluded.rx_count,
-        updated_at = datetime('now','localtime')
-    """
-    with conn.connect() as db_conn:
-        db_conn.execute(sa.text(upsert_sql), {"date": date_str, "rm": rm, "tc": tc, "rx": rx})
-        db_conn.commit()
-
-
-def load_daily(conn: Any, date_str: str) -> dict | None:
-    """v1: Return the daily production row as a dict, or None if no data."""
-    df = conn.query(
-        "SELECT * FROM daily_production WHERE date = :date",
-        params={"date": date_str},
-        ttl=0,
-    )
-    if df.empty:
-        return None
-    return df.iloc[0].to_dict()
-
-
-def load_month(conn: Any, year_month: str) -> pd.DataFrame:
-    """v1: Return all daily production rows for a year-month."""
-    return conn.query(
-        "SELECT * FROM daily_production WHERE date LIKE :prefix ORDER BY date",
-        params={"prefix": f"{year_month}%"},
-        ttl=0,
-    )
-
-
-def load_prices(conn: Any) -> dict[str, float]:
-    """Return current exam prices as slug→price from active modalities.
-
-    Falls back to DEFAULT_PRICES if no active modalities exist.
-    """
-    active = load_active_modalities(conn)
-    if not active:
-        return dict(DEFAULT_PRICES)
-    return {m["slug"]: float(m["price"]) for m in active}
-
-
-def save_prices(conn: Any, rm_price: float, tc_price: float, rx_price: float) -> None:
-    """v1: Append a new price configuration row. Kept for backward compat."""
-    today_str = date.today().isoformat()
-    with conn.connect() as db_conn:
-        db_conn.execute(
-            sa.text("""
-                INSERT INTO exam_prices (rm_price, tc_price, rx_price, effective_from)
-                VALUES (:rm, :tc, :rx, :eff)
-            """),
-            {"rm": rm_price, "tc": tc_price, "rx": rx_price, "eff": today_str},
-        )
-        db_conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -783,77 +688,21 @@ def _migrate_v1_3_to_v1_4_defaults(conn: Any) -> None:
     save_setting(conn, "migration_v1_4_defaults_done", "1")
 
 
-def _migrate_v1_to_v2(conn: Any) -> None:
-    """One-shot migration: v1 daily_production → v2 daily_production_items.
+def _migrate_v1_cleanup(conn: Any) -> None:
+    """One-shot: drop the v1 legacy tables (daily_production, exam_prices) once
+    the v2 daily_production_items is populated.
 
-    Only runs if v1 has data and v2 is empty. Migrates RM→ressonancia_magnetica,
-    TC→tc_geral, RX→radiografia. Copies latest prices from exam_prices.
+    Guarded by a user_settings flag so it runs exactly once and never drops v1
+    before its data was migrated. Idempotent and safe: only drops when v2
+    already holds the production history.
     """
-    v1_count = conn.query("SELECT COUNT(*) AS cnt FROM daily_production", ttl=0)
-    if v1_count["cnt"].iloc[0] == 0:
+    if load_setting(conn, "migration_v1_cleanup_done") == "1":
         return
-
-    v2_count = conn.query(
-        "SELECT COUNT(*) AS cnt FROM daily_production_items", ttl=0
-    )
-    if v2_count["cnt"].iloc[0] > 0:
-        return  # Already migrated
-
-    # Copy exam counts
-    df_v1 = conn.query(
-        "SELECT date, rm_count, tc_count, rx_count FROM daily_production ORDER BY date",
-        ttl=0,
-    )
+    v2_count = conn.query("SELECT COUNT(*) AS cnt FROM daily_production_items", ttl=0)
+    if v2_count["cnt"].iloc[0] == 0:
+        return  # v2 empty — keep v1 until its data is migrated
     with conn.connect() as db_conn:
-        for _, row in df_v1.iterrows():
-            for slug, col in [
-                ("ressonancia_magnetica", "rm_count"),
-                ("tc_geral", "tc_count"),
-                ("radiografia", "rx_count"),
-            ]:
-                count = int(row[col])
-                if count > 0:
-                    db_conn.execute(
-                        sa.text("""
-                            INSERT INTO daily_production_items
-                                (date, modality_slug, count)
-                            VALUES (:date, :slug, :count)
-                            ON CONFLICT(date, modality_slug) DO UPDATE SET
-                                count = excluded.count
-                        """),
-                        {"date": row["date"], "slug": slug, "count": count},
-                    )
+        db_conn.execute(sa.text("DROP TABLE IF EXISTS daily_production"))
+        db_conn.execute(sa.text("DROP TABLE IF EXISTS exam_prices"))
         db_conn.commit()
-
-    # Copy latest prices and activate migrated modalities
-    prices_df = conn.query(
-        "SELECT rm_price, tc_price, rx_price FROM exam_prices ORDER BY id DESC LIMIT 1",
-        ttl=0,
-    )
-    if not prices_df.empty:
-        row = prices_df.iloc[0]
-        price_map = {
-            "ressonancia_magnetica": (float(row["rm_price"]), 7.5),
-            "tc_geral": (float(row["tc_price"]), 7.5),
-            "radiografia": (float(row["rx_price"]), 75.0),
-        }
-    else:
-        price_map = {
-            "ressonancia_magnetica": (DEFAULT_PRICES["ressonancia_magnetica"], 7.5),
-            "tc_geral": (DEFAULT_PRICES["tc_geral"], 7.5),
-            "radiografia": (DEFAULT_PRICES["radiografia"], 75.0),
-        }
-    with conn.connect() as db_conn:
-        for slug, (price, eph) in price_map.items():
-            db_conn.execute(
-                sa.text("""
-                    UPDATE modalities
-                    SET price = :price,
-                        exams_per_hour = :eph,
-                        active = 1,
-                        updated_at = datetime('now','localtime')
-                    WHERE slug = :slug
-                """),
-                {"slug": slug, "price": price, "eph": eph},
-            )
-        db_conn.commit()
+    save_setting(conn, "migration_v1_cleanup_done", "1")

@@ -1,6 +1,5 @@
 """Tests for src.db — v2 schema, modalities CRUD, daily_production_items CRUD."""
 
-import time
 
 import sqlalchemy as sa
 
@@ -13,22 +12,17 @@ from src.db import (
     init_db,
     load_active_modalities,
     load_all_modalities,
-    load_daily,
     load_daily_items,
     load_goal,
-    load_month,
     load_month_items,
     load_price_vigencies,
-    load_prices,
     load_prices_at,
     load_setting,
     save_goal,
     save_modality,
     save_price_vigency,
-    save_prices,
     save_setting,
     slugify,
-    upsert_daily,
     upsert_daily_items,
 )
 
@@ -235,108 +229,6 @@ class TestLoadMonthItems:
         assert df.empty
 
 
-# ── v2: load_prices from active modalities ──
-
-
-class TestLoadPricesV2:
-    def test_returns_active_modality_prices(self, seeded_conn):
-        prices = load_prices(seeded_conn)
-        # All 5 seeded modalities are active with production values
-        assert prices == {
-            "angiotomografia": 30.0,
-            "radiografia": 4.0,
-            "ressonancia_magnetica": 35.0,
-            "tc_abdome_total": 60.0,
-            "tc_geral": 30.0,
-        }
-
-    def test_fallback_to_defaults_when_no_active(self, conn):
-        init_db(conn)
-        # Deactivate all seeded modalities so fallback is triggered
-        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
-                      "tc_geral", "tc_abdome_total"]:
-            save_modality(conn, slug, 30.0, 10.0, 0)
-        prices = load_prices(conn)
-        assert prices["ressonancia_magnetica"] == 35.0
-        assert prices["tc_geral"] == 30.0
-        assert prices["radiografia"] == 4.0
-
-
-# ── v1 (legacy) tests — kept for migration verification ──
-
-
-class TestUpsertDaily:
-    def test_upsert_insert(self, conn):
-        init_db(conn)
-        upsert_daily(conn, "2026-04-15", 8, 6, 35)
-        df = conn.query("SELECT COUNT(*) AS cnt FROM daily_production")
-        assert df["cnt"].iloc[0] == 1
-
-    def test_upsert_update(self, conn):
-        init_db(conn)
-        upsert_daily(conn, "2026-04-15", 8, 6, 35)
-        upsert_daily(conn, "2026-04-15", 10, 10, 50)
-        row = load_daily(conn, "2026-04-15")
-        assert row is not None
-        assert row["rm_count"] == 10
-        assert row["tc_count"] == 10
-        assert row["rx_count"] == 50
-
-    def test_upsert_preserves_created_at(self, conn):
-        init_db(conn)
-        upsert_daily(conn, "2026-04-15", 8, 6, 35)
-        first = load_daily(conn, "2026-04-15")
-        assert first is not None
-
-        time.sleep(1.1)
-        upsert_daily(conn, "2026-04-15", 10, 10, 50)
-        second = load_daily(conn, "2026-04-15")
-        assert second is not None
-
-        assert first["created_at"] == second["created_at"]
-        assert first["updated_at"] != second["updated_at"]
-
-
-class TestLoadDaily:
-    def test_load_daily_exists(self, conn):
-        init_db(conn)
-        upsert_daily(conn, "2026-04-15", 8, 6, 35)
-        row = load_daily(conn, "2026-04-15")
-        assert row is not None
-        assert row["rm_count"] == 8
-
-    def test_load_daily_nonexistent(self, conn):
-        init_db(conn)
-        row = load_daily(conn, "2026-04-15")
-        assert row is None
-
-
-class TestLoadMonth:
-    def test_load_month_returns_correct_rows(self, conn):
-        init_db(conn)
-        upsert_daily(conn, "2026-04-10", 1, 0, 0)
-        upsert_daily(conn, "2026-04-20", 2, 0, 0)
-        upsert_daily(conn, "2026-05-01", 3, 0, 0)
-
-        df = load_month(conn, "2026-04")
-        assert len(df) == 2
-        dates = df["date"].tolist()
-        assert "2026-04-10" in dates
-        assert "2026-04-20" in dates
-        assert "2026-05-01" not in dates
-
-
-class TestPrices:
-    def test_save_and_load_prices(self, conn):
-        init_db(conn)
-        save_prices(conn, 40.0, 30.0, 5.0)
-        # v1 load_prices now delegates to active modalities
-        # The old exam_prices table just stores history; load_prices reads from modalities
-        # So this test verifies save_prices doesn't crash
-        df = conn.query("SELECT * FROM exam_prices", ttl=0)
-        assert len(df) == 1
-
-
 class TestGoal:
     def test_load_goal_default(self, conn):
         init_db(conn)
@@ -406,88 +298,6 @@ class TestSettings:
         init_db(conn)
         val = load_setting(conn, "nonexistent", "fallback")
         assert val == "fallback"
-
-
-# ── Migration test ──
-
-
-class TestMigration:
-    def test_v1_to_v2_migrates_data(self, conn):
-        """Insert v1 data, then init_db should migrate to v2 items."""
-        # Manually create v1 tables
-        with conn.connect() as c:
-            c.execute(sa.text("""
-                CREATE TABLE IF NOT EXISTS daily_production (
-                    date TEXT PRIMARY KEY, rm_count INTEGER, tc_count INTEGER,
-                    rx_count INTEGER, created_at TEXT, updated_at TEXT
-                )
-            """))
-            c.execute(sa.text("""
-                CREATE TABLE IF NOT EXISTS exam_prices (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    rm_price REAL, tc_price REAL, rx_price REAL,
-                    effective_from TEXT, created_at TEXT
-                )
-            """))
-            c.commit()
-
-        upsert_daily(conn, "2026-03-10", 8, 6, 35)
-        save_prices(conn, 40.0, 30.0, 5.0)
-
-        # Now run init_db which should create v2 tables + migrate
-        init_db(conn)
-
-        # Verify v2 data exists
-        items = load_daily_items(conn, "2026-03-10")
-        assert items.get("ressonancia_magnetica") == 8
-        assert items.get("tc_geral") == 6
-        assert items.get("radiografia") == 35
-
-        # Verify modalities got prices from migration
-        # Seed has 5 active; migration overrides 3 of them
-        active = load_active_modalities(conn)
-        assert len(active) == 5
-
-        rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
-        assert rm["price"] == 40.0
-        assert rm["exams_per_hour"] == 7.5
-
-        # radiografia: exam_prices says 5.0, migration overrides seed 4.0
-        rx = next(m for m in active if m["slug"] == "radiografia")
-        assert rx["price"] == 5.0
-        assert rx["exams_per_hour"] == 75.0
-
-        # tc_geral: exam_prices says 30.0 (matches seed default)
-        tc = next(m for m in active if m["slug"] == "tc_geral")
-        assert tc["price"] == 30.0
-
-    def test_v1_to_v2_migrates_data_without_prices(self, conn):
-        """If exam_prices is empty, migration falls back to DEFAULT_PRICES."""
-        with conn.connect() as c:
-            c.execute(sa.text("""
-                CREATE TABLE IF NOT EXISTS daily_production (
-                    date TEXT PRIMARY KEY, rm_count INTEGER, tc_count INTEGER,
-                    rx_count INTEGER, created_at TEXT, updated_at TEXT
-                )
-            """))
-            c.commit()
-
-        upsert_daily(conn, "2026-03-10", 8, 6, 35)
-        # No exam_prices row inserted
-
-        init_db(conn)
-
-        items = load_daily_items(conn, "2026-03-10")
-        assert items.get("ressonancia_magnetica") == 8
-        assert items.get("tc_geral") == 6
-        assert items.get("radiografia") == 35
-
-        active = load_active_modalities(conn)
-        assert len(active) == 5
-        from src.db import DEFAULT_PRICES
-        rm = next(m for m in active if m["slug"] == "ressonancia_magnetica")
-        assert rm["price"] == DEFAULT_PRICES["ressonancia_magnetica"]
-        assert rm["exams_per_hour"] == 7.5
 
 
 class TestModalityColor:

@@ -117,13 +117,6 @@ def conn():
 
 
 @pytest.fixture
-def default_prices():
-    """Return a copy of DEFAULT_PRICES dict from src.db."""
-    from src.db import DEFAULT_PRICES
-    return dict(DEFAULT_PRICES)
-
-
-@pytest.fixture
 def seeded_conn(conn):
     """Return a connection with 5 modalities seeded with production values."""
     from src.db import _seed_modalities
