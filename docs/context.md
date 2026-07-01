@@ -34,7 +34,7 @@ radtracker/
 ├── .dockerignore           # Exclude secrets, data, git, caddy dirs, tests from build context
 ├── src/
 │   ├── __init__.py         # Empty package marker
-│   ├── db.py               # SQLite schema (v1+v2, 6 tables) + CRUD + seed + migration
+│   ├── db.py               # SQLite schema (v2, 5 tables) + CRUD + price vigency + seed + migration
 │   ├── calculations.py     # Business logic (earnings, hours, MA, projections, stats)
 │   ├── charts.py           # Plotly charts (bar, donut, sparkline, gauge, monthly earnings, modality donut)
 │   ├── charts_analysis.py  # Analysis charts (MA7/MA30, WoW, mix evolution, YTD)
@@ -168,27 +168,19 @@ PRIMARY KEY (date, modality_slug),
 FOREIGN KEY (modality_slug) REFERENCES modalities(slug)
 ```
 
-### 3.3 `daily_production` — Legacy v1 counts (kept for migration)
+### 3.3 `modality_prices` — Price vigency history (price per modality per date)
 ```sql
-date        TEXT PRIMARY KEY,     -- ISO format "YYYY-MM-DD"
-rm_count    INTEGER NOT NULL DEFAULT 0,
-tc_count    INTEGER NOT NULL DEFAULT 0,
-rx_count    INTEGER NOT NULL DEFAULT 0,
-created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+slug            TEXT NOT NULL,
+price           REAL NOT NULL,
+effective_from  TEXT NOT NULL,     -- ISO date "YYYY-MM-DD"
+created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+PRIMARY KEY (slug, effective_from),
+FOREIGN KEY (slug) REFERENCES modalities(slug)
 ```
+A price change today opens a new vigency from today; the past keeps the
+vigency that was in effect at the time (`load_prices_at(conn, date)`).
 
-### 3.4 `exam_prices` — Legacy v1 price history (kept for migration)
-```sql
-id              INTEGER PRIMARY KEY AUTOINCREMENT,
-rm_price        REAL NOT NULL,
-tc_price        REAL NOT NULL,
-rx_price        REAL NOT NULL,
-effective_from  TEXT NOT NULL,
-created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-```
-
-### 3.5 `monthly_goals` — Per-month revenue targets
+### 3.4 `monthly_goals` — Per-month revenue targets
 ```sql
 year_month  TEXT PRIMARY KEY,     -- "YYYY-MM"
 goal_reais  REAL NOT NULL,
@@ -207,35 +199,31 @@ Current keys: `user_name`, `api_key`, `llm_prompt`, `llm_model`.
 
 **`_add_color_column()`** — Adds `color` column to `modalities` if missing (for DBs created before v1.3.0). Uses `PRAGMA table_info` to detect column existence, then `ALTER TABLE ADD COLUMN`. Backfills default colors from `MODALITY_COLORS` dict.
 
-**`_migrate_v1_3_to_v1_4_defaults()`** — One-shot: applies production defaults (`_PRODUCTION_DEFAULTS`) to the 5 standard modalities, but only those still at price=0 AND active=0 (untouched by user). Preserves user-configured modalities as-is. Idempotent.
+**`_migrate_v1_3_to_v1_4_defaults()`** — One-shot (guarded by `user_settings` flag `migration_v1_4_defaults_done`): applies production defaults (`_PRODUCTION_DEFAULTS`) to the 5 standard modalities only if still at price=0 AND active=0 (untouched by user). Never reactivates user-deactivated/zeroed modalities on subsequent boots.
 
-**`_migrate_v1_to_v2()`** — One-shot, idempotent v1→v2 migration:
-- Trigger: v1 `daily_production` has rows AND v2 `daily_production_items` is empty
-- Copies RM→ressonancia_magnetica, TC→tc_geral, RX→radiografia
-- Copies latest prices from `exam_prices` (or DEFAULT_PRICES fallback)
-- Activates those 3 modalities with prices and exams_per_hour
+**`_migrate_v1_cleanup()`** — One-shot (flag `migration_v1_cleanup_done`): drops legacy v1 tables `daily_production` and `exam_prices` only after `daily_production_items` is populated.
+
+**`_backfill_price_vigencies()`** — One-shot: seeds `modality_prices` with each modality's current price vigent since its first production record (or `created_at` if no items).
 
 ### Key CRUD Functions (src/db.py)
 
 | Function | Operation | Pattern |
 |----------|-----------|---------|
 | `get_connection()` | Connection factory | `st.connection("telerrad", type="sql", url="sqlite:///data/telerrad.db")` |
-| `init_db(conn)` | DDL | `CREATE TABLE IF NOT EXISTS` for all 6 tables, then seed + all 3 migrations |
+| `init_db(conn)` | DDL | `CREATE TABLE IF NOT EXISTS` for all 5 tables, then seed + 3 one-shot migrations |
 | `slugify(label)` | Utility | Portuguese text → URL-safe slug (NFKD normalization, ASCII transliteration) |
 | `load_all_modalities(conn)` | Read | Returns all modalities ordered by label COLLATE NOCASE |
 | `load_active_modalities(conn)` | Read | Returns only active AND price>0 AND exams_per_hour>0 |
 | `save_modality(conn, slug, price, eph, active, label=None, color=None)` | Write | Updates single modality row; label/color optional (left unchanged if None) |
-| `add_modality(conn, slug, label, price, eph, active, color)` | Create | Inserts new modality with auto-generated sort_order; returns False if slug exists |
-| `delete_modality(conn, slug)` | Delete | Deletes child items THEN parent in transaction; returns False if slug not found |
+| `add_modality(conn, slug, label, price, eph, active, color)` | Create/Reactivate | Inserts new modality with auto sort_order; returns False if slug is active, reactivates an inactive slug with the new values (preserves production) |
+| `deactivate_modality(conn, slug)` | Soft-delete | Sets `active=0`, preserves the row and all `daily_production_items`; returns False if slug not found |
 | `upsert_daily_items(conn, date, items)` | Write | Dict slug→count; zero=DELETE, non-zero=UPSERT |
 | `load_daily_items(conn, date)` | Read | Returns dict slug→count |
 | `load_month_items(conn, year_month)` | Read | DataFrame with date, modality_slug, count |
-| `upsert_daily(conn, date, rm, tc, rx)` | v1 Write | Legacy insert/update |
-| `load_daily(conn, date)` | v1 Read | Returns dict or None |
-| `load_month(conn, year_month)` | v1 Read | Legacy DataFrame |
-| `load_prices(conn)` | Read | Returns slug→price from active modalities (falls back to DEFAULT_PRICES) |
-| `save_prices(conn, rm, tc, rx)` | v1 Write | Legacy append-only |
-| `load_goal(conn, year_month)` | Read | Falls back to DEFAULT_GOAL (45000.0) |
+| `save_price_vigency(conn, slug, price, effective_from)` | Write | UPSERT a price-vigency row |
+| `load_prices_at(conn, date_str)` | Read | Returns slug→price vigent on the given date |
+| `load_price_vigencies(conn)` | Read | All price-vigency rows |
+| `load_goal(conn, year_month)` | Read | Carry-forward: returns the most recent prior month's goal; DEFAULT_GOAL (45000.0) only when no goal was ever recorded |
 | `save_goal(conn, year_month, goal)` | Write | `INSERT ... ON CONFLICT DO UPDATE` |
 | `load_setting(conn, key, default)` | Read | Falls back to `default` |
 | `save_setting(conn, key, value)` | Write | `INSERT ... ON CONFLICT DO UPDATE` |
@@ -256,7 +244,7 @@ Seeded from `_MODALITY_SEED` in `src/db.py` with production values from `_PRODUC
 | 4 | `tc_geral` | TC Geral | 30.00 | 10.0 | `#6366F1` (Indigo-500) |
 | 5 | `tc_abdome_total` | TC de Abdome Total | 60.00 | 5.0 | `#0891B2` (Cyan-600) |
 
-Since v1.4.0, modalities are fully configurable: users can add new ones, remove existing ones (deletes associated production data), rename labels (slug is immutable after creation, auto-generated via `slugify()`), change prices, productivity rates, and colors.
+Since v1.4.0, modalities are fully configurable: users can add new ones, deactivate existing ones (soft-delete: preserves production history; reactivating with the same slug restores it), rename labels (slug is immutable after creation, auto-generated via `slugify()`), change prices (opens a new price vigency from today; the past keeps its vigency), productivity rates, and colors.
 
 ---
 
@@ -277,17 +265,20 @@ Uses Streamlit's `st.connection()` pattern for managed SQLite. Key patterns:
 
 - **`_MODALITY_SEED`**: 5 modality definitions with sort_order and color
 - **`_PRODUCTION_DEFAULTS`**: dict slug→(label, price, exams_per_hour) for production values
-- **`init_db()`**: Creates 6 tables, runs `_add_color_column()`, seeds modalities if empty, runs `_migrate_v1_3_to_v1_4_defaults()`, runs `_migrate_v1_to_v2()`
+- **`init_db()`**: Creates 5 tables (modalities, daily_production_items, modality_prices, monthly_goals, user_settings), runs `_add_color_column()`, seeds modalities if empty, then one-shot migrations (`_migrate_v1_3_to_v1_4_defaults`, `_backfill_price_vigencies`, `_migrate_v1_cleanup`), all guarded by `user_settings` flags
 - **`slugify(label)`**: Normalizes Portuguese text: NFKD → ASCII transliteration → lowercase → `[^a-z0-9]+` → underscore → strip
 - **`load_all_modalities()`**: Returns all rows ordered by label COLLATE NOCASE
 - **`load_active_modalities()`**: Filters `active=1 AND price>0 AND exams_per_hour>0`
 - **`save_modality(slug, price, eph, active, label=None, color=None)`**: Updates single modality; label/color unchanged when None
 - **`add_modality(slug, label, price, eph, active, color)`**: Insert with auto sort_order; checks for duplicate slug
-- **`delete_modality(slug)`**: Transactional: deletes from daily_production_items first, then modalities
+- **`deactivate_modality(slug)`**: Soft-delete (`active=0`), preserves row + production history; UI hides it but past stats are intact
+- **`add_modality(slug, label, price, eph, active, color)`**: Inserts new; reactivates inactive slug with new values; returns False if slug already active
+- **`save_modality(slug, price, eph, active, label, color)`**: Updates; on real price change (>0, != old) opens a new `modality_prices` vigency from today; label/color/active edits do not rewrite history
+- **`save_price_vigency(slug, price, effective_from)`** / **`load_prices_at(date)`** / **`load_price_vigencies()`**: price-vigency CRUD
 - **`upsert_daily_items()`**: Smart insert/update; zero counts → DELETE rather than store zeros
 - **`load_daily_items()`**: Dict slug→count
 - **`load_month_items()`**: DataFrame of date, modality_slug, count
-- **`load_prices()`**: Returns slug→price from active modalities
+- **`load_goal(year_month)`**: Carry-forward — most recent prior month's goal; DEFAULT_GOAL only when none ever recorded
 
 ### 5.3 `src/calculations.py` (Business Logic, ~380 lines)
 
@@ -533,7 +524,7 @@ Three `@st.fragment` sections:
 
 **Danger zone:**
 - 2-step confirmation: "Limpar todos os dados" → "Sim, limpar tudo" / "Cancelar"
-- `_execute_delete()` → raw `sqlite3` DELETE FROM all 6 tables, resets session_state, clears `st.cache_data`
+- `_execute_delete()` → raw `sqlite3` DELETE FROM all 5 tables, resets session_state, clears `st.cache_data`
 
 ---
 
@@ -617,11 +608,10 @@ Run: `uv run pytest tests/ -v`
 | UI modules | 0 | No Streamlit runtime — excluded by design |
 
 ### 9.3 Test Infrastructure
-- `FakeConnection` in `conftest.py` — emulates `st.connection` with SQLite `:memory:`, v2 schema (6 tables with `color` column)
-- `conn` fixture: full 6-table schema initialized in `:memory:`
+- `FakeConnection` in `conftest.py` — emulates `st.connection` with SQLite `:memory:`, v2 schema (5 tables with `color` column)
+- `conn` fixture: full 5-table schema initialized in `:memory:`
 - `seeded_conn` fixture: conn with 5 seeded modalities + production values
 - `active_modalities` fixture: list of 5 active modality dicts with production values
-- `default_prices` fixture: copy of `DEFAULT_PRICES` dict
 - LLM tests: `@respx.mock` for HTTP interception (both one-shot and streaming)
 - Insights tests: `_make_stats()` factory for building stats dicts
 
@@ -674,18 +664,18 @@ Git authentication via ed25519 deploy key auto-generated on VPS and registered o
 | File | Lines | Key Lines | Purpose |
 |------|-------|-----------|---------|
 | `app.py` | 61 | L23, L37–42, L54–63 | Page config, 5-tab navigation, dispatch |
-| `src/db.py` | ~420 | `_MODALITY_SEED`, `_PRODUCTION_DEFAULTS`, `init_db()`, `slugify()`, `add_modality()`, `delete_modality()`, `upsert_daily_items()`, migrations | DB schema, seed, CRUD, migration |
-| `src/calculations.py` | ~380 | `_build_lookups()`, `compute_earnings()`, `estimate_hours()`, `compute_daily_stats()`, `compute_monthly_stats()`, `compute_historical_stats()` | Business logic |
+| `src/db.py` | ~710 | `_MODALITY_SEED`, `_PRODUCTION_DEFAULTS`, `init_db()`, `slugify()`, `add_modality()`, `deactivate_modality()`, `save_modality()`, `save_price_vigency()`, `load_prices_at()`, `upsert_daily_items()`, migrations | DB schema, seed, CRUD, price vigency, migration |
+| `src/calculations.py` | ~510 | `_build_lookups()`, `_month_time_window()`, `compute_earnings()`, `estimate_hours()`, `compute_daily_stats()`, `compute_monthly_stats()`, `compute_historical_stats()`, `attach_revenue()` | Business logic (price-vigent revenue, calendar-day counting) |
 | `src/chart_colors.py` | ~85 | `MODALITY_COLORS`, `color_for_modality()`, `CHART_COLORS`, `hex_to_rgba()`, `get_chart_text_color()` | Color system |
 | `src/charts.py` | ~330 | `build_modality_bar()`, `build_modality_donut()`, `build_daily_sparkline()`, `build_progress_gauge()`, `build_monthly_earnings_chart()`, `build_monthly_modality_donut()` | Chart factories |
 | `src/charts_analysis.py` | ~300 | `build_moving_averages_chart()`, `build_wow_comparison_chart()`, `build_modality_mix_evolution()`, `build_ytd_earnings_chart()` | Analysis charts |
 | `src/formatting.py` | ~55 | `MONTHS_PT`, `md_escape()`, `fmt_brl()` | Locale + formatting |
-| `src/insights_rules.py` | ~230 | `generate_rule_insights()` | Rule-based insights |
-| `src/llm_client.py` | ~290 | `LLMUnavailableError`, `build_rag_context()`, `LLMClient.__init__()`, `LLMClient.generate()`, `LLMClient.generate_stream()`, `_enrich_stats()`, `_USER_PROMPT_TEMPLATE` | OpenRouter LLM + RAG |
+| `src/insights_rules.py` | ~130 | `_projection_scenarios()`, `generate_rule_insights()` | Rule-based insights (factual + 3 projection scenarios) |
+| `src/llm_client.py` | ~430 | `LLMUnavailableError`, `build_rag_context()`, `LLMClient.__init__()`, `LLMClient.generate()`, `LLMClient.generate_stream()`, `_enrich_stats()`, `_USER_PROMPT_TEMPLATE` | OpenRouter LLM + RAG |
 | `src/cookies.py` | ~30 | `get_last_tab_index()`, `set_last_tab_index()` | Tab cookie persistence |
 | `src/ui/sidebar.py` | ~85 | `render_sidebar()` | Dynamic sidebar form |
 | `src/ui/today.py` | ~195 | `render_today_tab()`, `_render_kpi_row()`, `_build_sparkline_figure()` | Today dashboard |
-| `src/ui/month.py` | ~210 | `render_month_tab()`, `_render_rhythm_alert()`, `_maybe_celebrate()` | Month dashboard |
+| `src/ui/month.py` | ~225 | `render_month_tab()`, `_should_show_rhythm_alert()`, `_render_rhythm_alert()`, `_maybe_celebrate()` | Month dashboard |
 | `src/ui/analysis.py` | ~130 | `render_analysis_tab()`, `_render_insight_body()` | Analysis + insights |
 | `src/ui/chat.py` | ~280 | `render_chat_tab()`, `_trigger_initial_report()`, `_stream_response()`, `_trim_history()`, `_render_suggestion_chips()` | Chat IA with streaming |
 | `src/ui/settings.py` | ~340 | `ensure_settings()`, `_render_modality_grid()`, `_render_llm_section()`, `_render_danger_zone()`, `_reload_modalities()` | Settings + modality config |

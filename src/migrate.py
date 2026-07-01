@@ -7,7 +7,7 @@ runs ``app.py`` (and thus ``init_db``) when a browser session opens.
 
 Usage (inside the radtracker container, WORKDIR=/app)::
 
-    python scripts/migrate.py
+    python -m src.migrate
 """
 
 import sys

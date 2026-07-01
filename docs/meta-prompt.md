@@ -25,7 +25,7 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 | HTTP | **httpx ≥0.27** | OpenRouter API calls (one-shot + SSE streaming) |
 | Extras | **streamlit-extras ≥1.5** | `skeleton`, `rain`, `star_rating`, `stoggle`, `cookie_manager`, `pills` |
 | Package mgr | **uv** | `uv.lock` is authoritative |
-| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 150 tests, all passing |
+| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 228 tests, all passing |
 | Lint/fmt | **ruff** (E, F, I, UP rules, line-length 100) | Run: `uv run ruff check src/ tests/` |
 | Types | **mypy** (strict=false) | Run: `uv run mypy src/` |
 | **Deployment** | | |
