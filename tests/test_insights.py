@@ -145,6 +145,66 @@ class TestGenerateRuleInsights:
         result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
         assert "4 dias consecutivos abaixo da meta diária." in result
 
+    def test_singular_day_counting(self):
+        # days_worked=1 and elapsed=1 → singular forms, no plural leak.
+        stats = _make_stats(
+            mtd_earnings=1500, pct_goal=3.0, days_worked=1,
+            remaining_days=29, total_calendar_days=30,
+            daily_avg=1500, daily_target_needed=1666.67,
+            projection_month_end=45000.0, goal=50000.0,
+            elapsed_days=1,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "1 dia trabalhado" in result
+        assert "1 decorrido" in result
+        assert "29 restantes" in result
+        assert "1 dias trabalhados" not in result
+        assert "1 decorridos" not in result
+
+    def test_singular_remaining(self):
+        stats = _make_stats(
+            mtd_earnings=49000, pct_goal=98.0, days_worked=29,
+            remaining_days=1, total_calendar_days=30,
+            daily_avg=1690, daily_target_needed=1000,
+            projection_month_end=50000.0, goal=50000.0,
+            elapsed_days=29,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "1 restante" in result
+        assert "1 restantes" not in result
+
+    def test_single_projection_when_no_variance(self):
+        # std=None (few data points): only the base projection is informative,
+        # so Conservador/Otimista (which would be identical) must be omitted.
+        stats = _make_stats(
+            mtd_earnings=15000, pct_goal=33.3, days_worked=10,
+            remaining_days=15, total_calendar_days=30,
+            daily_avg=1500, daily_target_needed=2000,
+            projection_month_end=37500.0, goal=45000.0,
+            # current_month_daily_std omitted → None
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "Base (média atual): R$ 37.500,00" in result
+        assert "Conservador" not in result
+        assert "Otimista" not in result
+
+    def test_projection_scenarios_on_separate_lines(self):
+        # Each scenario must be its own markdown list item on its own line,
+        # and the list must be separated from the header by a blank line
+        # (otherwise Streamlit renders them jammed into one line).
+        stats = _make_stats(
+            mtd_earnings=15000, pct_goal=33.3, days_worked=10,
+            remaining_days=15, total_calendar_days=30,
+            daily_avg=1500, daily_target_needed=2000,
+            projection_month_end=37500.0, goal=45000.0,
+            current_month_daily_std=500.0,
+        )
+        result = generate_rule_insights(stats, DEFAULT_ACTIVE_MODS)
+        assert "**Projeção de fechamento:**\n\n- Conservador:" in result
+        assert "\n- Base (média atual):" in result
+        assert "\n- Otimista:" in result
+        assert "\n\nMais provável: **base**." in result
+
     def test_no_tone_adjectives_or_suggestions(self):
         """Factual output: no 'você', 'bateu', 'priorize', 'sugestão', 'ritmo adequado'."""
         stats = _make_stats(

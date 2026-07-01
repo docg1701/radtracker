@@ -35,6 +35,11 @@ def _projection_scenarios(
     return conserv, base, optim
 
 
+def _plural(value: int, singular: str, plural: str) -> str:
+    """Return the singular form for 1, the plural form otherwise."""
+    return f"{value} {singular}" if value == 1 else f"{value} {plural}"
+
+
 def generate_rule_insights(
     stats: dict[str, Any],
     active_modalities: list[dict[str, Any]],
@@ -75,37 +80,48 @@ def generate_rule_insights(
     mix = stats.get("modality_mix_current", {})
     below = stats.get("consecutive_below_target", 0)
 
-    lines: list[str] = []
+    blocks: list[str] = []
 
     # ── Cabeçalho factual ──
-    lines.append(f"**{pct:.0f}%** da meta — {fmt_brl(mtd)} de {fmt_brl(goal)}.")
-    lines.append(
-        f"{days_worked} dias trabalhados · {elapsed} decorridos · "
-        f"{remaining} restantes · média {fmt_brl(daily_avg)}/dia corrido."
+    blocks.append(f"**{pct:.0f}%** da meta — {fmt_brl(mtd)} de {fmt_brl(goal)}.")
+    blocks.append(
+        f"{_plural(days_worked, 'dia trabalhado', 'dias trabalhados')} · "
+        f"{_plural(elapsed, 'decorrido', 'decorridos')} · "
+        f"{_plural(remaining, 'restante', 'restantes')} · "
+        f"média {fmt_brl(daily_avg)}/dia corrido."
     )
 
-    # ── Projeção de fechamento em 3 cenários ──
-    conserv, base_proj, optim = _projection_scenarios(
-        mtd, daily_avg, remaining, std, base,
-    )
+    # ── Projeção de fechamento ──
     if remaining > 0:
-        lines.append("")
-        lines.append("**Projeção de fechamento:**")
-        lines.append(f"• Conservador: {fmt_brl(conserv)} — {_gap_label(conserv, goal)}.")
-        lines.append(
-            f"• Base (média atual): {fmt_brl(base_proj)} — {_gap_label(base_proj, goal)}."
-        )
-        lines.append(f"• Otimista: {fmt_brl(optim)} — {_gap_label(optim, goal)}.")
-        lines.append("Mais provável: **base**.")
+        proj = ["**Projeção de fechamento:**", ""]
+        if std is not None and std > 0:
+            conserv, base_proj, optim = _projection_scenarios(
+                mtd, daily_avg, remaining, std, base,
+            )
+            proj.append(f"- Conservador: {fmt_brl(conserv)} — {_gap_label(conserv, goal)}.")
+            proj.append(
+                f"- Base (média atual): {fmt_brl(base_proj)} "
+                f"— {_gap_label(base_proj, goal)}."
+            )
+            proj.append(f"- Otimista: {fmt_brl(optim)} — {_gap_label(optim, goal)}.")
+            proj.append("")
+            proj.append("Mais provável: **base**.")
+        else:
+            # Sem variância (poucos dias): só a projeção base é informativa —
+            # Conservador/Otimista seriam idênticos e só adicionam ruído.
+            proj.append(f"- Base (média atual): {fmt_brl(base)} — {_gap_label(base, goal)}.")
         missing = max(0.0, goal - mtd)
         if missing > 0:
-            lines.append(
+            proj.append("")
+            proj.append(
                 f"Faltam {fmt_brl(missing)}: {fmt_brl(daily_needed)}/dia "
-                f"nos {remaining} restantes."
+                f"nos {_plural(remaining, 'restante', 'restantes')}."
             )
+        blocks.append("\n".join(proj))
     else:
-        lines.append(
-            f"Projeção de fechamento: {fmt_brl(mtd)} ({_gap_label(mtd, goal)} da meta)."
+        blocks.append(
+            f"**Projeção de fechamento:** {fmt_brl(mtd)} "
+            f"({_gap_label(mtd, goal)} da meta)."
         )
 
     # ── MoM ──
@@ -113,7 +129,7 @@ def generate_rule_insights(
         sign = "+" if mom >= 0 else ""
         mom_str = f"{mom:.1f}".replace(".", ",")
         prev_str = fmt_brl(prev_earnings) if prev_earnings is not None else "—"
-        lines.append(f"MoM: {sign}{mom_str}% ({fmt_brl(mtd)} vs {prev_str}).")
+        blocks.append(f"MoM: {sign}{mom_str}% ({fmt_brl(mtd)} vs {prev_str}).")
 
     # ── Mix de modalidades (top 3 por share) ──
     slug_to_label = {m["slug"]: m["label"] for m in active_modalities}
@@ -121,10 +137,10 @@ def generate_rule_insights(
         top = sorted(mix.items(), key=lambda kv: kv[1], reverse=True)[:3]
         parts = [f"{slug_to_label.get(s, s)} {p:.0f}%" for s, p in top if p > 0]
         if parts:
-            lines.append("Mix: " + " · ".join(parts) + ".")
+            blocks.append("Mix: " + " · ".join(parts) + ".")
 
     # ── Dias consecutivos abaixo da meta diária ──
     if below >= 3:
-        lines.append(f"{below} dias consecutivos abaixo da meta diária.")
+        blocks.append(f"{below} dias consecutivos abaixo da meta diária.")
 
-    return "\n".join(lines)
+    return "\n\n".join(blocks)
