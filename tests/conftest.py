@@ -10,27 +10,6 @@ import pytest
 import sqlalchemy as sa
 
 DB_CREATE_SQL = [
-    # v1 tables (kept for migration tests)
-    """
-    CREATE TABLE IF NOT EXISTS daily_production (
-        date        TEXT PRIMARY KEY,
-        rm_count    INTEGER NOT NULL DEFAULT 0,
-        tc_count    INTEGER NOT NULL DEFAULT 0,
-        rx_count    INTEGER NOT NULL DEFAULT 0,
-        created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS exam_prices (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        rm_price        REAL NOT NULL,
-        tc_price        REAL NOT NULL,
-        rx_price        REAL NOT NULL,
-        effective_from  TEXT NOT NULL,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """,
     # v2 tables
     """
     CREATE TABLE IF NOT EXISTS modalities (

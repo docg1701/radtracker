@@ -35,10 +35,9 @@ class TestInitDb:
         )
         names = set(df["name"].tolist())
         expected = {
-            "daily_production",
-            "exam_prices",
             "modalities",
             "daily_production_items",
+            "modality_prices",
             "monthly_goals",
             "user_settings",
         }

@@ -56,8 +56,8 @@ def get_connection() -> Any:
 def init_db(conn: Any) -> None:
     """Create all tables if they don't exist. Idempotent.
 
-    v2 tables: modalities, daily_production_items.
-    v1 tables: daily_production, exam_prices (kept for migration).
+    Tables: modalities, daily_production_items, modality_prices,
+    monthly_goals, user_settings.
     """
     # ── v2 tables ──
     create_modalities = """
