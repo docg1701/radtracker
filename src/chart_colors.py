@@ -17,19 +17,13 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-# Modalidade → cor fixa (11 modalidades, paleta fria com boa separação)
+# Modalidade → cor fixa (5 modalidades seed; demais vêm da coluna color no DB)
 MODALITY_COLORS: dict[str, str] = {
     "radiografia": "#2563EB",              # Blue-600
     "tc_geral": "#6366F1",                 # Indigo-500
     "tc_abdome_total": "#0891B2",          # Cyan-600
     "ressonancia_magnetica": "#7C3AED",    # Violet-600
     "angiotomografia": "#0D9488",           # Teal-600
-    "ultrassonografia": "#A855F7",          # Purple-500
-    "dopplervelocimetria": "#059669",       # Emerald-600
-    "radiografia_contrastada": "#475569",   # Slate-600
-    "ultrassom_morfologico": "#0EA5E9",     # Sky-500
-    "mamografia": "#BE123C",                # Rose-700
-    "densitometria": "#A16207",             # Amber-700
 }
 
 

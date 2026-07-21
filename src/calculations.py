@@ -6,6 +6,7 @@ DB-dependent functions accept a Streamlit connection as first parameter.
 """
 
 import calendar
+import json
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -14,19 +15,12 @@ import pandas as pd
 from src.db import load_daily_items, load_month_items, load_prices_at
 
 # ---------------------------------------------------------------------------
-# Helper: build slug→price and slug→exams_per_hour lookups
+# Helper: slug→exams_per_hour lookup
 # ---------------------------------------------------------------------------
 
-def _build_lookups(
-    modalities: list[dict[str, Any]],
-) -> tuple[dict[str, float], dict[str, float]]:
-    """Return (slug→price, slug→exams_per_hour) dicts from modality list."""
-    prices: dict[str, float] = {}
-    eph: dict[str, float] = {}
-    for m in modalities:
-        prices[m["slug"]] = float(m["price"])
-        eph[m["slug"]] = float(m["exams_per_hour"])
-    return prices, eph
+def _eph_lookup(modalities: list[dict[str, Any]]) -> dict[str, float]:
+    """Return slug→exams_per_hour dict from modality list."""
+    return {m["slug"]: float(m["exams_per_hour"]) for m in modalities}
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +100,7 @@ def compute_daily_stats(
       modality_counts (slug→count),
       modality_labels (slug→label), yesterday_earnings, delta_pct, has_data.
     """
-    _, eph = _build_lookups(active_modalities)
+    eph = _eph_lookup(active_modalities)
     counts = load_daily_items(conn, date_str)
     has_data = bool(counts)
 
@@ -298,6 +292,17 @@ def compute_monthly_stats(
 # ---------------------------------------------------------------------------
 # Historical stats (multi-month)
 # ---------------------------------------------------------------------------
+
+def historical_cache_key(
+    year_month: str, goal: float, active_modalities: list[dict[str, Any]],
+) -> str:
+    """Stable JSON cache key for compute_historical_stats results."""
+    parts = {
+        "ym": year_month,
+        "goal": goal,
+        "mods": [(m["slug"], m["price"], m["exams_per_hour"]) for m in active_modalities],
+    }
+    return json.dumps(parts, sort_keys=True)
 
 def _same_point_earnings(month_rows: pd.DataFrame, day_of_month: int) -> float:
     """Sum a month's earnings up to and including the given day-of-month.

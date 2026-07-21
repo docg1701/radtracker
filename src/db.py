@@ -18,7 +18,6 @@ import streamlit as st
 from src.chart_colors import MODALITY_COLORS
 
 DEFAULT_GOAL: float = 45000.0
-DEFAULT_LLM_MODEL: str = "openai/gpt-oss-120b:free"
 
 # ── Predefined modality catalog (5 production modalities) ──
 _MODALITY_SEED: list[dict[str, Any]] = [

@@ -39,17 +39,15 @@ class TestChartColors:
 
 
 class TestModalityColors:
-    def test_has_all_11_modalities(self):
+    def test_has_all_5_seed_modalities(self):
         expected = {
             "tc_abdome_total", "tc_geral", "angiotomografia",
-            "ressonancia_magnetica", "ultrassonografia", "dopplervelocimetria",
-            "mamografia", "radiografia", "radiografia_contrastada",
-            "ultrassom_morfologico", "densitometria",
+            "ressonancia_magnetica", "radiografia",
         }
         assert set(MODALITY_COLORS.keys()) == expected
 
     def test_all_colors_unique(self):
-        """All 11 modality colors should be distinct."""
+        """All modality colors should be distinct."""
         values = list(MODALITY_COLORS.values())
         assert len(values) == len(set(values))
 

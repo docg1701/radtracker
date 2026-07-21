@@ -5,7 +5,6 @@ import sqlalchemy as sa
 
 from src.db import (
     DEFAULT_GOAL,
-    DEFAULT_LLM_MODEL,
     _backfill_price_vigencies,
     add_modality,
     deactivate_modality,
@@ -290,7 +289,7 @@ class TestSettings:
     def test_save_and_load_setting(self, conn):
         init_db(conn)
         save_setting(conn, "llm_model", "anthropic/claude-sonnet-4")
-        val = load_setting(conn, "llm_model", DEFAULT_LLM_MODEL)
+        val = load_setting(conn, "llm_model", "fallback-model")
         assert val == "anthropic/claude-sonnet-4"
 
     def test_load_setting_default(self, conn):
@@ -324,11 +323,10 @@ class TestModalityColor:
             assert m["color"].startswith("#")
             assert len(m["color"]) == 7
 
-    def test_chart_colors_retains_11_colors(self):
-        """MODALITY_COLORS still has 11 entries for backward compatibility."""
+    def test_chart_colors_retains_seed_colors(self):
+        """MODALITY_COLORS covers the 5 seeded production slugs."""
         from src.chart_colors import MODALITY_COLORS
-        assert len(MODALITY_COLORS) == 11
-        # Key production slugs should have colors
+        assert len(MODALITY_COLORS) == 5
         assert "ressonancia_magnetica" in MODALITY_COLORS
         assert "tc_geral" in MODALITY_COLORS
         assert "radiografia" in MODALITY_COLORS

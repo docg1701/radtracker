@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 from streamlit_extras.skeleton import skeleton
 
-from src.calculations import compute_historical_stats
+from src.calculations import compute_historical_stats, historical_cache_key
 from src.charts_analysis import (
     build_modality_mix_evolution,
     build_moving_averages_chart,
@@ -36,14 +36,7 @@ def render_analysis_tab(conn: Any) -> None:
         _render_empty_state("Nenhuma modalidade ativa. Configure na aba **Configuração**.")
         return
 
-    import json
-
-    cache_key_parts = {
-        "ym": year_month,
-        "goal": goal,
-        "mods": [(m["slug"], m["price"], m["exams_per_hour"]) for m in active_mods],
-    }
-    cache_key = json.dumps(cache_key_parts, sort_keys=True)
+    cache_key = historical_cache_key(year_month, goal, active_mods)
     cached = st.session_state.get("historical_cache")
 
     if cached is None or cached.get("key") != cache_key:
@@ -72,7 +65,7 @@ def render_analysis_tab(conn: Any) -> None:
     # ── Insights por regras ──
     with st.expander(":material/lightbulb: Insights", expanded=True):
         rule_text = generate_rule_insights(stats, active_mods)
-        _render_insight_body(rule_text, source="rules")
+        _render_insight_body(rule_text)
 
     # ── Two-column: MA + WoW ──
     col_left, col_right = st.columns(2)
@@ -129,7 +122,7 @@ def _render_empty_state(message: str) -> None:
 # Insight body
 # ---------------------------------------------------------------------------
 
-def _render_insight_body(text: str, source: str = "rules") -> None:
+def _render_insight_body(text: str) -> None:
     """Render insight markdown with a source caption."""
     caption = ":material/bar_chart: Análise automática baseada nos seus dados"
     st.markdown(md_escape(text))

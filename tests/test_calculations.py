@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 
 from src.calculations import (
-    _build_lookups,
     _empty_historical_stats,
+    _eph_lookup,
     compute_daily_stats,
     compute_daily_target,
     compute_delta_pct,
@@ -19,16 +19,9 @@ from src.db import init_db, save_modality, save_price_vigency, upsert_daily_item
 
 # ── Fixtures from conftest ──
 
-def test_build_lookups(active_modalities):
-    """_build_lookups returns slug→price and slug→eph dicts for all 5 active."""
-    prices, eph = _build_lookups(active_modalities)
-    assert prices == {
-        "angiotomografia": 30.0,
-        "radiografia": 4.0,
-        "ressonancia_magnetica": 35.0,
-        "tc_abdome_total": 60.0,
-        "tc_geral": 30.0,
-    }
+def test_eph_lookup(active_modalities):
+    """_eph_lookup returns slug→eph dict for all 5 active."""
+    eph = _eph_lookup(active_modalities)
     assert eph == {
         "angiotomografia": 4.0,
         "radiografia": 80.0,

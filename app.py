@@ -46,7 +46,7 @@ TAB_LABELS = [
 if "active_tab_idx" not in st.session_state:
     try:
         st.session_state.active_tab_idx = int(get_last_tab_index())
-    except (ValueError, Exception):
+    except Exception:
         st.session_state.active_tab_idx = 0
     if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
         st.session_state.active_tab_idx = 0

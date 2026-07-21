@@ -96,72 +96,6 @@ def build_modality_bar(
 
 
 # ---------------------------------------------------------------------------
-# Modality donut chart (dynamic) — kept for backward compatibility
-# ---------------------------------------------------------------------------
-
-
-def build_modality_donut(
-    counts: dict[str, int],
-    labels_lookup: dict[str, str],
-    modalities: list[dict[str, Any]] | None = None,
-) -> go.Figure:
-    """
-    Build a donut chart showing exam count by modality.
-
-    Args:
-        counts: dict slug→count (only positive counts).
-        labels_lookup: dict slug→display label.
-
-    Returns:
-        Plotly Figure — hole=0.5, per-modality colors, Portuguese labels.
-    """
-    slugs: list[str] = []
-    values: list[int] = []
-    display_labels: list[str] = []
-    slice_colors: list[str] = []
-
-    for slug, count in counts.items():
-        if count > 0:
-            slugs.append(slug)
-            values.append(count)
-            display_labels.append(labels_lookup.get(slug, slug))
-            slice_colors.append(color_for_modality(slug, modalities))
-
-    if not values:
-        values = [0]
-        display_labels = ["—"]
-        slice_colors = [CHART_COLORS["muted"]]
-
-    fig = go.Figure(
-        data=[
-            go.Pie(
-                labels=display_labels,
-                values=values,
-                hole=0.5,
-                marker=dict(colors=slice_colors),
-                textinfo="label+percent",
-                textfont=dict(size=14),
-                sort=False,
-            )
-        ]
-    )
-
-    fig.update_layout(
-        title=dict(text="Distribuição por Modalidade", font=dict(size=16)),
-        height=280,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=-0.2,
-            xanchor="center", x=0.5, font=dict(size=12),
-        ),
-    )
-
-    return fig
-
-
-# ---------------------------------------------------------------------------
 # Daily earnings sparkline (unchanged — works on earnings column)
 # ---------------------------------------------------------------------------
 
@@ -389,7 +323,6 @@ def build_monthly_modality_donut(
             slug = str(row["modality_slug"])
             rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
 
-    slugs: list[str] = []
     values: list[float] = []
     display_labels: list[str] = []
     slice_colors: list[str] = []
@@ -398,7 +331,6 @@ def build_monthly_modality_donut(
         slug = m["slug"]
         val = rev.get(slug, 0.0)
         if val > 0:
-            slugs.append(slug)
             values.append(val)
             display_labels.append(labels_lookup.get(slug, slug))
             slice_colors.append(color_for_modality(slug, active_modalities))

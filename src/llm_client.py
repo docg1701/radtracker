@@ -300,7 +300,6 @@ class LLMClient:
         self._reasoning_buffer = []
         payload = self._build_payload(
             messages,
-            stream=True,
             thinking_enabled=thinking_enabled,
             thinking_effort=thinking_effort,
             thinking_budget=thinking_budget,
@@ -379,7 +378,7 @@ class LLMClient:
         }
 
     def _build_payload(
-        self, messages: list[dict[str, str]], stream: bool = False,
+        self, messages: list[dict[str, str]],
         thinking_enabled: bool = True,
         thinking_effort: str | None = None,
         thinking_budget: int | None = None,
@@ -390,7 +389,6 @@ class LLMClient:
 
         Args:
             messages: Lista de mensagens no formato OpenAI.
-            stream: Se True, ativa SSE streaming.
             thinking_enabled: Se False, envia reasoning.enabled=False.
             thinking_effort: Nível de esforço (low|medium|high|xhigh).
             thinking_budget: Orçamento exato de tokens (1024–32000).
@@ -413,7 +411,7 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
-            "stream": stream,
+            "stream": True,
             "temperature": temperature,
         }
 

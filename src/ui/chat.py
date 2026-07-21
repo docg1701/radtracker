@@ -11,7 +11,7 @@ from typing import Any
 
 import streamlit as st
 
-from src.calculations import compute_historical_stats
+from src.calculations import compute_historical_stats, historical_cache_key
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
 from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.settings import ensure_settings
@@ -176,23 +176,6 @@ def _render_chat_empty_state(message: str, caption: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Cache key
-# ---------------------------------------------------------------------------
-
-def _build_historical_cache_key(
-    year_month: str, goal: float, active_mods: list[dict[str, Any]]
-) -> str:
-    import json
-
-    parts = {
-        "ym": year_month,
-        "goal": goal,
-        "mods": [(m["slug"], m["price"], m["exams_per_hour"]) for m in active_mods],
-    }
-    return json.dumps(parts, sort_keys=True)
-
-
-# ---------------------------------------------------------------------------
 # Initial report trigger
 # ---------------------------------------------------------------------------
 
@@ -205,7 +188,7 @@ def _trigger_initial_report(
     llm_prompt: str,
 ) -> None:
     """Compute stats, build RAG context, queue initial report prompt."""
-    cache_key = _build_historical_cache_key(year_month, goal, active_mods)
+    cache_key = historical_cache_key(year_month, goal, active_mods)
     cached = st.session_state.get("historical_cache")
 
     if cached is None or cached.get("key") != cache_key:
