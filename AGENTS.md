@@ -105,7 +105,40 @@ must pass, not just Python ones.
 
 ---
 
-## Implementation tracking
+## Releases
 
-Use `docs/deployment.md` for deployment workflow. For feature work, create tracking
-checklists inline in the relevant issue or PR.
+### CI workflow
+
+Push a **tag** to trigger it: `.github/workflows/ci.yml`
+
+1. Runs `pytest` on Python 3.12 + 3.13.
+2. If tests pass **and** the pushed ref is a tag matching `v*.*.*`, the `release` job
+   auto-generates a GitHub Release with grouped changelog (feat/fix/chore) from the
+   commits since the previous tag.
+
+### Release checklist
+
+After merging/committing to master:
+
+```bash
+# 1. Bump version in pyproject.toml
+uv lock   # syncs uv.lock
+# 2. Commit: "chore: bump version X.Y.Z -> X.Y.Z+1"
+# 3. Push to master
+
+# 4. Create annotated tag (first line becomes release subtitle, rest is body)
+git tag -a vX.Y.Z <commit-hash> -m "vX.Y.Z: one-line summary" \
+    -m "Longer description. Bug fixes, features, breaking changes."
+
+# 5. Push the tag — this triggers CI
+   git push --tags
+```
+
+Then wait for the GitHub Actions run on the tag. If CI passes, the release
+appears automatically at https://github.com/docg1701/radtracker/releases.
+
+### Changelog grouping
+
+CI groups commits into **Added** (`feat:`), **Fixed** (`fix:`), and **Changed**
+(everything else: `chore:`, `docs:`, `ci:`, `refactor:`, `test:`). Use
+conventional commit prefixes consistently.
