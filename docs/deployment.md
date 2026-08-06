@@ -106,14 +106,28 @@ deployment_mode: !vault | ...  # valor criptografado = "internet"
 E editar `all.yml`:
 
 ```yaml
-domain: radtracker.exemplo.com
+domain: radtracker.duckdns.org
 ```
+
+### 1.4.1 DuckDNS (domínio gratuito)
+
+Se não tiver domínio próprio, use [DuckDNS](https://duckdns.org):
+
+1. Faça login com GitHub e crie o subdomínio `radtracker`
+2. Aponte o IP da instância:
+   ```bash
+   curl "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN&ip=129.151.4.89"
+   ```
+3. Configure renovação automática via cron (o IP da Oracle Free Tier é estático, mas o DuckDNS exige update periódico):
+   ```cron
+   0 */12 * * * curl -s "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN" > /dev/null
+   ```
 
 ### 1.5 Ambiente
 
 ```bash
-export VPS_HOST=10.10.10.209        # IP do VPS
-export VPS_USER=galvani             # usuário SSH
+export VPS_HOST=129.151.4.89         # IP do VPS (Oracle Cloud Free Tier)
+export VPS_USER=ubuntu               # usuário SSH
 ```
 
 ### 1.6 Arquivo de senha do Vault
@@ -166,13 +180,22 @@ Verifica:
 
 ## 4. Acesso
 
-**Modo LAN:**
+**Oracle Cloud Free Tier (produção):**
+```
+https://radtracker.duckdns.org
+```
+(Let's Encrypt — certificado assinado, sem aviso de segurança)
+
+Shape: VM.Standard.E2.1.Micro — 1 OCPU AMD, 1 GB RAM, 50 GB boot
+Domínio: DuckDNS gratuito (radtracker.duckdns.org → 129.151.4.89)
+
+**VPS local (LAN):**
 ```
 https://10.10.10.209
 ```
 (HTTPS com certificado autoassinado — aceitar aviso de segurança no primeiro acesso)
 
-**Modo internet:**
+**Modo internet (com domínio próprio):**
 ```
 https://radtracker.exemplo.com
 ```

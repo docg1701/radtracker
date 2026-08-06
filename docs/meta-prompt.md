@@ -6,7 +6,7 @@
 
 ## Goal
 
-You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. Self-hosted deployment to a VPS is supported via Docker + Caddy + fail2ban, managed with Ansible playbooks.
+You are working on **radtracker**, a personal productivity dashboard for a teleradiology physician. It's a Streamlit (≥1.54) single-page app with local SQLite persistence. The UI is in Brazilian Portuguese. Production deployment on Oracle Cloud Free Tier (VM.Standard.E2.1.Micro, Ubuntu 24.04, 1 OCPU / 1 GB RAM) via Docker + Caddy + fail2ban, managed with Ansible playbooks. Local dev VPS at 10.10.10.209 (LAN, galvani).
 
 You will be modifying Python code in the `src/` tree, the Streamlit entry point `app.py`, the config `.streamlit/config.toml`, the test suite in `tests/`, Docker/deployment files at the project root, or Ansible playbooks in `ansible/`.
 
@@ -342,8 +342,8 @@ uv run streamlit run app.py      # run the app
 
 For deployment:
 ```bash
-export VPS_HOST=10.10.10.209
-export VPS_USER=galvani
+export VPS_HOST=129.151.4.89  # Oracle Cloud Free Tier
+export VPS_USER=ubuntu
 ansible-galaxy collection install -r ansible/requirements.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
