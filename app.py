@@ -10,10 +10,12 @@ LLM insights, settings, session_state wiring.
 
 import streamlit as st
 
-from src.cookies import get_last_tab_index, set_last_tab_index
+from src.auth_store import AUTH_PATH, AuthError, load_auth
+from src.cookies import get_cookie_manager, get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
+from src.ui.login import render_login_gate, render_logout_button
 from src.ui.month import render_month_tab
 from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
@@ -26,6 +28,21 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto",
 )
+
+# Cookie manager — exactly one construction per run (a second one raises
+# StreamlitDuplicateElementKey); every run's render flushes queued writes
+cookie_mgr = get_cookie_manager()
+
+# Authentication gate — fail loud when not configured; blocks until authenticated
+try:
+    auth = load_auth(AUTH_PATH)
+except AuthError as exc:
+    st.error(f"Autenticação não configurada: {exc}")
+    st.markdown("Execute o deploy Ansible ou o script `radtracker-auth` via SSH.")
+    st.stop()
+
+render_login_gate(auth, cookie_mgr)
+render_logout_button(cookie_mgr)
 
 # Database initialization (idempotent)
 conn = get_connection()
@@ -45,7 +62,7 @@ TAB_LABELS = [
 
 if "active_tab_idx" not in st.session_state:
     try:
-        st.session_state.active_tab_idx = int(get_last_tab_index())
+        st.session_state.active_tab_idx = int(get_last_tab_index(cookie_mgr))
     except Exception:
         st.session_state.active_tab_idx = 0
     if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
@@ -62,7 +79,7 @@ active = st.radio(
 selected_idx = TAB_LABELS.index(active)
 if selected_idx != st.session_state.active_tab_idx:
     st.session_state.active_tab_idx = selected_idx
-    set_last_tab_index(str(selected_idx))
+    set_last_tab_index(cookie_mgr, str(selected_idx))
 
 # ── Tab content ──
 if selected_idx == 0:

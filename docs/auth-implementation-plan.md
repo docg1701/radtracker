@@ -214,8 +214,11 @@ explicit tmp path.
 
 ### Session-state keys (used by the gate)
 
-`auth_authenticated`, `auth_username`. Everything else lives in the signed
-cookie — no failed-attempt counters, no re-auth timestamps (§13).
+`auth_authenticated` (present from the first run on: `True`/`False`, never
+removed — absence is what triggers the cookie restore), `auth_username`,
+`auth_awaiting_totp` (transient, between the password and TOTP steps).
+Everything else lives in the signed cookie — no failed-attempt counters,
+no re-auth timestamps (§13).
 
 ---
 
@@ -229,9 +232,14 @@ must stay the first Streamlit command.
 # top of app.py, with the existing imports
 # (imports after st.set_page_config() trip ruff E402 — keep them at the top)
 from src.auth_store import AUTH_PATH, AuthError, load_auth
+from src.cookies import get_cookie_manager
 from src.ui.login import render_login_gate, render_logout_button
 
 # ... st.set_page_config(...) stays the first Streamlit command ...
+
+# exactly one CookieManager construction per run (a second one raises
+# StreamlitDuplicateElementKey); every run's render flushes queued writes
+cookie_mgr = get_cookie_manager()
 
 # immediately after set_page_config, before get_connection()
 try:
@@ -241,7 +249,8 @@ except AuthError as exc:
     st.markdown("Execute o deploy Ansible ou o script `radtracker-auth` via SSH.")
     st.stop()
 
-render_login_gate(auth)
+render_login_gate(auth, cookie_mgr)
+render_logout_button(cookie_mgr)
 # gate calls st.stop() internally while not authenticated
 
 # existing code below unchanged (get_connection, init_db, sidebar, tabs)
@@ -285,6 +294,18 @@ cookie, then `st.rerun()`. Call it from `app.py` right after
 - Use `st.form` for login/TOTP (Enter submits; no rerun per keystroke).
   This is the **only** `st.form` usage in the project — intentional, since the
   gate is a state machine; note it in a comment.
+- **CookieManager: exactly one construction per run**, in `app.py`, passed
+  down to the gate and the tab-cookie helpers. `cookie_manager()` called
+  twice in one run raises `StreamlitDuplicateElementKey` — and since
+  `set()`/`delete()` are only queued until the component renders, every run
+  must render it exactly once or queued writes never reach the browser.
+  (Found in implementation: the first version let the gate and
+  `set_session_token` construct their own managers; the queued login cookie
+  was silently never written.)
+- **Session restore runs once per server session** — only when
+  `auth_authenticated` is absent from `st.session_state`. Logout sets it to
+  `False` (never removes the key), so the asynchronous cookie delete cannot
+  immediately re-authenticate the session from a stale snapshot.
 - Give every widget a unique `key=` per state (login form and TOTP form can
   render at different times on the same run — avoid duplicate-widget-ID
   errors).
