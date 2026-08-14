@@ -30,7 +30,9 @@ Critical. Do not drift into any of these:
 - ❌ No DB schema change. No `users` table. Auth state lives in one JSON file:
   `data/auth.json`. (This keeps us clear of the "database schema" stop rule.)
 - ❌ No email/SMTP, no registration, no forgot-password, no recovery tokens.
-- ❌ No session cookies / "remember me". Session lives in `st.session_state`.
+- ❌ No server-side session store. Session persistence is one signed,
+  expiring cookie (HMAC-SHA256) via the existing `src/cookies.py` pattern —
+  the only client-side auth state.
 - ❌ No Authelia, no external IdP, no OAuth.
 - ❌ No changes to tabs, data flow, SQLite, or the Chat IA pipeline.
 
@@ -43,33 +45,35 @@ Browser ──https──> Caddy (TLS only, no basic_auth) ──> Streamlit
                                               │ reads/writes data/auth.json
                                                           │
 SSH ──> /usr/local/bin/radtracker-auth ──> docker compose exec
-              streamlit python /app/scripts/manage_auth.py
+              streamlit python -m scripts.manage_auth
 ```
 
 | Concern | Where |
 |---------|-------|
 | Create user/password (bootstrap) | Ansible deploy → `src/auth_bootstrap.py` in container |
 | Manage 2FA (QR, validation, resets) | SSH script `scripts/manage_auth.py` |
-| Verify password + TOTP + re-auth | App gate (`src/ui/login.py` + helpers in `src/auth_store.py`) |
-| Password hashing | `hashlib.scrypt` in `src/totp.py` (stdlib) |
-| TOTP | RFC 6238, HMAC-SHA1, 6 digits, in `src/totp.py` (stdlib) |
+| Verify password + TOTP + session cookie | App gate (`src/ui/login.py` + helpers in `src/auth_store.py`) |
+| Password hashing | `hashlib.scrypt` in `src/auth_crypto.py` (stdlib) |
+| TOTP | RFC 6238, HMAC-SHA1, 6 digits, in `src/auth_crypto.py` (stdlib) |
 
 ## 4. Files
 
 | File | Action |
 |------|--------|
-| `src/totp.py` | **new** — pure crypto (scrypt, TOTP, otpauth URI). No I/O, no Streamlit. |
+| `src/auth_crypto.py` | **new** — pure crypto (scrypt, TOTP, otpauth URI). No I/O, no Streamlit. |
 | `src/auth_store.py` | **new** — `auth.json` load/save/validate + pure gate-logic helpers. No Streamlit. |
+| `src/cookies.py` | **modify** — add session-cookie helpers (get/set/delete `radtracker_session`) using `CookieManager.set(..., max_age, secure)` / `delete()` — the existing dict-style helpers don't expose expiry/secure flags. |
 | `src/auth_bootstrap.py` | **new** — non-interactive bootstrap (run by Ansible in container). |
-| `src/ui/login.py` | **new** — Streamlit gate UI: login, TOTP step, re-auth, banner, logout. |
+| `src/ui/login.py` | **new** — Streamlit gate UI: session restore, login, TOTP step, banner, logout. |
 | `scripts/manage_auth.py` | **new** — interactive KIAUH-style CLI (SSH). |
 | `app.py` | **modify** — insert gate after `st.set_page_config`, before `get_connection()`. |
-| `tests/test_totp.py` | **new** |
+| `tests/test_auth_crypto.py` | **new** |
 | `tests/test_auth_store.py` | **new** |
+| `tests/test_auth_bootstrap.py` | **new** — tmp_path fixtures, `python -m src.auth_bootstrap` via subprocess (§11) |
 | `Dockerfile` | **modify** — add `qrencode` to runtime stage apt install. |
 | `Caddyfile` + `ansible/templates/Caddyfile.j2` | **modify** — remove `basic_auth` block. |
 | `ansible/templates/.env.j2` | **modify** — remove `BASICAUTH_USERS` line. |
-| `ansible/group_vars/all.yml` | **modify** — add `auth_username`/`auth_password` (vault); remove `basicauth_users`. |
+| `ansible/group_vars/all.yml` | **modify** — add `auth_username`/`auth_password` (vault). **Keep** `basicauth_users` until the production cutover is validated (§16); remove in a follow-up. |
 | `ansible/playbooks/deploy.yml` | **modify** — bootstrap task, fail2ban → sshd jail, stale-file cleanup. |
 | `ansible/playbooks/cleanup.yml` | **modify** — replace radtracker jail/filter removal with sshd jail. |
 | `ansible/playbooks/health.yml` | **modify** — keep fail2ban check (no jail-specific assertion needed). |
@@ -81,7 +85,7 @@ SSH ──> /usr/local/bin/radtracker-auth ──> docker compose exec
 
 ---
 
-## 5. `src/totp.py` — pure crypto (spec)
+## 5. `src/auth_crypto.py` — pure crypto (spec)
 
 All functions pure, no Streamlit, no filesystem. Explicit types (mypy runs on
 `src/`).
@@ -116,6 +120,18 @@ scrypt$16384$8$1$<salt_hex>$<hash_hex>
 - `otpauth_uri(secret_b32: str, username: str, issuer: str = "radtracker") -> str`
   — `otpauth://totp/{issuer}:{quoted}?secret={secret}&issuer={issuer}` where
   `quoted` is the username URL-encoded (`urllib.parse.quote`).
+
+### Session token (signed cookie value)
+
+- `new_session_secret() -> str` — `secrets.token_hex(32)`.
+- `sign_session(username: str, secret_hex: str, expires: int) -> str` —
+  `f"{expires}.{hmac_hex}"` where `hmac_hex` is HMAC-SHA256 of
+  `f"radtracker-session:{username}:{expires}"` keyed by
+  `bytes.fromhex(secret_hex)`.
+- `verify_session(username: str, secret_hex: str, token: str, now: int)
+  -> bool` — split on `.`, require exactly 2 parts, `int(expires)` must be
+  `> now`, recompute and compare with `hmac.compare_digest`. Returns `False`
+  (never raises) for any malformed token or bad secret.
 
 ### Reference vectors (must pass — RFC 6238 Appendix B, SHA1, 6-digit)
 
@@ -152,12 +168,18 @@ explicit tmp path.
   "totp_required": false,
   "totp_step_seconds": 30,
   "totp_window_steps": 1,
-  "reauth_interval_hours": 24
+  "session_secret": "<64 hex chars>",
+  "session_days": 30,
+  "session_cookie_secure": true
 }
 ```
 
 - `totp_required: false` until `manage_auth.py` activates 2FA.
-- `reauth_interval_hours: 0` = never re-prompt.
+- `session_secret` is generated at bootstrap and signs the session cookie.
+  Changing the password rotates it (§9 option 3) — invalidating all cookies.
+- `session_cookie_secure: false` only on plain-HTTP LAN deploys (browsers
+  refuse `Secure` cookies over HTTP); Ansible writes it from
+  `deployment_mode` (§8, §10).
 
 ### Functions
 
@@ -167,30 +189,33 @@ explicit tmp path.
   correct types). Raise `AuthError` on missing file, invalid JSON, or invalid
   schema. **Fail loud — never a silent default.**
 - `save_auth(auth: dict, path: str) -> None` — atomic: write to
-  `path + ".tmp"`, `os.replace`, then `os.chmod(path, 0o600)`.
+  `path + ".tmp"`, `os.chmod(tmp, 0o600)` **before** `os.replace` (chmod
+  after replace leaves a window with umask perms — 0644 exposes the password
+  hash and TOTP secret).
 - `create_bootstrap_auth(username: str, password: str, path: str) -> str` —
   **idempotent**: if `path` exists → return `"exists"` (no-op, never
   overwrite — the user may have changed things via the SSH script). Else write
-  bootstrap (2FA off, defaults above) and return `"created"`.
+  bootstrap (2FA off, defaults above) and return `"created"`. Raise
+  `AuthError` if `password` has fewer than 8 chars — same floor as
+  `manage_auth.py` option 3; a weak vault password would otherwise become a
+  weak web login with no network-level rate limit (§15).
 - Pure gate helpers (no `st`, unit-testable):
   - `verify_login(auth: dict, username: str, password: str) -> bool`
   - `is_totp_required(auth: dict) -> bool`
   - `verify_totp_code(auth: dict, code: str, now: int) -> bool` — uses
     `auth["totp_secret"]`, `totp_step_seconds`, `totp_window_steps`; returns
     `False` (never raises) when `totp_secret` is `None` or empty.
-  - `should_reauth(auth: dict, last_code_ts: int, now: int) -> bool` —
-    `False` if `not is_totp_required(auth)` **or** `reauth_interval_hours == 0`;
-    else `now - last_code_ts >= reauth_interval_hours * 3600`. (Without the
-    `totp_required` guard: 2FA disabled + interval set would demand a code the
-    app cannot verify — `totp_secret` is `None`.)
-  - `lockout_status(attempts: int, lockout_until: int, now: int) -> tuple[bool, int]`
-    — returns `(locked, seconds_remaining)`; lockout when
-    `now < lockout_until`.
+  - `new_session_token(auth: dict, now: int) -> str` —
+    `sign_session(auth["username"], auth["session_secret"],
+    now + auth["session_days"] * 86400)`.
+  - `verify_session_token(auth: dict, token: str, now: int) -> bool` —
+    wraps `verify_session` with the stored username/secret; `False` (never
+    raises) for `None`/empty/malformed tokens.
 
 ### Session-state keys (used by the gate)
 
-`auth_authenticated`, `auth_username`, `auth_last_code_ts`,
-`auth_failed_attempts`, `auth_lockout_until`.
+`auth_authenticated`, `auth_username`. Everything else lives in the signed
+cookie — no failed-attempt counters, no re-auth timestamps (§13).
 
 ---
 
@@ -201,10 +226,14 @@ before `get_connection()` / `init_db()` / sidebar / tabs. `set_page_config`
 must stay the first Streamlit command.
 
 ```python
-# after set_page_config
-from src.auth_store import AUTH_PATH, load_auth, AuthError
+# top of app.py, with the existing imports
+# (imports after st.set_page_config() trip ruff E402 — keep them at the top)
+from src.auth_store import AUTH_PATH, AuthError, load_auth
 from src.ui.login import render_login_gate, render_logout_button
 
+# ... st.set_page_config(...) stays the first Streamlit command ...
+
+# immediately after set_page_config, before get_connection()
 try:
     auth = load_auth(AUTH_PATH)
 except AuthError as exc:
@@ -220,47 +249,56 @@ render_login_gate(auth)
 
 ### `render_login_gate(auth: dict)` — states (all text PT-BR)
 
+0. **Session restore** — before any form: read the `radtracker_session`
+   cookie (`src/cookies.py` helpers); `verify_session_token` → set
+   `auth_authenticated=True` + `auth_username` and continue, no prompt. This
+   is what keeps F5/new tabs logged in. If the cookie manager is not ready
+   yet (component sync on first run), fall through to the login form — same
+   quirk as the tab cookie, accepted.
 1. **Login form** (`st.form`, `text_input(type="password")` for password):
-   - Submit → `verify_login`. Wrong → increment `auth_failed_attempts`; if
-     `lockout_status` says locked, disable form and show
-     "Muitas tentativas. Tente novamente em Xs." Lockout: 5 attempts → 15 min
-     (`auth_lockout_until = now + 900`).
-   - Correct → if `is_totp_required(auth)` → state 2; else set
-     `auth_authenticated=True`, `auth_last_code_ts=now`, continue.
+   - Submit → `verify_login`. Wrong → generic "Usuário ou senha inválidos."
+     (no counter, no lockout — §13).
+   - Correct → if `is_totp_required(auth)` → state 2; else establish the
+     session (below) and continue.
 2. **TOTP step** — "Código do autenticador" (`text_input(type="password")`,
    `max_chars=6`), submit → `verify_totp_code`; wrong →
-   "Código inválido ou expirado" (also counts as a failed attempt). Correct →
-   `auth_authenticated=True`, `auth_last_code_ts=now`.
-3. **Re-auth** — when `should_reauth(...)` is true, block content and show
-   only the TOTP code field ("Sessão expirada — confirme o código"). Password
-   is **not** re-asked. On success refresh `auth_last_code_ts`.
-4. **2FA-off banner** — when `auth_authenticated` and `not is_totp_required`:
+   "Código inválido ou expirado". Correct → establish session.
+   - **Establish session** = `auth_authenticated=True`, `auth_username`, and
+     persist `new_session_token(auth, now)` as the `radtracker_session`
+     cookie (`max_age = session_days * 86400`, `secure` per
+     `session_cookie_secure`, `samesite="lax"`).
+3. **2FA-off banner** — when `auth_authenticated` and `not is_totp_required`:
    amber banner at top: "⚠️ 2FA desativada — rode `radtracker-auth` no servidor
    para ativar." Visible in the sidebar area or top of main; either is fine,
    keep it constant.
-5. **Missing auth.json** — handled in `app.py` (fail loud, never open).
+4. **Missing auth.json** — handled in `app.py` (fail loud, never open).
 
 ### `render_logout_button()`
 
 Small button in the sidebar (before `render_sidebar`'s own content): clears
-`auth_authenticated`/`auth_last_code_ts`, then `st.rerun()`. Call it from
-`app.py` right after `render_login_gate(auth)`.
+`auth_authenticated`/`auth_username`, deletes the `radtracker_session`
+cookie, then `st.rerun()`. Call it from `app.py` right after
+`render_login_gate(auth)`.
 
 ### Implementation notes (Streamlit specifics)
 
-- Use `st.form` for login/TOTP/re-auth (Enter submits; no rerun per keystroke).
+- Use `st.form` for login/TOTP (Enter submits; no rerun per keystroke).
   This is the **only** `st.form` usage in the project — intentional, since the
   gate is a state machine; note it in a comment.
-- Give every widget a unique `key=` per state (login form, TOTP form, re-auth
-  form render at different times on the same run — avoid duplicate-widget-ID
+- Give every widget a unique `key=` per state (login form and TOTP form can
+  render at different times on the same run — avoid duplicate-widget-ID
   errors).
 - **Never log, print, or write passwords or TOTP codes** (project logging is
   structured JSON; credentials are exempt).
 - The Streamlit healthcheck `/_stcore/health` (loopback, used by compose and
   the playbook) is **unaffected** by the gate — do not touch it.
 
-Accepted behaviors (do not "fix"): each browser tab is its own session and
-logs in independently; no remember-me; a wrong TOTP counts toward the lockout.
+Accepted behaviors (do not "fix"): the session cookie is a signed **bearer
+token** — any browser holding a valid cookie is in until expiry (default 30
+days), explicit logout, or password change (rotates `session_secret`); each
+browser/device logs in independently (cookies are not shared); the first
+load may briefly show the login form while the cookie component syncs (same
+quirk as the tab cookie).
 
 ---
 
@@ -269,8 +307,12 @@ logs in independently; no remember-me; a wrong TOTP counts toward the lockout.
 - Entry: `python -m src.auth_bootstrap` (run inside the container by Ansible,
   cwd `/app`).
 - Reads credentials from `data/.auth_creds` (**relative** — same convention as
-  `AUTH_PATH`; line 1 = username, line 2 = password; Ansible creates and later
-  deletes this file).
+  `AUTH_PATH`; line 1 = username, line 2 = password, optional line 3 =
+  `cookie_secure:true|false`; Ansible creates and later deletes this file).
+  Missing line 3 → `true`.
+- Bootstrap writes the §6 defaults, including a fresh `session_secret`
+  (`new_session_secret()`), `session_days: 30`, and `session_cookie_secure`
+  from the creds flag.
 - Calls `create_bootstrap_auth(...)`; prints `created` or `exists` (stdout —
   Ansible keys `changed_when` off it).
 - Missing creds file **and** missing auth.json → exit 1 with a clear message
@@ -308,10 +350,12 @@ Behavior per option (all writes via `auth_store.save_auth`, atomic, 0600):
 2. **Disable 2FA**: confirm, set `totp_required=false` (keep secret for
    potential re-enable).
 3. **Change password**: `getpass` twice (no echo), require match, min 8 chars,
-   save new hash.
+   save new hash **and rotate `session_secret`** (invalidates all existing
+   session cookies — stolen password changed → old sessions die).
 4. **Change username**: plain prompt, non-empty, save.
-5. **Status**: username, 2FA on/off, step/window, reauth interval, auth.json
-   path + mode — **never print the password hash or TOTP secret**.
+5. **Status**: username, 2FA on/off, step/window, session days, cookie
+   secure flag, auth.json path + mode — **never print the password hash,
+   TOTP secret, or session secret**.
 6. **Repair**: if auth.json missing or `load_auth` raises → offer to re-init
    (username + password, 2FA off). If present → say so and exit.
 
@@ -362,16 +406,22 @@ Runtime stage apt install: add `qrencode` to the existing
 2. **Remove** the "Create Caddy access log file (fail2ban requires it)" task
    (Caddy creates its own log file; the `caddy_logs` volume stays for the
    access log).
-3. **After** the "Run DB migrations" task, add the auth bootstrap block:
-   - `copy` task: `/app/data/.auth_creds` equivalent on host =
-     `{{ radtracker_data_dir }}/.auth_creds`, content
-     `{{ auth_username }}\n{{ auth_password }}\n`, `owner: 1000, group: 1000,
-     mode: "0600"`, `no_log: true`.
-   - `community.docker.docker_compose_v2_exec`: `service: streamlit`,
-     `command: python -m src.auth_bootstrap`,
-     `register: auth_bootstrap`, `changed_when:
-     auth_bootstrap.stdout is search("created")`.
-   - `file: state=absent` for the creds file (cleanup, always).
+3. **After** the "Run DB migrations" task, add the auth bootstrap block —
+   wrapped in `block:`/`always:` so the creds cleanup runs **even when the
+   bootstrap fails** (a failed bootstrap must never leave the plaintext
+   password on disk):
+   - `block:`
+     - `copy` task: `/app/data/.auth_creds` equivalent on host =
+       `{{ radtracker_data_dir }}/.auth_creds`, content
+       `{{ auth_username }}\n{{ auth_password }}\ncookie_secure:{{
+       deployment_mode != "lan" }}\n`, `owner: 1000, group: 1000,
+       mode: "0600"`, `no_log: true`. (LAN = plain HTTP → browsers refuse
+       `Secure` cookies; HTTPS deploys get `True`.)
+     - `community.docker.docker_compose_v2_exec`: `service: streamlit`,
+       `command: python -m src.auth_bootstrap`,
+       `register: auth_bootstrap`, `changed_when:
+       auth_bootstrap.stdout is search("created")`.
+   - `always:` → `file: state=absent` for the creds file.
 4. "Deployment complete" message: append a hint to run
    `radtracker-auth` via SSH to enable 2FA.
 
@@ -393,10 +443,14 @@ Ansible `copy` task creating `/usr/local/bin/radtracker-auth` (mode 0755):
 ```sh
 #!/bin/sh
 exec docker compose --project-directory {{ radtracker_dir }} \
-  exec streamlit python /app/scripts/manage_auth.py
+  exec streamlit python -m scripts.manage_auth
 ```
 
-(`manage_auth.py` is in the image via the existing `COPY . .`.)
+(`manage_auth.py` is in the image via the existing `COPY . .`. **Must run as
+`-m scripts.manage_auth`**: the container `WORKDIR` is `/app`, and
+`python /app/scripts/manage_auth.py` would set `sys.path[0]=/app/scripts`,
+making `import src.*` fail. The `-m` form puts `/app` on `sys.path`;
+`scripts/` works as a namespace package, no `__init__.py` needed.)
 
 - Requires a TTY (interactive menu + QR) — fine under SSH; do **not** add `-T`.
 - Requires the container running; if it is not, let Docker's own error message
@@ -406,7 +460,7 @@ exec docker compose --project-directory {{ radtracker_dir }} \
 
 ## 11. Tests
 
-`tests/test_totp.py`:
+`tests/test_auth_crypto.py`:
 - RFC 6238 vectors from §5 (six rows, explicit `t`).
 - `verify_totp`: current code True; wrong code False; code from
   `window_steps` away True; beyond window False.
@@ -415,6 +469,10 @@ exec docker compose --project-directory {{ radtracker_dir }} \
 - `hash_password`/`verify_password`: roundtrip True; wrong password False;
   tampered stored string (flip a char in hash hex) False; malformed stored
   string False (no exception).
+- `sign_session`/`verify_session`: roundtrip True (fixed
+  username/secret/expires/now); wrong secret False; tampered token False;
+  `now >= expires` False; malformed token False (no exception).
+- `new_session_secret`: 64 hex chars; two calls differ.
 
 `tests/test_auth_bootstrap.py` (tmp_path fixtures, invokes `python -m` via
 `subprocess` with env `PYTHONPATH` pointing at the repo, or calls `main()`
@@ -422,7 +480,9 @@ directly with `sys.argv` monkeypatched — either is fine, assert on exit code
 and stdout):
 - bootstrap with no creds file and no auth.json → exit 1, clear message.
 - bootstrap with creds file → creates auth.json (`created`), 2FA off,
-  defaults, mode 0600.
+  defaults (incl. `session_secret` 64-hex, `session_days` 30,
+  `session_cookie_secure` true), mode 0600.
+- bootstrap with creds line 3 `cookie_secure:false` → schema reflects `false`.
 - bootstrap with existing auth.json → exit 0, `exists`, file untouched
   (modify it first, assert unchanged).
 
@@ -433,10 +493,10 @@ and stdout):
   missing/renamed key → `AuthError`; valid file roundtrip.
 - `save_auth` produces mode 0600.
 - `verify_login` correct/wrong; `is_totp_required` reflects schema.
-- `should_reauth`: interval 0 → always False; just-under threshold False;
-  at threshold True.
-- `lockout_status`: before lockout (False, 0); during (True, seconds > 0);
-  expired (False, 0).
+- `new_session_token`/`verify_session_token`: roundtrip True; tampered
+  signature False; expired `now` False; rotated `session_secret` False;
+  malformed token (no dot, non-int expires, empty) False — never raises.
+  Username change (option 4) invalidates old tokens.
 
 Gate UI is thin; all branch logic lives in the pure helpers above (tested).
 No Streamlit mocking required.
@@ -457,7 +517,7 @@ yamllint .
 Manual spot-check: `uv run streamlit run app.py` locally with a scratch
 `data/auth.json` (create via `python -m src.auth_bootstrap` with a temp creds
 file, or a small python snippet using `src.auth_store`). Then, in the built
-container: `docker compose exec streamlit python /app/scripts/manage_auth.py`
+container: `docker compose exec streamlit python -m scripts.manage_auth`
 → verify QR prints with ANSI half-blocks and the scan + code validation loop
 closes.
 
@@ -468,9 +528,14 @@ closes.
   responsibility). No interactive prompts in Ansible.
 - 2FA setup/reset strictly via SSH script; QR rendered in terminal
   (`qrencode -t ANSIUTF8`); `otpauth://` URI printed as fallback.
-- Re-auth: TOTP-only, every `reauth_interval_hours` (default 24, 0 = off).
-- Lockout: 5 failed attempts → 15 min, per session (accepted limitation;
-  TOTP is the real barrier).
+- Session persistence: signed session cookie (HMAC-SHA256, `session_days`
+  default 30) — F5/new tab stay logged in; logout and password change
+  (rotates `session_secret`) revoke it. The cookie expiry **is** the re-auth
+  interval — there is no separate TOTP re-prompt.
+- No lockout / rate limiting in the app. A per-session lockout is cosmetic
+  against scripts (fresh session = fresh counter) and hostile to humans —
+  removed. Anti-robot protection = TOTP; on the final Cloudflare domain,
+  edge rate limiting (free tier) adds the network-level layer (§16).
 - fail2ban: Caddy 401 jail removed (Streamlit never returns 401); sshd jail
   enabled instead.
 - No new Python dependencies (stdlib + `qrencode` system binary).
@@ -480,7 +545,7 @@ closes.
 
 TDD order (each step green before the next):
 
-1. `src/totp.py` + `tests/test_totp.py`
+1. `src/auth_crypto.py` + `tests/test_auth_crypto.py`
 2. `src/auth_store.py` + `tests/test_auth_store.py`
 3. `src/ui/login.py` + `app.py` gate
 4. `scripts/manage_auth.py` + `src/auth_bootstrap.py` (manual spot-check)
@@ -508,9 +573,73 @@ Conventional commits, one per logical unit, e.g.:
   jail/filter files — the playbook removes them (idempotent upgrade). Existing
   `basicauth_users` vault var is removed; `.env` regenerated without it.
 - **TOTP replay within the 30s window** — standard TOTP behavior, accepted.
-- **Per-session lockout** can be bypassed with fresh sessions — accepted;
-  TOTP is the actual protection.
 - **Accidental commit of secrets** — `.gitignore` must gain `data/auth.json`
   (password hash + TOTP secret) and `data/.auth_creds` (plaintext password)
   **in the same commit** as the auth modules. Currently only `data/*.db` and
   `data/app.log` are ignored.
+- **Web brute force after basic_auth removal** — the fail2ban 401 jail dies
+  with basic_auth and the app has **no rate limiting at all**. TOTP is the
+  barrier, and it is **off until the SSH activation step** — activate 2FA
+  immediately after every deploy (§16). On the final Cloudflare domain, a
+  free-tier rate-limit rule restores network-level protection (§16 phase 4).
+- **Session cookie is a bearer token** — whoever holds a valid cookie is in
+  until expiry. Mitigations: 30-day expiry, logout deletes it, password
+  change rotates `session_secret` (kills all cookies), username change
+  invalidates it (the signature binds the username). `streamlit-extras` sets
+  cookies via a component, so `HttpOnly` is not guaranteed — accepted: the
+  project forbids `unsafe_allow_html` (the usual XSS vector), so token theft
+  via injected JS is out of scope.
+- **`auth.json` is not backed up** — deliberate, not a gap: `backup.yml`
+  exports only `telerrad.db`, keeping password hashes and TOTP/session
+  secrets out of backup rotation. Documented here so nobody "fixes" it by
+  adding secrets to backups. Losing `data/` costs only the credentials:
+  re-init via SSH (`manage_auth.py` option 6) or a redeploy.
+
+---
+
+## 16. Rollout — dev VPS first, production only after validation
+
+Two live targets share one inventory (host from `VPS_HOST`/`VPS_USER` env):
+production `radtracker.duckdns.org` (Oracle) and the LAN dev VPS
+`10.10.10.209` (`deployment_mode=lan`, plain HTTP — the gate works the same).
+Order is mandatory:
+
+1. **Implement + quality gate locally** (§12).
+2. **Dev VPS 10.10.10.209** — full `deploy.yml` with the vault auth vars
+   (`VPS_HOST=10.10.10.209 VPS_USER=galvani ... -e deployment_mode=lan`).
+   Validate before touching production:
+   - gate blocks the app; login works; wrong password → generic error;
+   - **F5 and new tab keep the session** (cookie round-trip over plain HTTP
+     proves `session_cookie_secure=false` took effect);
+   - `radtracker-auth` via SSH: QR renders, phone scans, code activates 2FA;
+   - TOTP login; logout button (cookie deleted → next F5 shows the form);
+   - fail2ban: sshd jail active, old radtracker jail/filter gone;
+   - `health.yml` green; Caddy serves without basic_auth.
+3. **radtracker.duckdns.org (Oracle)** — full `deploy.yml` (default
+   deployment_mode), then **immediately** SSH in and enable 2FA
+   (`radtracker-auth` option 1). Until that step the app is password-only
+   with no network-level brute-force protection (§15).
+4. **Real production domain (Cloudflare free tier)** — only after duckdns is
+   perfect. Same `deploy.yml` with `domain` set to the real domain.
+   Cloudflare specifics:
+   - DNS record **proxied** (orange cloud); SSL/TLS mode **Full (strict)** —
+     Caddy keeps terminating TLS on the origin with its own Let's Encrypt
+     cert, Cloudflare terminates at the edge. Never "Flexible" (edge-only
+     TLS sends credentials to the origin over plain HTTP).
+   - WebSockets pass through Cloudflare free — Streamlit requires them; no
+     extra config.
+   - Cookie behavior unchanged (`session_cookie_secure=true`; Cloudflare
+     forwards cookies transparently).
+   - **Recommended**: a free-tier rate-limit rule on the app and/or Bot
+     Fight Mode — this restores the network-level anti-robot layer that
+     basic_auth + fail2ban used to provide (§15).
+
+**Never use `update.yml` for this cutover.** It re-templates the Caddyfile
+and `.env` and rebuilds, but runs no bootstrap, creates no `radtracker-auth`
+wrapper, and touches no fail2ban config — on an unprepared server it strips
+basic_auth while the new app stops at "Autenticação não configurada". The app
+stays blocked (no data exposure), but it is down until `deploy.yml` runs.
+
+**Rollback compat:** old Caddyfile/.env templates reference `basicauth_users`.
+Keep that vault var in `all.yml` until the production cutover is validated;
+remove it afterwards in a follow-up chore.
