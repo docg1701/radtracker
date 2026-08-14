@@ -40,3 +40,7 @@ dist/
 *.egg-info/
 temp/
 ansible/.vault_pass
+
+# Auth credentials (password hash + TOTP/session secrets)
+data/auth.json
+data/.auth_creds
