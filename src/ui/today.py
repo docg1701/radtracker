@@ -95,7 +95,7 @@ def _render_kpi_row(
     lang: str,
 ) -> None:
     """Render the 4 KPI metric cards."""
-    k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
+    k1, k2, k3, k4 = st.columns(4)
 
     # ── Card 1: Faturamento Hoje ──
     with k1:
@@ -151,17 +151,20 @@ def _render_kpi_row(
             badge_color: Literal["green", "orange"] = (
                 "green" if pct >= 50 else "orange"
             )
+            # First line: label text left, icon-less badge right.
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.caption(f":material/target: {t('web.today.kpi.goal')}")
+                st.space("stretch")
+                st.badge(
+                    t("web.today.badge.on_pace" if pct >= 50 else "web.today.badge.watch"),
+                    color=badge_color,
+                )
             st.metric(
-                label=f":material/target: {t('web.today.kpi.goal')}",
+                label=t("web.today.kpi.goal"),
+                label_visibility="collapsed",
                 value=f"{pct:.0f}%",
-                delta=md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"),
-                delta_color="off",
             )
-            st.badge(
-                t("web.today.badge.on_pace" if pct >= 50 else "web.today.badge.watch"),
-                icon=":material/target:",
-                color=badge_color,
-            )
+            st.caption(md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"))
 
 
 def _build_sparkline_figure(

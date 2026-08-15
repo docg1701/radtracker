@@ -92,8 +92,10 @@ reasoning settings.
   comments, docstrings, logs and docs are English. User data (modality
   labels, user name, custom LLM prompt) is never translated.
 - **No custom CSS / `unsafe_allow_html`** — theming via `.streamlit/config.toml`.
-  Two narrow owner-approved exceptions: one CSS rule for tab font size (no font API
-  exists), and `st.html()` for chat avatar colors.
+  Three narrow owner-approved exceptions in app.py/chat.py: one CSS rule for
+  tab font size (no font API exists), one rule reducing the main
+  block-container top padding (default 6rem was a huge blank band,
+  owner-requested), and `st.html()` for chat avatar colors.
 - **No streamlit-extras dependency** — native widgets only (`st.balloons`,
   `st.expander`; stars as markdown `★/☆`).
 - **No emojis as functional icons** — `:material/` only (balloons are fine).

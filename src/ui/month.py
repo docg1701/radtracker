@@ -125,7 +125,7 @@ def _render_kpi_row(
     stats: dict[str, Any], goal: float, daily_target: float, lang: str,
 ) -> None:
     """Render the 4 KPI metric cards."""
-    k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
+    k1, k2, k3, k4 = st.columns(4)
 
     with k1:
         with st.container(border=True, height="stretch"):
