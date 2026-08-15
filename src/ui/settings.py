@@ -222,7 +222,7 @@ def _render_modality_grid(conn: Any) -> None:
 
     if updated:
         st.button(
-            ":material/save: Salvar modalidades", type="primary",
+            ":material/save: Salvar modalidades",
             on_click=lambda: _save_modalities(conn, updated),
         )
     else:
@@ -269,7 +269,7 @@ def _render_modality_grid(conn: Any) -> None:
 
         with col_save:
             if st.button(
-                ":material/save:", key="mod_new_save", type="primary",
+                ":material/save:", key="mod_new_save",
                 disabled=not new_label,
             ):
                 new_slug = slugify(new_label)
@@ -440,7 +440,7 @@ def _render_ai_section(conn: Any) -> None:
     st.caption("Use {user_name} como placeholder para o nome do usuário.")
 
     st.button(
-        ":material/save: Salvar configurações", type="primary",
+        ":material/save: Salvar configurações",
         on_click=lambda: _save_llm_settings(
             conn, st.session_state.cfg_goal, st.session_state.cfg_name,
             api_key, llm_model, system_prompt,
