@@ -6,6 +6,7 @@ Only st.form usage in the project — the gate is a state machine and
 forms keep Enter-submits atomic (no rerun per keystroke).
 """
 
+import os
 import time
 
 import streamlit as st
@@ -52,32 +53,39 @@ def _app_version() -> str:
 
 
 def render_sidebar_footer(auth: dict) -> None:
-    """Sidebar footer: app version, plus an italic 2FA note when off.
+    """Sidebar footer: version/mode line + 2FA status, same typography.
 
     Usage: `render_sidebar_footer(auth)` in app.py AFTER render_sidebar.
     """
-    st.sidebar.markdown(f"*v{_app_version()}*")
-    if not is_totp_required(auth):
-        st.sidebar.markdown("*2FA desativado.*")
+    st.sidebar.divider()
+    mode = os.environ.get("RADTRACKER_MODE", "local")
+    st.sidebar.caption(f"Radtracker v{_app_version()} · {mode}")
+    if is_totp_required(auth):
+        st.sidebar.caption("2FA ativado.")
+    else:
+        st.sidebar.caption("2FA desativado.")
 
 
 def render_sidebar_header() -> None:
-    """Sidebar top row: the Sair button, only when authenticated.
+    """Sidebar top row: 'Radtracker' h1 left + Sair button right.
 
-    The app name is not repeated here — the Streamlit chrome already shows
-    it in the sidebar footer (dev) / browser tab; duplicating it looked wrong.
-    The gate stops the script before app.py reaches this call when
-    unauthenticated; the guard keeps the invariant explicit.
+    The button is stretched inside its column; the sidebar has a fixed
+    desktop width, so the resulting button width is stable regardless of
+    window size (no letter stacking).
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    if st.sidebar.button("Sair", icon=":material/logout:", key="auth_logout"):
-        st.session_state.auth_authenticated = False
-        st.session_state.pop("auth_username", None)
-        delete_session_token(
-            secure=bool(st.session_state.get("_auth_cookie_secure", True))
-        )
-        st.rerun()
+    title_col, logout_col = st.sidebar.columns([4, 2.5], vertical_alignment="center")
+    with title_col:
+        st.markdown("# Radtracker")
+    with logout_col:
+        if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
+            st.session_state.auth_authenticated = False
+            st.session_state.pop("auth_username", None)
+            delete_session_token(
+                secure=bool(st.session_state.get("_auth_cookie_secure", True))
+            )
+            st.rerun()
 
 
 def _restore_session(auth: dict) -> None:

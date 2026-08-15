@@ -5,25 +5,13 @@ Renders the app title, greeting, date picker, dynamic modality inputs
 (based on st.session_state.active_modalities), and the save button.
 """
 
-import tomllib
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
 from src.db import load_daily_items, upsert_daily_items
 from src.ui.settings import ensure_settings
-
-
-def _get_version() -> str:
-    """Read version from pyproject.toml, searching upward from this file."""
-    for parent in Path(__file__).resolve().parents:
-        candidate = parent / "pyproject.toml"
-        if candidate.exists():
-            with open(candidate, "rb") as f:
-                return tomllib.load(f)["project"]["version"]
-    return "unknown"
 
 
 def render_sidebar(conn: Any) -> None:
@@ -39,19 +27,24 @@ def render_sidebar(conn: Any) -> None:
     active_mods = st.session_state.active_modalities
 
     with st.sidebar:
-        # Header
-        st.markdown("**radtracker**")
+        # Greeting — the Radtracker title + Sair row above comes from
+        # render_sidebar_header() (src/ui/login.py), called before this.
         user_name = st.session_state.get("user_name", "")
         if user_name:
             st.markdown(f"Olá, {user_name}.")
 
-        # Date picker
-        selected_date = st.date_input(
-            "Data",
-            value=date.today(),
-            format="DD/MM/YYYY",
-            max_value=date.today(),
-        )
+        # Date picker — label and box on the same row
+        col_label, col_input = st.columns([1, 3], vertical_alignment="center")
+        with col_label:
+            st.markdown("Data:")
+        with col_input:
+            selected_date = st.date_input(
+                "Data",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                max_value=date.today(),
+                label_visibility="collapsed",
+            )
         date_str = selected_date.isoformat()
 
         if not active_mods:
@@ -84,10 +77,10 @@ def render_sidebar(conn: Any) -> None:
                 )
                 values[slug] = val
 
-        # Save button
+        # Save button — natural width, left aligned
         if st.button(
-            "Salvar produção", icon=":material/save:",
-            type="primary", width="stretch",
+            "Salvar", icon=":material/save:",
+            type="primary",
         ):
             with st.spinner("Salvando..."):
                 # Send all values — zeros will be deleted, non-zeros upserted
@@ -97,6 +90,3 @@ def render_sidebar(conn: Any) -> None:
             formatted = selected_date.strftime("%d/%m")
             st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
             st.rerun()
-
-        # Footer
-        st.caption(f"radtracker v{_get_version()} · local")
