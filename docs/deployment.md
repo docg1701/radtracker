@@ -354,9 +354,12 @@ Regra única para todo o login:
 |-------|-------|
 | Nome | `radtracker-login` |
 | Expression | `http.host eq "radtracker.drgalvanimd.com" and http.request.method eq "POST" and http.request.uri.path eq "/"` |
-| Limite | 10 requisições / 1 minuto |
-| Ação | Block (10 minutos) |
-| Sensitivity | High |
+| Limite | 10 requisições / 10 segundos |
+| Ação | Block (10 segundos) |
+
+> No plano Free, período e duração do block são **fixos em 10 segundos** —
+> valores maiores exigem plano pago. A regra estrangula rajadas de brute
+> force; tentativas espaçadas são contidas por scrypt + TOTP.
 
 Por que essa expressão: o formulário de login e o passo TOTP do Streamlit
 são os únicos `POST` em `/` — o app autenticado roda sobre um único
