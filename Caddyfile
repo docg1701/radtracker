@@ -1,8 +1,7 @@
 {$DOMAIN:localhost} {
     log {
-        output file /var/log/caddy/access.log {
-            format console
-        }
+        output file /var/log/caddy/access.log
+        format console
     }
 
     # Prevent browser from caching HTML pages — critical for Streamlit.
