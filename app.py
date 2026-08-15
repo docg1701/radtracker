@@ -19,7 +19,6 @@ from src.i18n import t
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
 from src.ui.login import (
-    render_language_selector,
     render_login_gate,
     render_logout_button,
     render_sidebar_footer,
@@ -56,12 +55,9 @@ except AuthError as exc:
     st.error(t("web.auth.unavailable"))
     st.stop()
 
-# Language selector on the login screen (sidebar footer zone). Post-login it
-# renders inside render_sidebar_footer — the two call sites are mutually
-# exclusive per run, so the widget never renders twice.
-if not st.session_state.get("auth_authenticated"):
-    render_language_selector()
-
+# Language selector placement (see render_login_gate docstring in
+# src/ui/login.py): rendered by the gate when unauthenticated (login screen)
+# or by render_sidebar_footer when authenticated — never both in one run.
 render_login_gate(auth)
 render_sidebar_header()
 # Database initialization (idempotent)

@@ -62,12 +62,20 @@ def render_login_gate(auth: dict) -> None:
     Session restore runs only when the key is absent (once per server
     session) — after logout the key is False and the (async) cookie delete
     must not immediately re-authenticate.
+
+    Invariant: the language selector renders in exactly one of two
+    mutually exclusive spots per run — here (unauthenticated, before
+    st.stop) or in render_sidebar_footer (authenticated). It must NOT be
+    rendered before the gate: on a cookie-restore run, session state is
+    still unauthenticated at that point, so both spots would render and
+    Streamlit raises StreamlitDuplicateElementKey.
     """
     render_cookie_writer()
     if "auth_authenticated" not in st.session_state:
         _restore_session(auth)
     if st.session_state.get("auth_authenticated"):
         return
+    render_language_selector()
     _render_login_form(auth)
     st.stop()
 
