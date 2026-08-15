@@ -10,8 +10,6 @@ You are working on **radtracker**, a personal productivity dashboard for a teler
 
 You will be modifying Python code in the `src/` tree, the Streamlit entry point `app.py`, the config `.streamlit/config.toml`, the test suite in `tests/`, Docker/deployment files at the project root, or Ansible playbooks in `ansible/`.
 
-**Current release:** v1.8.1.
-
 ---
 
 ## Tech Stack
