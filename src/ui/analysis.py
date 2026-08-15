@@ -23,7 +23,7 @@ from src.ui.settings import ensure_settings
 
 
 def render_analysis_tab(conn: Any) -> None:
-    """Render the complete "Análise & Insights" tab."""
+    """Render the complete Analysis tab."""
     today = date.today()
     year_month = today.isoformat()[:7]
 

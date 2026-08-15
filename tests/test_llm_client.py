@@ -168,7 +168,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_empty_response(self):
-        """SSE válido mas sem nenhum token deve levantar LLMUnavailableError."""
+        """Valid SSE with no tokens must raise LLMUnavailableError."""
         respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks("data: [DONE]")
         )
@@ -206,7 +206,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_malformed_sse(self):
-        """Linhas com JSON inválido ou sem choices são ignoradas; tokens válidos são yield."""
+        """Lines with invalid JSON or no choices are ignored; valid tokens are yielded."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 "data: not json",
@@ -223,7 +223,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_delta_content_null(self):
-        """delta.content = null não deve quebrar nem yield nada."""
+        """delta.content = null must not crash nor yield anything."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":null}}]}',
@@ -238,7 +238,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_delta_content_empty_string(self):
-        """delta.content = "" (falsy) não deve setar yielded_any nem yield."""
+        """delta.content = "" (falsy) must not set yielded_any nor yield."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":""}}]}',
@@ -336,7 +336,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_reasoning_none_when_no_tokens(self):
-        """Todas as tuplas são ("content", ...) quando não há reasoning."""
+        """All tuples are ("content", ...) when there is no reasoning."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":"Plain"}}]}',
@@ -377,7 +377,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_yields_reasoning_and_content_tuples(self):
-        """Tokens de reasoning e content são yieldados como tuplas (tipo, valor)."""
+        """Reasoning and content tokens are yielded as (kind, value) tuples."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"reasoning_content":"Pensando..."}}]}',
@@ -396,7 +396,7 @@ class TestGenerateStream:
 
     @respx.mock
     def test_generate_stream_content_only_no_reasoning_tuples(self):
-        """Sem reasoning, todas as tuplas são ("content", ...)."""
+        """Without reasoning, all tuples are ("content", ...)."""
         route = respx.post(_OPENROUTER_URL).mock(
             return_value=_sse_chunks(
                 'data: {"choices":[{"delta":{"content":"Plain"}}]}',

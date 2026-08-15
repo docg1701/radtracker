@@ -17,8 +17,8 @@ from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.common import get_historical_stats, render_empty_state
 from src.ui.settings import ensure_settings
 
-_MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
-_REASONING_STATUS_MAX_CHARS = 80  # truncamento do snippet de thinking (uma linha no status)
+_MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 messages)
+_REASONING_STATUS_MAX_CHARS = 80  # truncates the reasoning snippet (one status line)
 
 _SUGGESTION_KEYS = (
     "web.chat.sugg.q1",
@@ -219,7 +219,7 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             for token_type, token in raw_stream:
                 if token_type == "reasoning":
                     reasoning_acc += token
-                    # Mostra a última frase completa (até 45 chars)
+                    # Show the last complete sentence (up to 45 chars)
                     last_period = reasoning_acc.rfind(". ")
                     if last_period > 0:
                         sentence = reasoning_acc[last_period + 2:]

@@ -22,14 +22,14 @@ def _stats(**over):
 
 
 def test_no_alert_when_month_just_started_few_elapsed_days():
-    # 4 dias decorridos, mesmo atrás → sem alerta (supressão early-month).
+    # 4 elapsed days, even behind → no alert (early-month suppression).
     assert _should_show_rhythm_alert(
         _stats(elapsed_days=4, mtd_earnings=1000.0, pct_goal=2.2), 45000.0
     ) is False
 
 
 def test_alert_when_behind_pace_after_enough_elapsed_days():
-    # 15 decorridos de 30 (expected 50%), mtd 20k de meta 45k → atrás → alerta.
+    # 15 elapsed of 30 (expected 50%), mtd 20k of 45k goal → behind → alert.
     assert _should_show_rhythm_alert(
         _stats(elapsed_days=15, mtd_earnings=20000.0, pct_goal=44.4, remaining_days=15),
         45000.0,
@@ -37,9 +37,9 @@ def test_alert_when_behind_pace_after_enough_elapsed_days():
 
 
 def test_alert_shown_with_low_days_worked_but_high_elapsed():
-    # A mudança-chave: poucos dias trabalhados (2) mas muitos decorridos (15)
-    # ainda dispara alerta — a supressão early-month é por dias decorridos,
-    # não por dias trabalhados (consistente com o modelo por dia corrido).
+    # The key change: few worked days (2) but many elapsed (15) still fires the
+    # alert — early-month suppression is by elapsed days, not worked days
+    # (consistent with the per-calendar-day model).
     assert _should_show_rhythm_alert(
         _stats(days_worked=2, elapsed_days=15, mtd_earnings=5000.0, pct_goal=11.1),
         45000.0,

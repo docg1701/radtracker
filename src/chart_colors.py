@@ -17,7 +17,7 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-# Modalidade → cor fixa (5 modalidades seed; demais vêm da coluna color no DB)
+# Modality → fixed color (5 seed modalities; the rest come from the DB color column)
 MODALITY_COLORS: dict[str, str] = {
     "radiografia": "#2563EB",              # Blue-600
     "tc_geral": "#6366F1",                 # Indigo-500

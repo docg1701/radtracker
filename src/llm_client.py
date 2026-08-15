@@ -338,7 +338,7 @@ class LLMClient:
 
     @property
     def reasoning(self) -> str | None:
-        """Texto completo do reasoning acumulado no último generate_stream()."""
+        """Full reasoning text accumulated in the last generate_stream()."""
         joined = "".join(self._reasoning_buffer)
         return joined if joined else None
 
@@ -351,32 +351,32 @@ class LLMClient:
         thinking_mode: str = "effort",        # "effort"|"budget"
         temperature: float = 0.3,
     ) -> Generator[tuple[str, str], None, None]:
-        """Chama OpenRouter com stream=True e faz yield de tuplas (tipo, token).
+        """Call OpenRouter with stream=True, yielding (kind, token) tuples.
 
         Args:
-            messages: Lista completa de mensagens (system + user + assistant).
-                O chamador é responsável por incluir o system prompt com
-                contexto RAG.
-            thinking_enabled: Se False, envia reasoning.enabled=False.
-            thinking_effort: Nível de esforço do reasoning (low|medium|high|xhigh).
-                Só usado quando thinking_mode="effort".
-            thinking_budget: Orçamento exato de tokens de reasoning (1024–32000).
-                Só usado quando thinking_mode="budget".
-            thinking_mode: Qual usar ("effort" ou "budget").
-            temperature: Controla aleatoriedade (0.0–2.0).
+            messages: Full message list (system + user + assistant).
+                The caller is responsible for including the system prompt
+                with the RAG context.
+            thinking_enabled: If False, sends reasoning.enabled=False.
+            thinking_effort: Reasoning effort level (low|medium|high|xhigh).
+                Only used when thinking_mode="effort".
+            thinking_budget: Exact reasoning token budget (1024–32000).
+                Only used when thinking_mode="budget".
+            thinking_mode: Which one to use ("effort" or "budget").
+            temperature: Controls randomness (0.0–2.0).
 
         Yields:
-            Tuplas (tipo, texto) onde tipo é "reasoning" (pensamento do modelo)
-            ou "content" (resposta visível).
+            Tuples (kind, text) where kind is "reasoning" (model thinking)
+            or "content" (visible answer).
 
         Raises:
-            LLMUnavailableError: timeout, HTTP/network error, ou rate limit.
+            LLMUnavailableError: timeout, HTTP/network error, or rate limit.
 
         Example:
             >>> llm = LLMClient("sk-test", "model")
-            >>> for tipo, token in llm.generate_stream(
+            >>> for kind, token in llm.generate_stream(
             ...     messages, thinking_enabled=False, temperature=0.5):
-            ...     if tipo == "content":
+            ...     if kind == "content":
             ...         print(token, end="")
         """
         self._reasoning_buffer = []
@@ -395,7 +395,7 @@ class LLMClient:
                 _OPENROUTER_URL,
                 headers=self._headers(),
                 json=payload,
-                timeout=30.0,  # 30s para connect + read (vs 15s do não-streaming)
+                timeout=30.0,  # 30s for connect + read (vs 15s non-streaming)
             ) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
@@ -467,21 +467,21 @@ class LLMClient:
         thinking_mode: str = "effort",
         temperature: float = 0.3,
     ) -> dict[str, Any]:
-        """Monta o payload para generate_stream() seguindo especificação OpenRouter.
+        """Build the payload for generate_stream() per the OpenRouter spec.
 
         Args:
             messages: Lista de mensagens no formato OpenAI.
             thinking_enabled: Se False, envia reasoning.enabled=False.
-            thinking_effort: Nível de esforço (low|medium|high|xhigh).
-            thinking_budget: Orçamento exato de tokens (1024–32000).
-            thinking_mode: Qual usar ("effort" ou "budget").
-            temperature: Controla aleatoriedade (0.0–2.0).
+            thinking_effort: Effort level (low|medium|high|xhigh).
+            thinking_budget: Exact token budget (1024–32000).
+            thinking_mode: Which one to use ("effort" or "budget").
+            temperature: Controls randomness (0.0–2.0).
 
         Returns:
-            Dicionário com o payload JSON para OpenRouter.
+            Dict with the JSON payload for OpenRouter.
 
         Note:
-            max_tokens NÃO é enviado — cada modelo decide seu próprio teto de output.
+            max_tokens is NOT sent — each model decides its own output cap.
             thinking_mode decide se usa effort ou budget.
 
         Example:

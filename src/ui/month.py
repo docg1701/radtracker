@@ -29,7 +29,7 @@ from src.ui.settings import ensure_settings
 
 
 def render_month_tab(conn: Any) -> None:
-    """Render the complete "Mês Atual" tab."""
+    """Render the complete This Month tab."""
     today = date.today()
     year_month = today.isoformat()[:7]
 
