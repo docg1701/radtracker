@@ -18,6 +18,7 @@ from src.calculations import (
 from src.charts import build_daily_sparkline, build_modality_bar
 from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
+from src.i18n import t
 from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
 
@@ -35,7 +36,7 @@ def render_today_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/content_paste:",
-            "Nenhuma modalidade ativa. Configure na aba Configuração.",
+            t("web.tabs.no_modalities_plain"),
         )
         return
 
@@ -44,8 +45,8 @@ def render_today_tab(conn: Any) -> None:
     if not stats["has_data"]:
         render_empty_state(
             ":material/content_paste:",
-            "Comece registrando sua produção de hoje na **barra lateral**.",
-            caption="Os dados aparecerão aqui assim que você salvar.",
+            t("web.today.start_hint"),
+            caption=t("web.today.start_caption"),
         )
         return
 
@@ -55,7 +56,7 @@ def render_today_tab(conn: Any) -> None:
     # ── Donut + Sparkline ──
     spark = _build_sparkline_figure(conn, year_month, active_mods)
 
-    st.subheader(":material/dashboard: Visão geral")
+    st.subheader(f":material/dashboard: {t('web.today.overview')}")
     col_left, col_right = st.columns(2)
     with col_left:
         bar_chart = build_modality_bar(
@@ -68,13 +69,13 @@ def render_today_tab(conn: Any) -> None:
             st.plotly_chart(spark, width="stretch")
 
     # ── Raw data toggle ──
-    raw_lines = [f"Data: {today_str}"]
+    raw_lines = [f"{t('web.sidebar.date_label')} {today_str}"]
     for slug, count in stats["modality_counts"].items():
         label = stats["modality_labels"].get(slug, slug)
         raw_lines.append(f"{label}: {count}")
-    raw_lines.append(f"Faturamento: {fmt_brl(stats['earnings_today'])}")
-    raw_lines.append(f"Horas: {stats['estimated_hours']:.1f}h")
-    with st.expander("Ver dados brutos"):
+    raw_lines.append(f"{t('web.today.raw.revenue')} {fmt_brl(stats['earnings_today'])}")
+    raw_lines.append(f"{t('web.today.raw.hours')} {stats['estimated_hours']:.1f}h")
+    with st.expander(t("web.common.view_raw_data")):
         st.text("\n".join(raw_lines))
 
 
@@ -98,12 +99,15 @@ def _render_kpi_row(
         with st.container(border=True, height="stretch"):
             earnings = stats["earnings_today"]
             if stats["delta_pct"] is not None:
-                delta_str = f"{stats['delta_pct']:+.1f}% vs ontem"
+                delta_str = t(
+                    "web.today.kpi.vs_yesterday",
+                    delta=f"{stats['delta_pct']:+.1f}%",
+                )
             else:
-                delta_str = "— sem dados de ontem"
+                delta_str = t("web.today.kpi.no_yesterday")
 
             st.metric(
-                label=":material/payments: Faturamento hoje",
+                label=f":material/payments: {t('web.today.kpi.earnings')}",
                 value=fmt_brl(earnings),
                 delta=delta_str,
                 delta_color="normal" if stats["delta_pct"] is not None else "off",
@@ -120,7 +124,7 @@ def _render_kpi_row(
             pills = "  ·  ".join(parts) if parts else "—"
 
             st.metric(
-                label=":material/content_paste: Exames hoje",
+                label=f":material/content_paste: {t('web.today.kpi.exams')}",
                 value=str(total),
                 delta=pills,
                 delta_color="off",
@@ -131,7 +135,7 @@ def _render_kpi_row(
         with st.container(border=True, height="stretch"):
             hours = stats["estimated_hours"]
             st.metric(
-                label=":material/timer: Horas estimadas",
+                label=f":material/timer: {t('web.today.kpi.hours')}",
                 value=f"{hours:.1f}h",
             )
 
@@ -145,13 +149,13 @@ def _render_kpi_row(
                 "green" if pct >= 50 else "orange"
             )
             st.metric(
-                label=":material/target: Meta mensal",
+                label=f":material/target: {t('web.today.kpi.goal')}",
                 value=f"{pct:.0f}%",
                 delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(goal)}"),
                 delta_color="off",
             )
             st.badge(
-                "No ritmo" if pct >= 50 else "Atenção",
+                t("web.today.badge.on_pace" if pct >= 50 else "web.today.badge.watch"),
                 icon=":material/target:",
                 color=badge_color,
             )

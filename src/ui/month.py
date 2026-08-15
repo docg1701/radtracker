@@ -23,6 +23,7 @@ from src.charts import (
 )
 from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
+from src.i18n import t
 from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
 
@@ -39,7 +40,7 @@ def render_month_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/calendar_month:",
-            "Nenhuma modalidade ativa. Configure na aba **Configuração**.",
+            t("web.tabs.no_modalities_bold"),
         )
         return
 
@@ -49,8 +50,8 @@ def render_month_tab(conn: Any) -> None:
     if stats["days_worked"] == 0:
         render_empty_state(
             ":material/calendar_month:",
-            "Comece registrando sua produção na **barra lateral**.",
-            caption="Os dados mensais aparecerão aqui.",
+            t("web.month.start_hint"),
+            caption=t("web.month.start_caption"),
         )
         return
 
@@ -78,17 +79,17 @@ def render_month_tab(conn: Any) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader(":material/trending_up: Faturamento diário")
+        st.subheader(f":material/trending_up: {t('web.month.chart.daily')}")
         if not earn_df.empty:
             line_chart = build_monthly_earnings_chart(
                 earn_df, daily_target, year_month
             )
             st.plotly_chart(line_chart, width="stretch")
         else:
-            st.info("Sem dados para o gráfico diário.")
+            st.info(t("web.month.chart.no_daily"))
 
     with col_right:
-        st.subheader(":material/pie_chart: Receita por Modalidade")
+        st.subheader(f":material/pie_chart: {t('web.month.chart.by_modality')}")
         items_df = attach_revenue(conn, load_month_items(conn, year_month))
         donut = build_monthly_modality_donut(items_df, active_mods)
         st.plotly_chart(donut, width="stretch")
@@ -98,7 +99,7 @@ def render_month_tab(conn: Any) -> None:
 
     # ── Raw data toggle ──
     if not earn_df.empty:
-        with st.expander("Ver dados brutos"):
+        with st.expander(t("web.common.view_raw_data")):
             st.text(earn_df.to_string(index=False))
 
 
@@ -128,10 +129,13 @@ def _render_kpi_row(
     with k1:
         with st.container(border=True, height="stretch"):
             st.metric(
-                label=":material/payments: Faturamento MTD",
+                label=f":material/payments: {t('web.month.kpi.mtd')}",
                 value=fmt_brl(stats["mtd_earnings"]),
                 delta=md_escape(
-                    f"{fmt_brl(stats['projection_month_end'])} projetado"
+                    t(
+                        "web.month.kpi.projected",
+                        value=fmt_brl(stats["projection_month_end"]),
+                    )
                 ),
                 delta_color="off",
             )
@@ -139,7 +143,7 @@ def _render_kpi_row(
     with k2:
         with st.container(border=True, height="stretch"):
             st.metric(
-                label=":material/target: % da meta",
+                label=f":material/target: {t('web.month.kpi.goal_pct')}",
                 value=f"{stats['pct_goal']:.0f}%",
                 delta=md_escape(
                     f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"
@@ -150,18 +154,28 @@ def _render_kpi_row(
     with k3:
         with st.container(border=True, height="stretch"):
             st.metric(
-                label=":material/calendar_month: Dias trabalhados",
-                value=f"{stats['days_worked']} de {stats['total_calendar_days']}",
-                delta=f"{stats['remaining_days']} restantes",
+                label=f":material/calendar_month: {t('web.month.kpi.days')}",
+                value=t(
+                    "web.month.kpi.days_value",
+                    worked=stats["days_worked"],
+                    total=stats["total_calendar_days"],
+                ),
+                delta=t(
+                    "web.month.kpi.remaining",
+                    count=stats["remaining_days"],
+                ),
                 delta_color="off",
             )
 
     with k4:
         with st.container(border=True, height="stretch"):
             st.metric(
-                label=":material/trending_up: Média diária",
+                label=f":material/trending_up: {t('web.month.kpi.daily_avg')}",
                 value=fmt_brl(stats["daily_avg"]),
-                delta=f"Alvo: {md_escape(fmt_brl(daily_target))}/dia",
+                delta=t(
+                    "web.month.kpi.target",
+                    value=md_escape(fmt_brl(daily_target)),
+                ),
                 delta_color="off",
             )
 
@@ -195,17 +209,22 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
     remaining = stats["remaining_days"]
     needed = stats["daily_target_needed"]
 
-    day_text = "1 dia" if remaining == 1 else f"{remaining} dias"
+    day_text = (
+        t("web.month.day_one")
+        if remaining == 1
+        else t("web.month.day_many", count=remaining)
+    )
 
     st.warning(
-        ":material/warning: **Atenção ao ritmo**\n\n"
-        f"{st.session_state.get('user_name', '')}, "
-        f"você está atrás do ritmo para bater a meta "
-        f"de {md_escape(fmt_brl(goal))}.\n\n"
-        f"Faltam {md_escape(fmt_brl(missing))} em {day_text} — "
-        f"você precisa de **{md_escape(fmt_brl(needed))}/dia** "
-        f"daqui pra frente.\n\n"
-        f"Sua média atual: {md_escape(fmt_brl(stats['daily_avg']))}/dia."
+        t(
+            "web.month.rhythm_alert",
+            name=st.session_state.get("user_name", ""),
+            goal=md_escape(fmt_brl(goal)),
+            missing=md_escape(fmt_brl(missing)),
+            days=day_text,
+            needed=md_escape(fmt_brl(needed)),
+            avg=md_escape(fmt_brl(stats["daily_avg"])),
+        )
     )
 
 
@@ -217,5 +236,5 @@ def _maybe_celebrate(pct_goal: float, year_month: str) -> None:
     if st.session_state.get(celebrate_key):
         return
     st.balloons()
-    st.toast(":material/check_circle: Meta do mês atingida! Parabéns!")
+    st.toast(f":material/check_circle: {t('web.month.goal_toast')}")
     st.session_state[celebrate_key] = True

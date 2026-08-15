@@ -16,6 +16,7 @@ from src.charts_analysis import (
     build_ytd_earnings_chart,
 )
 from src.formatting import md_escape
+from src.i18n import t
 from src.insights_rules import generate_rule_insights
 from src.ui.common import get_historical_stats, render_empty_state
 from src.ui.settings import ensure_settings
@@ -33,7 +34,7 @@ def render_analysis_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/bar_chart:",
-            "Nenhuma modalidade ativa. Configure na aba **Configuração**.",
+            t("web.tabs.no_modalities_bold"),
         )
         return
 
@@ -43,13 +44,13 @@ def render_analysis_tab(conn: Any) -> None:
     if df is None or len(df) == 0:
         render_empty_state(
             ":material/bar_chart:",
-            "Registre sua produção na **barra lateral**.",
-            caption="As análises históricas aparecerão aqui.",
+            t("web.analysis.start_hint"),
+            caption=t("web.analysis.start_caption"),
         )
         return
 
     # ── Insights por regras ──
-    with st.expander(":material/lightbulb: Insights", expanded=True):
+    with st.expander(f":material/lightbulb: {t('web.analysis.insights')}", expanded=True):
         rule_text = generate_rule_insights(stats)
         _render_insight_body(rule_text)
 
@@ -57,31 +58,31 @@ def render_analysis_tab(conn: Any) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader(":material/trending_up: Médias móveis")
+        st.subheader(f":material/trending_up: {t('web.analysis.moving_avg')}")
         current_month_df = df[df["date"].str[:7] == year_month]
         if current_month_df.empty:
-            st.info("Nenhum dado no mês atual.")
+            st.info(t("web.analysis.no_current_month"))
         else:
             ma_chart = build_moving_averages_chart(current_month_df, year_month)
             st.plotly_chart(ma_chart, width="stretch")
 
     with col_right:
-        st.subheader(":material/analytics: Comparação semanal")
+        st.subheader(f":material/analytics: {t('web.analysis.weekly')}")
         wow_items = stats["items_df"]
         wow_chart = build_wow_comparison_chart(wow_items, active_mods)
         st.plotly_chart(wow_chart, width="stretch")
 
     # ── Modality Mix Evolution ──
-    st.subheader(":material/pie_chart: Evolução do mix de modalidades")
+    st.subheader(f":material/pie_chart: {t('web.analysis.mix')}")
     mix_history = stats.get("modality_mix_historical", {})
     if mix_history:
         mix_chart = build_modality_mix_evolution(mix_history, active_mods)
         st.plotly_chart(mix_chart, width="stretch")
     else:
-        st.info("Dados insuficientes para evolução do mix.")
+        st.info(t("web.analysis.mix_no_data"))
 
     # ── YTD Earnings ──
-    st.subheader(":material/bar_chart: Faturamento por mês")
+    st.subheader(f":material/bar_chart: {t('web.analysis.by_month')}")
     ytd_chart = build_ytd_earnings_chart(df, year_month, goal)
     st.plotly_chart(ytd_chart, width="stretch")
 
@@ -92,6 +93,6 @@ def render_analysis_tab(conn: Any) -> None:
 
 def _render_insight_body(text: str) -> None:
     """Render insight markdown with a source caption."""
-    caption = ":material/bar_chart: Análise automática baseada nos seus dados"
+    caption = f":material/bar_chart: {t('web.analysis.insights_caption')}"
     st.markdown(md_escape(text))
     st.caption(caption)
