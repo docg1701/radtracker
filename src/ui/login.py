@@ -61,20 +61,27 @@ def render_sidebar_footer(auth: dict) -> None:
         st.sidebar.markdown("*2FA desativado.*")
 
 
-def render_logout_button() -> None:
-    """Header logout button, rendered in the title row of the main area.
+def render_sidebar_header() -> None:
+    """Sidebar title row: 'Radtracker' left + Sair right, only when authenticated.
 
-    Only rendered while authenticated — a stale button must never survive
-    into the login screen (the gate stops the script before app.py reaches
-    this call, but the guard keeps the invariant explicit).
+    The app title belongs in the sidebar (where the app name already shows),
+    not as a banner over the main content. The gate stops the script before
+    app.py reaches this call when unauthenticated; the guard keeps the
+    invariant explicit.
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
-        st.session_state.auth_authenticated = False
-        st.session_state.pop("auth_username", None)
-        delete_session_token(secure=bool(st.session_state.get("_auth_cookie_secure", True)))
-        st.rerun()
+    title_col, logout_col = st.sidebar.columns([3, 1], vertical_alignment="center")
+    with title_col:
+        st.markdown("## Radtracker")
+    with logout_col:
+        if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
+            st.session_state.auth_authenticated = False
+            st.session_state.pop("auth_username", None)
+            delete_session_token(
+                secure=bool(st.session_state.get("_auth_cookie_secure", True))
+            )
+            st.rerun()
 
 
 def _restore_session(auth: dict) -> None:

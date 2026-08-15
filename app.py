@@ -15,7 +15,7 @@ from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
-from src.ui.login import render_login_gate, render_logout_button, render_sidebar_footer
+from src.ui.login import render_login_gate, render_sidebar_footer, render_sidebar_header
 from src.ui.month import render_month_tab
 from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
@@ -38,12 +38,7 @@ except AuthError as exc:
     st.stop()
 
 render_login_gate(auth)
-
-title_col, logout_col = st.columns([5, 1], vertical_alignment="center")
-with title_col:
-    st.markdown("# Radtracker")
-with logout_col:
-    render_logout_button()
+render_sidebar_header()
 # Database initialization (idempotent)
 conn = get_connection()
 init_db(conn)
