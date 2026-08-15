@@ -1,6 +1,6 @@
 [project]
 name = "radtracker"
-version = "1.9.2"
+version = "1.9.3"
 description = "Personal productivity dashboard for teleradiology"
 requires-python = ">=3.12"
 dependencies = [
