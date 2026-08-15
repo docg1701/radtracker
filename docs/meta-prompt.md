@@ -45,7 +45,7 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 - **`src/ui/login.py`** — auth gate, login/TOTP forms, sidebar header/footer, logout
 - **`src/ui/sidebar.py`** — greeting, date row, modality inputs, Salvar
 - **`src/ui/{today,month,analysis,chat,settings}.py`** — the 5 tabs
-- **`scripts/manage_auth.py`** — SSH auth CLI (wrapper `radtracker-auth`): 2FA QR/activate/disable, password, username, status, repair
+- **`scripts/manage_auth.py`** — SSH auth CLI (wrapper `radtracker-auth`): 2FA QR/activate/disable, password, username, session days (rotates secret), status, repair
 - **`.streamlit/config.toml`** — theme (dark primaryColor Teal-700 `#0F766E`)
 
 ## Database Schema (SQLite, 5 tables)

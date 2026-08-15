@@ -230,14 +230,15 @@ Menu completo do `radtracker-auth`:
 
 | Opção | Ação |
 |-------|------|
-| 1 | Ativar / reconfigurar 2FA (QR no terminal + URI de fallback) |
+| 1 | Ativar / reconfigurar 2FA (QR no terminal + URI de fallback; gera segredo NOVO a cada execução — re-escaneie o QR) |
 | 2 | Desativar 2FA |
 | 3 | Trocar senha (encerra todas as sessões web) |
-| 4 | Trocar usuário |
-| 5 | Status (2FA, sessão, arquivo — nunca exibe segredos) |
+| 4 | Trocar usuário (encerra todas as sessões web) |
+| 5 | Sessão web (dias, 1–365) — trocar o valor rotaciona o segredo e encerra todas as sessões na hora |
 | 6 | Reparar `auth.json` |
+| 7 | Status (2FA, TOTP, sessão, arquivo — nunca exibe segredos) |
 
-- A sessão web dura 30 dias (cookie assinado); trocar a senha revoga todas as sessões.
+- A sessão web dura 30 dias por padrão (cookie assinado), configurável na opção 5; trocar a senha, o usuário ou a duração revoga todas as sessões.
 - `auth.json` não entra nos backups (só `telerrad.db`) — se `data/` for perdido, re-inicialize com a opção 6 ou um redeploy.
 - **Ative a 2FA imediatamente após cada deploy**: até lá o app depende só da senha, sem limite de tentativas em nível de rede.
 

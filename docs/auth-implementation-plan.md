@@ -18,7 +18,8 @@ Username + scrypt password + optional TOTP 2FA replacing Caddy BasicAuth:
   logout. 30-day session; password change rotates `session_secret`, username change
   invalidates.
 - `scripts/manage_auth.py` / `radtracker-auth` — SSH CLI: activate/disable 2FA with
-  terminal QR (`qrencode`), password, username, status, repair.
+  terminal QR (`qrencode`), password, username, session days (1–365, secret rotation
+  kills existing cookies), status, repair.
 - Ansible: vault-secured `auth_username`/`auth_password`, bootstrap step, sshd
   fail2ban jail (Caddy 401 jail removed with BasicAuth), Docker `qrencode`.
 
