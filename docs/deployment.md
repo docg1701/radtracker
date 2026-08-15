@@ -369,11 +369,6 @@ O Caddy vê o IP de borda do Cloudflare (não o do cliente) — o IP real vem
 no header `Cf-Connecting-Ip`. O fail2ban atual cobre só a jail sshd, então
 não há impacto; se um dia houver jail HTTP, filtrar pelo header, não pelo
 IP de origem da conexão.
-- `apt autoremove` + `apt autoclean`
-
-VPS volta ao estado original — pronto pra um novo bootstrap + deploy.
-
-Remove radtracker, Docker, fail2ban e todos os pré-requisitos instalados. VPS volta ao estado original.
 
 ## Solução de problemas
 
