@@ -73,12 +73,22 @@ def t(key: str, **fmt) -> str:
 ### 2.2 Web language state + toggle (default EN)
 
 - `st.session_state.lang`, default `"en"`.
-- Toggle: `st.segmented_control` options `["English", "Português (Brasil)"]`,
+- Toggle: `st.segmented_control` options `["English", "Português"]`,
   label `:material/translate:` + `t("web.lang.label")`, `key="lang_selector"`,
   `on_change` sets `st.session_state.lang`.
-- Rendered in `app.py` right after `set_page_config`, **before the auth
-  gate** — the gate calls `st.stop()` when unauthenticated, so the login
-  screen is bilingual too.
+- **Placement: sidebar footer zone** (bottom of the sidebar), grouped with
+  the existing system info — after the divider, above the version/mode and
+  2FA captions: `h1 → greeting → date/modalities → Salvar → divider →
+  selector → version caption → 2FA caption`. Language is a set-once system
+  setting; it must not compete with the daily controls at the top (date
+  picker, modality inputs, Salvar). Same pattern as GitHub/Discord footer
+  language controls.
+- **Login screen:** same spot — bottom-left of the sidebar, the only
+  sidebar element shown there (the login card stays centered).
+- **Rendering (no duplicate widget):** two mutually exclusive call sites —
+  pre-gate in `app.py` only while `not auth_authenticated`, and inside
+  `render_sidebar_footer` once authenticated. Never rendered twice in the
+  same run; visual position is identical in both states.
 - Persistence: `user_settings` row `language` (`en`/`pt`).
   - Load: in `ensure_settings`, only when `"lang" not in st.session_state`.
   - Save: toggle `on_change` → `save_setting(get_connection(), "language",
@@ -91,7 +101,7 @@ def t(key: str, **fmt) -> str:
 - Fully English-native menu, prompts, status, and errors.
 - Menu gains a language option **before "0) Exit"**:
 
-  ```
+  ```text
   ┌──────────────────────────────────────────┐
   │ Radtracker — Authentication management   │
   ├──────────────────────────────────────────┤
@@ -170,15 +180,34 @@ def t(key: str, **fmt) -> str:
 - `src/llm_client.py`: RAG context template per language; user-visible
   error strings → `t()`.
 
-### 2.7 Code hygiene (owner decision)
+### 2.7 Code + docs hygiene (owner decision)
 
 - Sweep existing PT comments/docstrings in code to English (e.g. PT
   comments in `src/ui/chat.py`, PT docstrings in `src/llm_client.py`,
   `scripts/manage_auth.py` after its translation).
 - All logs in English.
-- Docs already English; `docs/meta-prompt.md` hard-constraint "PT-BR for
-  all user-facing text" must be updated to the EN-native policy (part of
-  Phase 5).
+- **Full documentation translation to native, professional English.**
+  Measured PT-text hits per doc (accents + common words) on current
+  master — every file below gets a complete translation pass, not just
+  the policy lines:
+
+  | Doc | PT hits | Action |
+  |-----|---------|--------|
+  | `README.md` | 24 (fully PT: tagline, features, install, structure comments) | full translation |
+  | `docs/deployment.md` | 117 | full translation |
+  | `docs/streamlit_pro_tips.md` | 81 | full translation |
+  | `docs/local-notes.md` | 6 | full translation |
+  | `docs/context.md` | 1 + “PT-BR UI” policy mentions | translation + EN-native policy |
+  | `AGENTS.md` | 4 (verify each: quoted UI strings stay, prose gets translated) | review + policy update |
+  | `docs/meta-prompt.md` | 0 but “PT-BR UI” hard constraint + `R$ 100` examples | policy + examples update |
+  | `docs/DESIGN.md` | 0 | review only |
+  | `docs/auth-implementation-plan.md` | check | translate if PT found |
+  | `docs/i18n-plan.md` | 14 (quoted UI strings) | delete after implementation (temporary) |
+
+  PT-BR survives in docs only as quoted UI-string examples where they
+  document the UX itself. All prose, headings, comments-in-examples and
+  commit conventions → English. `markdownlint '**/*.md'` must stay green
+  after the translation pass.
 
 ## 3. Untranslatable / out of scope (confirmed — do NOT touch)
 
@@ -198,8 +227,8 @@ def t(key: str, **fmt) -> str:
 | `src/i18n.py` | **new** — catalog (`web.*` + `cli.*`), `translate()`, `t()` |
 | `src/formatting.py` | month names/abbr per lang, `fmt_money()` |
 | `src/ui/common.py` | empty-state default title (resolve inside), cache spinner to call site |
-| `app.py` | 5 tab labels, auth-config error, navigation label, toggle render |
-| `src/ui/login.py` | login/TOTP forms, errors, footer captions (2FA), Logout |
+| `app.py` | 5 tab labels, auth-config error, navigation label, pre-gate selector fallback |
+| `src/ui/login.py` | login/TOTP forms, errors, footer captions (2FA), selector in footer zone, Logout |
 | `src/ui/sidebar.py` | greeting, Date label, empty-modality info, Save/Saving/toast |
 | `src/ui/today.py` | 4 KPI cards, deltas, badges, empty states, Overview, raw data expander |
 | `src/ui/month.py` | KPI row, rhythm alert, celebration toast, empty states, raw data expander, "projected"/"remaining"/"Target: X/day" |
@@ -224,6 +253,7 @@ Snapshot of every place the currency symbol, `fmt_brl`, `MONTHS_PT`, and the
 the Phase 6 greps below after each phase lands).
 
 ### A. `src/formatting.py` — formatter rewrite
+
 - L6–19: `MONTHS_PT` → per-language month names (EN default).
 - L22–31: `month_abbr()`, `month_name()` → `lang` param; `M1`/`Mês` fallbacks → EN.
 - L39: `md_escape()` docstring (“containing R$") → “$".
@@ -231,6 +261,7 @@ the Phase 6 greps below after each phase lands).
   `"R$ —"`, `"R$ ∞"`, `"−R$ ∞"`, `f"R$ {int_str},{decimal_part:02d}"`.
 
 ### B. `src/text_sanitize.py` — the LLM regex core (highest-risk file)
+
 - L24–27: `_CURRENCY_DOLLAR_RE = (?<=R)\$(?![a-zA-Z\\])` → replaced by a
   digit-context rule **with math-pair protection**: a new paired-`$`
   detector (`$...$`, lazy/DOTALL) marks math pairs first; only unpaired `$`
@@ -245,6 +276,7 @@ the Phase 6 greps below after each phase lands).
 - Docstrings L11–17, 24–26, 47–48: examples “R$ 100", “R$100" → “$100".
 
 ### C. `src/llm_client.py` — RAG context + errors
+
 - L39–56: `_RAG_TEMPLATE` — all PT section headers (`=== DATA ATUAL ===`, …)
   → per-language template (EN default).
 - L96–97: `SEMANA` PT weekday list → per-language.
@@ -268,6 +300,7 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
 - `build_rag_context()` signature gains `lang`.
 
 ### D. `src/charts.py`
+
 - L129: sparkline hover `"%{x}: R$ %{y:,.2f}<extra></extra>"` → `$`.
 - L142, L291: `tickprefix="R$ "` → `"$ "`.
 - L247: `"Dia %{x}: R$ %{y:,.2f}"` → `"Day %{x}: ..."` + `$`.
@@ -279,6 +312,7 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
   add `$` assertions for the new hovertemplates.
 
 ### E. `src/charts_analysis.py`
+
 - L53, L60: MA hovers `"MA7 dia %{x}: R$ %{y:,.2f}"` → `$` + EN.
 - L76, L154, L299: `tickprefix="R$ "` → `"$ "`.
 - L135: `<extra>Semana passada</extra>` → `Last week`.
@@ -288,6 +322,7 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
 - L197, L262: `month_abbr(ym)` → `lang` param.
 
 ### F. `src/insights_rules.py`
+
 - L16: import `MONTHS_PT, fmt_brl` → `fmt_money` + per-language months.
 - L20: `_gap_label` docstring `'R$ X acima'` → `$` + per-language words
   (`acima/abaixo` → `above/below`).
@@ -296,6 +331,7 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
 - L41–end: full narrative → `t()` templates; 8× `fmt_brl` → `fmt_money`.
 
 ### G. UI call sites (`fmt_brl` consumers)
+
 - `src/ui/today.py`: import; raw-data lines (`Faturamento:`, `Horas:`),
   KPI card value, meta delta `md_escape(fmt_brl(mtd))` → `fmt_money(lang)`.
 - `src/ui/month.py`: import; KPI deltas (`projetado`, `restantes`,
@@ -303,11 +339,13 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
   `md_escape` each) → `fmt_money(lang)`.
 
 ### H. `src/ui/settings.py`
+
 - L117: caption `"preço (R$)"` → `"price ($)"` / `t()`.
 - L129: header `"**Preço (R$)**"` → `$`.
 - L332: label `"Meta mensal (R$)"` → `$`.
 
 ### I. Tests with `R$` expectations (must be updated in the same phase)
+
 - `tests/test_formatting.py` L7–36: 10 `fmt_brl` tests → `fmt_money` both
   langs; L41–44: `MONTHS_PT` → per-language months.
 - `tests/test_text_sanitize.py` L10, 31, 44, 52, 55, 75–79, 108–118, 168–173:
@@ -317,11 +355,12 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
   unchanged (regression net for the new rule).
 - `tests/test_llm_client.py` L117 (`"R$" in detail`), L465 (`"R$ 3.915,00"`),
   L601–606 (`"R$ 250,00"`, `"R$ 400,00" not in`, `"R$ 25.00/exame"`) → `$`
-  + EN expectations.
+  - EN expectations.
 - `tests/test_insights.py` L75–166: ~12 assertions → `$` + EN expectations.
 - `tests/test_charts.py`, `tests/test_ui_month.py`: no `R$` pins (verified).
 
 ### J. Docs mentioning `R$` / `fmt_brl` / `MONTHS_PT`
+
 - `docs/meta-prompt.md` L43, L123, L130 (sanitize order description),
   L135, L140 → update to `$` + `fmt_money` + EN-native policy.
 - `docs/context.md` L36, L103.
@@ -329,6 +368,7 @@ dia`, `Total exames`, `Modalidades:` → per-language; 5× `fmt_brl` → `fmt_mo
 - `AGENTS.md`: no hits (verified).
 
 ### K. Code comments mentioning `R$`
+
 - `src/calculations.py` L243 (`R$/dia corrido`) — English sweep anyway.
 - `src/formatting.py`, `src/text_sanitize.py`, `src/insights_rules.py`
   docstrings — covered in A/B/F.
@@ -345,15 +385,17 @@ grep -rn 'R\$' tests/                       # only sanitizer R$-still-valid case
 ## 5. Phases
 
 **Phase 0 — Foundation:** `src/i18n.py` + `tests/test_i18n.py`:
+
 - en/pt key parity (same key set in both languages),
 - `translate()`/`t()` lookup, missing key raises, default lang = en,
 - `fmt_money()` both notations + nan/inf/negative parity with `fmt_brl`,
 - `month_name`/`month_abbr` per language.
 
-**Phase 1 — Web toggle + gate:** toggle in `app.py` (pre-gate, default EN),
-session state + DB persistence (`language` default `"en"`), convert `app.py`,
-`login.py`, `sidebar.py`, `common.py`. Login screen and sidebar bilingual,
-English by default.
+**Phase 1 — Web toggle + gate:** language selector in the sidebar footer
+zone (default EN, pre-gate fallback for the login screen), session state +
+DB persistence (`language` default `"en"`), convert `app.py`, `login.py`,
+`sidebar.py`, `common.py`. Login screen and sidebar bilingual, English by
+default.
 
 **Phase 2 — Core tabs:** `today.py`, `month.py`, `analysis.py`.
 
@@ -369,10 +411,13 @@ file in the same phase.
 (before Exit) + `cli_language` in `auth.json`; `auth_store.py` validation;
 update `tests/test_manage_auth.py`.
 
-**Phase 6 — Code hygiene + audit:**
+**Phase 6 — Code + docs hygiene & audit:**
+
 - Sweep PT comments/docstrings → English across `src/`, `app.py`, `scripts/`.
-- Update `docs/meta-prompt.md` (EN-native constraint), `docs/context.md`
-  (module notes), README if it mentions PT-BR UI.
+- Full documentation translation pass per the **§2.7 table** (README,
+  `docs/deployment.md`, `docs/streamlit_pro_tips.md`, `docs/local-notes.md`,
+  `docs/context.md`, AGENTS.md) + policy updates in `docs/meta-prompt.md`
+  (EN-native constraint, `$`-escaping examples).
 - `grep` sweep for remaining PT literals in UI code.
 - Run the **§4.1 Phase 6 verification greps** — nothing in the catalog may
   remain outside the intended leftovers.
@@ -388,7 +433,7 @@ update `tests/test_manage_auth.py`.
   per-language months, EN/PT insight narrative spot-checks, RAG context
   language instruction).
 - Updated: `tests/test_manage_auth.py` (EN strings, language option toggles
-  + persists `cli_language`), `tests/test_auth_store.py` (optional
+  - persists `cli_language`), `tests/test_auth_store.py` (optional
   `cli_language` validation), `tests/test_text_sanitize.py` (`$` currency
   regression cases), anything touching changed signatures (`month_name`,
   `month_abbr`, `generate_rule_insights`, chart builders).
