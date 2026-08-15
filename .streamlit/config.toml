@@ -41,7 +41,9 @@ headingFontWeights = [600, 600, 600, 500, 500, 500]
 linkUnderline = false
 
 [theme.dark]
-primaryColor = "#F8F9FA"
+# Teal-700: dark enough for the white button text Streamlit always uses
+# on primaryColor (see theming docs — primary text is fixed white).
+primaryColor = "#0F766E"
 backgroundColor = "#101010"
 secondaryBackgroundColor = "#1A1A1A"
 textColor = "#E5E7EB"

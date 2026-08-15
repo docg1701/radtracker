@@ -42,27 +42,35 @@ def render_login_gate(auth: dict) -> None:
     st.stop()
 
 
-def render_2fa_footer(auth: dict) -> None:
-    """Small sidebar footer note when 2FA is off.
+@st.cache_data(show_spinner=False)
+def _app_version() -> str:
+    """Version from pyproject.toml (single source of truth), cached per run."""
+    import tomllib
 
-    Usage: `render_2fa_footer(auth)` in app.py AFTER render_sidebar, so the
-    note lands at the bottom of the sidebar instead of the page top.
+    with open("pyproject.toml", "rb") as fh:
+        return tomllib.load(fh)["project"]["version"]
+
+
+def render_sidebar_footer(auth: dict) -> None:
+    """Sidebar footer: app version, plus an italic 2FA note when off.
+
+    Usage: `render_sidebar_footer(auth)` in app.py AFTER render_sidebar.
     """
-    if is_totp_required(auth):
-        return
-    st.sidebar.caption("2FA desativada — rode `radtracker-auth` no servidor para ativar.")
+    st.sidebar.markdown(f"*v{_app_version()}*")
+    if not is_totp_required(auth):
+        st.sidebar.markdown("*2FA desativado.*")
 
 
 def render_logout_button() -> None:
-    """Sidebar logout: clears session state + session cookie, then reruns.
+    """Header logout button, rendered in the title row of the main area.
 
-    Only rendered while authenticated — a stale sidebar button must never
-    survive into the login screen (the gate stops the script before
-    app.py reaches this call, but the guard keeps the invariant explicit).
+    Only rendered while authenticated — a stale button must never survive
+    into the login screen (the gate stops the script before app.py reaches
+    this call, but the guard keeps the invariant explicit).
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    if st.sidebar.button("Sair", icon=":material/logout:", key="auth_logout"):
+    if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
         st.session_state.auth_authenticated = False
         st.session_state.pop("auth_username", None)
         delete_session_token(secure=bool(st.session_state.get("_auth_cookie_secure", True)))
@@ -96,12 +104,12 @@ def _render_login_form(auth: dict) -> None:
     left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
     with card:
         with st.container(border=True, vertical_alignment="center"):
-            st.markdown("## :material/lock: **radtracker**")
+            st.markdown("## :material/lock: **Radtracker**")
             with st.form("auth_login"):
                 username = st.text_input("Usuário", key="auth_login_username")
                 password = st.text_input("Senha", type="password", key="auth_login_password")
                 submitted = st.form_submit_button(
-                    "Entrar", icon=":material/login:"
+                    "Entrar", type="primary", icon=":material/login:"
                 )
         if not submitted:
             return
@@ -128,7 +136,7 @@ def _render_totp_form(auth: dict) -> None:
                     key="auth_totp_code",
                 )
                 submitted = st.form_submit_button(
-                    "Verificar", icon=":material/key:"
+                    "Verificar", type="primary", icon=":material/key:"
                 )
         if not submitted:
             return

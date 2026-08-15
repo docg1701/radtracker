@@ -26,7 +26,7 @@ _MIN_PASSWORD_LEN = 8
 
 _MENU = """
 ┌──────────────────────────────────────────┐
-│ radtracker — Gestão de autenticação      │
+│ Radtracker — Gestão de autenticação      │
 ├──────────────────────────────────────────┤
 │ 1) Ativar / reconfigurar 2FA (QR code)   │
 │ 2) Desativar 2FA                         │

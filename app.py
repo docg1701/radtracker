@@ -15,7 +15,7 @@ from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
-from src.ui.login import render_2fa_footer, render_login_gate, render_logout_button
+from src.ui.login import render_login_gate, render_logout_button, render_sidebar_footer
 from src.ui.month import render_month_tab
 from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
@@ -23,7 +23,7 @@ from src.ui.today import render_today_tab
 
 # Page config — MUST be first Streamlit command
 st.set_page_config(
-    page_title="radtracker",
+    page_title="Radtracker",
     page_icon=":material/monitor_heart:",
     layout="wide",
     initial_sidebar_state="auto",
@@ -38,14 +38,19 @@ except AuthError as exc:
     st.stop()
 
 render_login_gate(auth)
-render_logout_button()
+
+title_col, logout_col = st.columns([5, 1], vertical_alignment="center")
+with title_col:
+    st.markdown("# Radtracker")
+with logout_col:
+    render_logout_button()
 # Database initialization (idempotent)
 conn = get_connection()
 init_db(conn)
 
 # Sidebar
 render_sidebar(conn)
-render_2fa_footer(auth)
+render_sidebar_footer(auth)
 
 # ── Navigation (cookie-persisted tab selection) ──
 TAB_LABELS = [

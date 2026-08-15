@@ -75,7 +75,7 @@ class TestNewTotpSecret:
 class TestOtpauthUri:
     def test_otpauth_uri_exact_format(self):
         uri = otpauth_uri("ABCDEF", "admin")
-        assert uri == "otpauth://totp/radtracker:admin?secret=ABCDEF&issuer=radtracker"
+        assert uri == "otpauth://totp/Radtracker:admin?secret=ABCDEF&issuer=Radtracker"
 
     def test_otpauth_uri_username_url_encoded(self):
         uri = otpauth_uri("ABCDEF", "user name@x")

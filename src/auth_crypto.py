@@ -97,7 +97,7 @@ def verify_totp(
     return False
 
 
-def otpauth_uri(secret_b32: str, username: str, issuer: str = "radtracker") -> str:
+def otpauth_uri(secret_b32: str, username: str, issuer: str = "Radtracker") -> str:
     """otpauth:// URI for authenticator apps. Usage: otpauth_uri(secret, "admin")."""
     quoted = urllib.parse.quote(username)
     return f"otpauth://totp/{issuer}:{quoted}?secret={secret_b32}&issuer={issuer}"
