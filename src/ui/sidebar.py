@@ -11,6 +11,7 @@ from typing import Any
 import streamlit as st
 
 from src.db import load_daily_items, upsert_daily_items
+from src.i18n import t
 from src.ui.settings import ensure_settings
 
 
@@ -25,33 +26,31 @@ def render_sidebar(conn: Any) -> None:
     """
     ensure_settings(conn)
     active_mods = st.session_state.active_modalities
+    lang = st.session_state.get("lang", "en")
 
     with st.sidebar:
         # Greeting — the Radtracker title + Sair row above comes from
         # render_sidebar_header() (src/ui/login.py), called before this.
         user_name = st.session_state.get("user_name", "")
         if user_name:
-            st.markdown(f"Olá, {user_name}.")
+            st.markdown(t("web.sidebar.greeting", name=user_name))
 
         # Date picker — label and box on the same row
         col_label, col_input = st.columns([1, 3], vertical_alignment="center")
         with col_label:
-            st.markdown("Data:")
+            st.markdown(t("web.sidebar.date_label"))
         with col_input:
             selected_date = st.date_input(
-                "Data",
+                t("web.sidebar.date_label"),
                 value=date.today(),
-                format="DD/MM/YYYY",
+                format="MM/DD/YYYY" if lang == "en" else "DD/MM/YYYY",
                 max_value=date.today(),
                 label_visibility="collapsed",
             )
         date_str = selected_date.isoformat()
 
         if not active_mods:
-            st.info(
-                "Nenhuma modalidade ativa. Configure os preços e a "
-                "produtividade na aba **:material/settings: Configuração**."
-            )
+            st.info(t("web.sidebar.no_modalities"))
             return
 
         # Pre-fill from existing data
@@ -79,13 +78,16 @@ def render_sidebar(conn: Any) -> None:
 
         # Save button — natural width, left aligned, same style as Sair
         if st.button(
-            "Salvar", icon=":material/save:",
+            t("web.sidebar.save"), icon=":material/save:",
         ):
-            with st.spinner("Salvando..."):
+            with st.spinner(t("web.sidebar.saving")):
                 # Send all values — zeros will be deleted, non-zeros upserted
                 upsert_daily_items(conn, date_str, values)
 
             st.cache_data.clear()
-            formatted = selected_date.strftime("%d/%m")
-            st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
+            formatted = selected_date.strftime("%m/%d" if lang == "en" else "%d/%m")
+            st.toast(
+                t("web.sidebar.saved_toast", date=formatted),
+                icon=":material/check_circle:",
+            )
             st.rerun()

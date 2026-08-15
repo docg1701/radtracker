@@ -15,9 +15,11 @@ import streamlit as st
 from src.auth_store import AUTH_PATH, AuthError, load_auth
 from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
+from src.i18n import t
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
 from src.ui.login import (
+    render_language_selector,
     render_login_gate,
     render_logout_button,
     render_sidebar_footer,
@@ -51,8 +53,14 @@ except AuthError as exc:
     # Detail goes to the server log only — the browser must not expose file
     # paths, schema internals, or validation messages.
     logging.getLogger(__name__).error("auth gate: %s", exc)
-    st.error("Autenticação indisponível neste servidor. Contate o administrador.")
+    st.error(t("web.auth.unavailable"))
     st.stop()
+
+# Language selector on the login screen (sidebar footer zone). Post-login it
+# renders inside render_sidebar_footer — the two call sites are mutually
+# exclusive per run, so the widget never renders twice.
+if not st.session_state.get("auth_authenticated"):
+    render_language_selector()
 
 render_login_gate(auth)
 render_sidebar_header()
@@ -66,11 +74,11 @@ render_sidebar_footer(auth)
 
 # ── Navigation (cookie-persisted tab selection) ──
 TAB_LABELS = [
-    ":material/today: Hoje",
-    ":material/calendar_month: Mês Atual",
-    ":material/trending_up: Análise",
-    ":material/smart_toy: Chat IA",
-    ":material/settings: Configuração",
+    f":material/today: {t('web.tab.today')}",
+    f":material/calendar_month: {t('web.tab.month')}",
+    f":material/trending_up: {t('web.tab.analysis')}",
+    f":material/smart_toy: {t('web.tab.chat')}",
+    f":material/settings: {t('web.tab.settings')}",
 ]
 
 # index= is only used while the radio has no session state (first render);
@@ -82,7 +90,7 @@ except Exception:
 
 with st.container(horizontal=True, vertical_alignment="center"):
     active = st.radio(
-        "Navegação",
+        t("web.nav.label"),
         TAB_LABELS,
         index=cookie_idx if 0 <= cookie_idx < len(TAB_LABELS) else 0,
         horizontal=True,

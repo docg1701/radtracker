@@ -1,6 +1,6 @@
 """
 Streamlit login gate: session restore, password form, TOTP step,
-2FA sidebar footer, logout.
+2FA sidebar footer, language selector, logout.
 
 Only st.form usage in the project — the gate is a state machine and
 forms keep Enter-submits atomic (no rerun per keystroke).
@@ -24,6 +24,35 @@ from src.cookies import (
     render_cookie_writer,
     set_session_token,
 )
+from src.db import get_connection, save_setting
+from src.i18n import t
+
+_LANG_NAMES: dict[str, str] = {"en": "English", "pt": "Português"}
+
+
+def render_language_selector() -> None:
+    """Sidebar EN/PT selector; persists to user_settings when authenticated.
+
+    Rendered in exactly one of two mutually exclusive spots per run:
+    pre-gate (app.py, unauthenticated — login screen) or inside
+    render_sidebar_footer (authenticated). Same visual position in both:
+    the sidebar footer zone.
+    """
+    st.sidebar.segmented_control(
+        f":material/translate: {t('web.lang.label')}",
+        options=["en", "pt"],
+        format_func=lambda code: _LANG_NAMES[code],
+        default=st.session_state.get("lang", "en"),
+        key="lang_selector",
+        on_change=_on_language_change,
+    )
+
+
+def _on_language_change() -> None:
+    lang = st.session_state.lang_selector
+    st.session_state.lang = lang
+    if st.session_state.get("auth_authenticated"):
+        save_setting(get_connection(), "language", lang)
 
 
 def render_login_gate(auth: dict) -> None:
@@ -53,17 +82,15 @@ def _app_version() -> str:
 
 
 def render_sidebar_footer(auth: dict) -> None:
-    """Sidebar footer: version/mode line + 2FA status, same typography.
-
-    Usage: `render_sidebar_footer(auth)` in app.py AFTER render_sidebar.
-    """
+    """Sidebar footer: language selector, version/mode line, 2FA status."""
     st.sidebar.divider()
+    render_language_selector()
     mode = os.environ.get("RADTRACKER_MODE", "local")
     st.sidebar.caption(f"Radtracker v{_app_version()} · {mode}")
     if is_totp_required(auth):
-        st.sidebar.caption("2FA ativado.")
+        st.sidebar.caption(t("web.footer.two_fa_on"))
     else:
-        st.sidebar.caption("2FA desativado.")
+        st.sidebar.caption(t("web.footer.two_fa_off"))
 
 
 def render_sidebar_header() -> None:
@@ -80,7 +107,7 @@ def render_logout_button() -> None:
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    if st.button("Sair", icon=":material/logout:", key="auth_logout"):
+    if st.button(t("web.auth.logout"), icon=":material/logout:", key="auth_logout"):
         st.session_state.auth_authenticated = False
         st.session_state.pop("auth_username", None)
         delete_session_token(
@@ -118,15 +145,17 @@ def _render_login_form(auth: dict) -> None:
         with st.container(border=True, vertical_alignment="center"):
             st.markdown("## :material/lock: **Radtracker**")
             with st.form("auth_login"):
-                username = st.text_input("Usuário", key="auth_login_username")
-                password = st.text_input("Senha", type="password", key="auth_login_password")
+                username = st.text_input(t("web.auth.username"), key="auth_login_username")
+                password = st.text_input(
+                    t("web.auth.password"), type="password", key="auth_login_password"
+                )
                 submitted = st.form_submit_button(
-                    "Entrar", type="primary", icon=":material/login:"
+                    t("web.auth.login"), type="primary", icon=":material/login:"
                 )
         if not submitted:
             return
         if not verify_login(auth, username, password):
-            st.error("Usuário ou senha inválidos.")
+            st.error(t("web.auth.invalid_credentials"))
             return
         if is_totp_required(auth):
             st.session_state.auth_awaiting_totp = True
@@ -139,21 +168,21 @@ def _render_totp_form(auth: dict) -> None:
     left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
     with card:
         with st.container(border=True, vertical_alignment="center"):
-            st.markdown("## :material/verified_user: **Verificação em duas etapas**")
+            st.markdown(f"## :material/verified_user: **{t('web.auth.totp_title')}**")
             with st.form("auth_totp"):
                 code = st.text_input(
-                    "Código do autenticador",
+                    t("web.auth.totp_code"),
                     type="password",
                     max_chars=6,
                     key="auth_totp_code",
                 )
                 submitted = st.form_submit_button(
-                    "Verificar", type="primary", icon=":material/key:"
+                    t("web.auth.totp_verify"), type="primary", icon=":material/key:"
                 )
         if not submitted:
             return
         if not verify_totp_code(auth, code, int(time.time())):
-            st.error("Código inválido ou expirado.")
+            st.error(t("web.auth.totp_invalid"))
             return
         st.session_state.pop("auth_awaiting_totp", None)
         _establish_session(auth)

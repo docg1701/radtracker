@@ -40,6 +40,8 @@ def ensure_settings(conn: Any) -> None:
         st.session_state.goal = load_goal(conn, today.isoformat()[:7])
     if "user_name" not in st.session_state:
         st.session_state.user_name = load_setting(conn, "user_name", "")
+    if "lang" not in st.session_state:
+        st.session_state.lang = load_setting(conn, "language", "en")
     if "api_key" not in st.session_state:
         st.session_state.api_key = load_setting(conn, "api_key", "")
     if "llm_prompt" not in st.session_state:
