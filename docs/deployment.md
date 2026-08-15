@@ -1,4 +1,4 @@
-# Guia de Deploy — radtracker v1.5.8
+# Guia de Deploy — radtracker
 
 ## Pré-requisitos
 
@@ -19,7 +19,7 @@ ansible/
 │   └── all.yml                  # Variáveis compartilhadas (valores sensíveis criptografados com Vault)
 ├── templates/
 │   ├── Caddyfile.j2             # Template do Caddy (LAN ou internet)
-│   └── .env.j2                  # Template do .env ($ → $$)
+│   └── .env.j2                  # Template do .env (DOMAIN + TZ)
 └── playbooks/
     ├── deploy.yml               # Bootstrap + deploy idempotente
     ├── update.yml               # Atualização sem perda de dados
@@ -32,19 +32,22 @@ ansible/
 
 ### 1.1 Secrets (Ansible Vault encrypt_string)
 
-Valores sensíveis (`deployment_mode`, `basicauth_users`, `github_pat`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
+Valores sensíveis (`deployment_mode`, `auth_username`, `auth_password`, `github_pat`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
 
 ```bash
-# Criptografar um valor
-ansible-vault encrypt_string "lan" --name deployment_mode
-# Copiar o output (!vault | ...) e colar no all.yml
+# Criptografar um valor (o arquivo de senha do vault está em ansible/.vault_pass)
+printf '%s' "lan" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name deployment_mode
 
-ansible-vault encrypt_string "galvani \$2a\$14\$HASH_AQUI" --name basicauth_users
-# Copiar o output e colar no all.yml
+printf '%s' "galvani" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name auth_username
 
-ansible-vault encrypt_string "ghp_SEU_TOKEN_AQUI" --name github_pat
-# Copiar o output e colar no all.yml
+printf '%s' "SENHA_DO_LOGIN_WEB" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name auth_password
+
+printf '%s' "ghp_SEU_TOKEN_AQUI" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name github_pat
+# Copiar cada output (!vault | ...) e colar no all.yml
 ```
+
+`auth_username`/`auth_password` são as credenciais do **login web** do radtracker
+(criadas no primeiro deploy pelo bootstrap — senha mínima de 8 caracteres).
 
 O arquivo `all.yml` fica assim (valores sensíveis criptografados, resto em plaintext):
 
@@ -54,7 +57,10 @@ radtracker_dir: "/home/{{ ansible_user }}/radtracker"
 deployment_mode: !vault |
       $ANSIBLE_VAULT;1.1;AES256
       ...
-basicauth_users: !vault |
+auth_username: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      ...
+auth_password: !vault |
       $ANSIBLE_VAULT;1.1;AES256
       ...
 github_pat: !vault |
@@ -67,7 +73,7 @@ deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"
 
 Para editar valores criptografados:
 ```bash
-ansible-vault decrypt_string --vault-id @prompt  # ou usar --vault-password-file
+ansible-vault edit --vault-password-file ansible/.vault_pass ansible/group_vars/all.yml
 ```
 
 ### 1.2 Criar token de acesso GitHub (PAT)
@@ -88,12 +94,12 @@ O PAT é usado uma única vez: para registrar a chave SSH do VPS como deploy key
 
 **Nota:** Após o registro da deploy key, o PAT pode expirar sem impacto — a autenticação git passa a usar a chave SSH.
 
-### 1.3 Gerar hash da senha
+### 1.3 Senha do login web
 
-```bash
-docker run --rm caddy:2-alpine caddy hash-password --plaintext "suasenha"
-# Exemplo de saída: $2a$14$DMUrdcPgJtAUJ8qo...
-```
+A senha do login web **não é hashada manualmente** — o bootstrap roda
+`hashlib.scrypt` na primeira vez que o container sobe (`python -m src.auth_bootstrap`,
+invocado pelo `deploy.yml`). O `auth_password` do vault é o texto plano da senha;
+mínimo de 8 caracteres. Para trocá-la depois, use `radtracker-auth` opção 3 (ver §4).
 
 ### 1.4 Modo internet — domínio
 
@@ -159,11 +165,19 @@ O playbook executa em ordem:
 5. Cria diretórios persistentes (`data/`, `backups/`, `caddy_logs/`)
 6. Busca templates do clone VPS, gera `Caddyfile` e `.env` a partir deles
 7. Ajusta permissões (`chown 1000:1000` no `data/`)
-8. Instala e configura fail2ban (filtro de 401, jail, cria `access.log`)
+8. Instala e configura fail2ban (whitelist de redes locais + jail sshd)
 9. Builda imagem e sobe containers (`docker compose up --build`)
 10. Aguarda health check do Streamlit
+11. Roda o bootstrap de autenticação no container (cria `data/auth.json` a partir das credenciais do vault)
+12. Instala o wrapper SSH `/usr/local/bin/radtracker-auth`
+13. Imprime o endereço de acesso + lembrete para ativar a 2FA
 
-**O deploy é idempotente** — seguro rodar quantas vezes quiser.
+**O deploy é idempotente** — seguro rodar quantas vezes quiser. O bootstrap **não sobrescreve** um `auth.json` existente (troque senha/2FA via `radtracker-auth`).
+
+> ⚠️ **Cutover de autenticação:** este deploy remove o BasicAuth do Caddy.
+> Use SEMPRE `deploy.yml` (nunca `update.yml`) na primeira execução após a mudança —
+> o `update.yml` não roda o bootstrap nem cria o wrapper. Depois que `auth.json`
+> existir, o `update.yml` volta a ser seguro.
 
 ## 3. Verificação
 
@@ -175,7 +189,7 @@ Verifica:
 - Container `radtracker`: existe, running, healthy
 - Endpoint Streamlit: `/_stcore/health` → 200
 - Container `caddy`: existe, running
-- Caddy servindo: `https://localhost/` → 401 (BasicAuth ativo)
+- Caddy servindo: página de login do radtracker (não mais 401 de BasicAuth)
 - fail2ban: active
 
 ## 4. Acesso
@@ -191,16 +205,40 @@ Domínio: DuckDNS gratuito (radtracker.duckdns.org → 129.151.4.89)
 
 **VPS local (LAN):**
 ```
-https://10.10.10.209
+http://10.10.10.209
 ```
-(HTTPS com certificado autoassinado — aceitar aviso de segurança no primeiro acesso)
+(HTTP sem TLS — modo LAN; a rede local é o perímetro de segurança)
 
 **Modo internet (com domínio próprio):**
 ```
 https://radtracker.exemplo.com
 ```
 
-Autenticação: HTTP Basic Auth (usuário e senha configurados no `all.yml`, valor `basicauth_users` criptografado).
+### Autenticação (login web + 2FA)
+
+O primeiro acesso pede usuário e senha (definidos no vault, §1.1). Sem 2FA, um aviso
+âmbar aparece no app. Para ativar a 2FA:
+
+```bash
+ssh galvani@10.10.10.209    # (ou o host de produção)
+radtracker-auth             # wrapper para o menu de gestão
+# Opção 1: Ativar / reconfigurar 2FA — escaneie o QR com o celular e digite o código
+```
+
+Menu completo do `radtracker-auth`:
+
+| Opção | Ação |
+|-------|------|
+| 1 | Ativar / reconfigurar 2FA (QR no terminal + URI de fallback) |
+| 2 | Desativar 2FA |
+| 3 | Trocar senha (encerra todas as sessões web) |
+| 4 | Trocar usuário |
+| 5 | Status (2FA, sessão, arquivo — nunca exibe segredos) |
+| 6 | Reparar `auth.json` |
+
+- A sessão web dura 30 dias (cookie assinado); trocar a senha revoga todas as sessões.
+- `auth.json` não entra nos backups (só `telerrad.db`) — se `data/` for perdido, re-inicialize com a opção 6 ou um redeploy.
+- **Ative a 2FA imediatamente após cada deploy**: até lá o app depende só da senha, sem limite de tentativas em nível de rede.
 
 ## 5. Atualização
 
@@ -235,7 +273,8 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --vault-
 - Para e remove containers
 - Prune Docker (imagens, volumes, networks, build cache)
 - Remove Docker (pacotes, GPG key, repositório APT)
-- Remove fail2ban (jail, filter, pacote)
+- Remove fail2ban (jail sshd, pacote)
+- Remove o wrapper `/usr/local/bin/radtracker-auth`
 - Remove diretório do projeto
 - Remove pré-requisitos (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 - `apt autoremove` + `apt autoclean`
@@ -276,8 +315,7 @@ ssh galvani@VPS "rm ~/.ssh/radtracker_deploy*"
 
 ```bash
 sudo tail -50 /var/log/fail2ban.log
-# "Have not found any log file" → rodar deploy.yml de novo (cria access.log)
-# ou manualmente: sudo touch /home/galvani/radtracker/caddy_logs/access.log
+sudo fail2ban-client status sshd   # o jail ativo agora é o do sshd (journald)
 ```
 
 ### Docker não instala (Debian)
@@ -307,13 +345,11 @@ sudo systemctl stop nginx apache2   # parar servidores conflitantes
 ### Senha errada / reset de senha
 
 ```bash
-# Gerar novo hash
-docker run --rm caddy:2-alpine caddy hash-password --plaintext "novasenha"
-
-# Editar all.yml — criptografar novo valor
-ansible-vault encrypt_string "galvani \$2a\$14\$NOVO_HASH" --name basicauth_users
-# Substituir o bloco !vault existente no all.yml pelo novo output
-
-# Re-deployar
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
+# Conecte via SSH e use o menu de gestão:
+radtracker-auth
+# Opção 3: Trocar senha (mínimo 8 caracteres, encerra todas as sessões web)
+# Opção 6: Reparar auth.json (se o arquivo estiver ausente/corrompido)
 ```
+
+Re-rodar o `deploy.yml` **não** troca a senha — o bootstrap é idempotente e nunca
+sobrescreve um `auth.json` existente.

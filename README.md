@@ -9,6 +9,7 @@ Acompanhe faturamento, metas e tendências com Streamlit + SQLite.
 - 📆 **Mês Atual**: progresso da meta, faturamento diário, alertas de ritmo
 - 📈 **Análise**: médias móveis (MA7/MA30), comparação semanal, evolução do mix
 - 🤖 **Insights IA**: GPT-OSS 120B via OpenRouter (fallback para regras se offline)
+- 🔒 **Autenticação**: login + senha (scrypt) com TOTP 2FA opcional, configurado via SSH
 - ⚙️ **Config**: preços por exame, meta mensal, seu nome, chave API, prompt da IA
 
 ## Pré-requisitos
@@ -29,6 +30,14 @@ uv sync                       # instala todas as dependências
 ```bash
 uv run streamlit run app.py   # http://localhost:8501
 ```
+
+O portão de autenticação exige `data/auth.json`. Para uso local, crie um de rascunho:
+
+```bash
+python -c "from src.auth_store import create_bootstrap_auth; print(create_bootstrap_auth('dev', 'dev-password-123', 'data/auth.json', cookie_secure=False))"
+```
+
+(Em produção o `deploy.yml` cria esse arquivo automaticamente a partir do vault — ver [docs/deployment.md](docs/deployment.md).)
 
 ## IA (OpenRouter)
 
@@ -54,9 +63,11 @@ uv run pytest tests/ -v --cov=src --cov-report=term-missing
 
 ```
 radtracker/
-├── app.py                  # Entry point Streamlit
+├── app.py                  # Entry point Streamlit (auth gate após set_page_config)
 ├── src/
-│   ├── db.py               # SQLite schema + CRUD (4 tables)
+│   ├── auth_crypto.py      # scrypt + TOTP (RFC 6238) + token de sessão HMAC
+│   ├── auth_store.py       # data/auth.json + helpers do gate
+│   ├── db.py               # SQLite schema + CRUD (5 tables)
 │   ├── calculations.py     # Business logic (earnings, MA, projections)
 │   ├── charts.py           # Plotly charts (donut, gauge, line)
 │   ├── charts_analysis.py  # Analysis charts (MA, WoW, mix evolution)
@@ -65,13 +76,18 @@ radtracker/
 │   ├── insights_rules.py   # Rule-based insights engine
 │   ├── llm_client.py       # OpenRouter GPT-OSS 120B client
 │   └── ui/
+│       ├── login.py        # Gate de autenticação (login, TOTP, logout)
 │       ├── sidebar.py      # Data entry form
 │       ├── today.py        # "Hoje" tab
 │       ├── month.py        # "Mês Atual" tab
 │       ├── analysis.py     # "Análise" tab
+│       ├── chat.py         # "Chat IA" tab
 │       └── settings.py     # "Config" tab
-├── tests/                  # Test suite (96 testes)
-├── data/                   # SQLite DB (gitignored)
+├── scripts/
+│   ├── import_csv.py       # Importador CSV legado
+│   └── manage_auth.py      # CLI de gestão de auth (SSH): 2FA, senha, repair
+├── tests/                  # Test suite (294 testes)
+├── data/                   # SQLite DB + auth.json (gitignored)
 ├── docs/                   # Sprint plans
 ├── pyproject.toml          # Project metadata + dependencies
 ├── uv.lock                 # Locked dependency versions
@@ -99,7 +115,8 @@ cd radtracker
 # seguir o guia em docs/deployment.md
 ```
 
-Stack de produção: Streamlit → Docker → Caddy (BasicAuth + Let's Encrypt) → fail2ban → Ansible
+Stack de produção: Streamlit → Docker → Caddy (TLS) → fail2ban (sshd) → Ansible
+Autenticação no app: login + TOTP 2FA (ver [docs/auth-implementation-plan.md](docs/auth-implementation-plan.md))
 
 Veja [docs/deployment.md](docs/deployment.md) para o guia completo.
 

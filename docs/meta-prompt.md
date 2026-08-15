@@ -24,23 +24,27 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 | Data | **Pandas ≥2.0** | DataFrames for calculations and chart data |
 | HTTP | **httpx ≥0.27** | OpenRouter API calls (one-shot + SSE streaming) |
 | Extras | **streamlit-extras ≥1.5** | `skeleton`, `rain`, `star_rating`, `stoggle`, `cookie_manager`, `pills` |
+| Auth | **stdlib scrypt + TOTP (RFC 6238) + HMAC session cookie** | `src/auth_crypto.py`, `src/auth_store.py`, `data/auth.json` |
 | Package mgr | **uv** | `uv.lock` is authoritative |
-| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 228 tests, all passing |
+| Tests | **pytest ≥8.0**, **respx** for HTTP mocking | 294 tests, all passing |
 | Lint/fmt | **ruff** (E, F, I, UP rules, line-length 100) | Run: `uv run ruff check src/ tests/` |
 | Types | **mypy** (strict=false) | Run: `uv run mypy src/` |
 | **Deployment** | | |
 | Container | **Docker** (multi-stage build, non-root user) | `Dockerfile` + `docker-compose.yml` |
-| Reverse proxy | **Caddy 2** (BasicAuth + Let's Encrypt) | `Caddyfile`, Jinja2 template in `ansible/templates/` |
+| Reverse proxy | **Caddy 2** (TLS + Let's Encrypt, no BasicAuth — auth lives in the app) | `Caddyfile`, Jinja2 template in `ansible/templates/` |
 | Automation | **Ansible** (5 playbooks, Vault encryption) | `ansible/` directory |
-| Security | **fail2ban** (401 detection) | Filter + jail in `deploy.yml` playbook |
+| Security | **fail2ban** (sshd jail) | Jail in `deploy.yml` playbook |
 
 ---
 
 ## Key Files (Read these first for any task)
 
 ### Application core (Python)
-1. **`app.py`** (61 lines) — Entry point, page config, DB boot, 5-tab navigation
-2. **`src/db.py`** (~420 lines) — All SQLite schema (v1+v2) + CRUD; `st.connection("telerrad")` pattern; 5-modality seed + 3 auto-migrations
+1. **`app.py`** (94 lines) — Entry point, page config, auth gate + cookie manager, DB boot, 5-tab navigation
+2. **`src/auth_crypto.py`** (134 lines) — stdlib crypto: scrypt password hashing, RFC 6238 TOTP, otpauth URI, HMAC session tokens
+3. **`src/auth_store.py`** (156 lines) — `data/auth.json` load/save/validate (atomic 0600) + pure gate helpers
+4. **`src/auth_bootstrap.py`** (70 lines) — non-interactive bootstrap run by Ansible (reads `data/.auth_creds`)
+5. **`src/db.py`** (~420 lines) — All SQLite schema (v1+v2) + CRUD; `st.connection("telerrad")` pattern; 5-modality seed + 3 auto-migrations
 3. **`src/calculations.py`** (~380 lines) — Pure business logic (earnings, hours, MA, projections) + DB-dependent stats; dynamic modality-aware
 4. **`src/chart_colors.py`** (~85 lines) — Central color palette (11 modality colors + legacy aliases) + `color_for_modality(slug, modalities=None)` with DB-based lookup
 5. **`src/charts.py`** (~330 lines) — Plotly factories for Today and Month tabs (dynamic modalities, DB-stored colors)
@@ -48,20 +52,22 @@ You will be modifying Python code in the `src/` tree, the Streamlit entry point 
 7. **`src/formatting.py`** (~55 lines) — `fmt_brl()` BRL currency, `md_escape()` (escapes `$` for Streamlit Markdown), `MONTHS_PT`
 8. **`src/insights_rules.py`** (~230 lines) — Rule-based Portuguese insight generator (dynamic modalities)
 9. **`src/llm_client.py`** (~290 lines) — OpenRouter client with one-shot `generate()` + SSE `generate_stream()` + `build_rag_context()` for RAG
-10. **`src/cookies.py`** (~30 lines) — `cookie_manager` for tab persistence
-11. **`src/ui/sidebar.py`** (~85 lines) — Dynamic date picker + modality inputs (label+input side by side) + save
-12. **`src/ui/today.py`** (~195 lines) — KPI cards, modality bar, sparkline (dynamic)
-13. **`src/ui/month.py`** (~210 lines) — Gauge, line chart, rhythm alert, celebration
-14. **`src/ui/analysis.py`** (~130 lines) — Rule insights + 4 analysis charts (AI section removed in 1.5.0)
-15. **`src/ui/chat.py`** (~280 lines) — RAG-powered Chat IA with SSE streaming, suggestion pills, history trimming (new in 1.5.0)
-16. **`src/ui/settings.py`** (~340 lines) — `ensure_settings()` bootstrap + modality grid with add/delete/color_picker + LLM config + danger zone
-17. **`.streamlit/config.toml`** (60 lines) — All theme config: colors, fonts, dark mode, semantic colors
+10. **`src/cookies.py`** (79 lines) — `get_cookie_manager()` (one construction per run) + tab cookie + signed session cookie helpers
+11. **`src/ui/login.py`** (110 lines) — Auth gate: session restore, login form, TOTP step, 2FA banner, logout (only st.form usage)
+12. **`src/ui/sidebar.py`** (~85 lines) — Dynamic date picker + modality inputs (label+input side by side) + save
+13. **`src/ui/today.py`** (~195 lines) — KPI cards, modality bar, sparkline (dynamic)
+14. **`src/ui/month.py`** (~210 lines) — Gauge, line chart, rhythm alert, celebration
+15. **`src/ui/analysis.py`** (~130 lines) — Rule insights + 4 analysis charts (AI section removed in 1.5.0)
+16. **`src/ui/chat.py`** (~280 lines) — RAG-powered Chat IA with SSE streaming, suggestion pills, history trimming (new in 1.5.0)
+17. **`src/ui/settings.py`** (~340 lines) — `ensure_settings()` bootstrap + modality grid with add/delete/color_picker + LLM config + danger zone
+18. **`.streamlit/config.toml`** (60 lines) — All theme config: colors, fonts, dark mode, semantic colors
 
 ### Deployment
-18. **`Dockerfile`** — Multi-stage build (builder + runtime), non-root user (uid 1000)
+18. **`Dockerfile`** — Multi-stage build (builder + runtime), non-root user (uid 1000), `qrencode` for the TOTP QR
 19. **`docker-compose.yml`** — Caddy + Streamlit services, loopback-only port exposure
-20. **`Caddyfile`** — Reverse proxy: BasicAuth, JSON access log, streamlit upstream
-21. **`docs/deployment.md`** — Complete deployment guide with Vault secrets, playbooks, troubleshooting
+20. **`Caddyfile`** — Reverse proxy: access log, cache headers, streamlit upstream (auth is app-level)
+21. **`scripts/manage_auth.py`** (180 lines) — SSH auth CLI (KIAUH-style): 2FA QR/activate/disable, password, username, status, repair
+22. **`docs/deployment.md`** — Complete deployment guide with Vault secrets, playbooks, troubleshooting
 
 ### Tests
 **`tests/conftest.py`** — `FakeConnection` (SQLite `:memory:` emulation, v2 schema with `color` column), `conn` fixture, `seeded_conn` fixture (5 production modalities), `active_modalities` fixture, `default_prices` fixture. Each `test_*.py` corresponds 1:1 to a `src/` module.
@@ -127,6 +133,11 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 | `llm_prompt` | `user_settings` key `"llm_prompt"` | Default system prompt (`{user_name}` interpolated) |
 | `llm_model` | `user_settings` key `"llm_model"` | `"openai/gpt-oss-120b:free"` |
 
+**Auth gate state (used by `src/ui/login.py`):**
+- `auth_authenticated` — `True`/`False`; key presence triggers cookie restore (once per server session); logout sets `False`, never removes the key
+- `auth_username` — display-only
+- `auth_awaiting_totp` — transient, between the password and TOTP steps
+
 **Analysis-tab specific state:**
 - `historical_cache` — `{"key": "json_hash", "stats": {...}}` — invalidated when goal/active modalities change
 
@@ -152,6 +163,7 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 - **No `.env` file in the application** — API key is stored in DB `user_settings` table, configured in UI
 - **Portuguese locale for all user-facing text** — UI labels, tooltips, chart annotations, insights
 - **No database access in chart modules** — `src/charts.py` and `src/charts_analysis.py` accept data as parameters only
+- **No st.form in sidebar** — it breaks date-dependent pre-fill (forms suppress widget-driven reruns). Exception: the auth gate's login/TOTP forms in `src/ui/login.py` (main area) are the only `st.form` usage in the project.
 - **Deployment: Streamlit on loopback only** — `127.0.0.1:8501` in docker-compose, never exposed externally
 - **Dockerfile: non-root user** — container runs as `streamlit` (uid 1000), not root
 - **Dynamic modalities** — never hardcode modality slugs, labels, or prices in UI code; always use `st.session_state.active_modalities`
@@ -173,7 +185,10 @@ Every tab renderer calls `ensure_settings(conn)` first — it lazily loads from 
 - **Markdown safety:** wrap BRL strings in `md_escape()` before passing to `st.markdown`. See `docs/markdown-escaping-guide.md` for complete rules.
 
 ### Deployment conventions
-- **`$` in `BASICAUTH_USERS`:** must be escaped as `$$` in `.env` (Docker env_file parser). The `.env.j2` template handles this with `regex_replace`.
+- **Auth state:** single user, `data/auth.json` (gitignored), stdlib crypto only — no new Python deps for auth.
+- **Credentials exempt from logging** — never log, print, or write passwords, TOTP codes, or session secrets (project logging is structured JSON).
+- **CookieManager: exactly one construction per run** (`app.py`, passed down) — a second `cookie_manager()` call in the same run raises `StreamlitDuplicateElementKey`, and queued set/delete operations only flush when the component renders.
+- **Auth gate placement:** in `app.py` right after `st.set_page_config`, before `get_connection()` — imports stay at the top (ruff E402).
 - **Ansible secrets:** use `ansible-vault encrypt_string` for sensitive values; embed `!vault |` blocks directly in `all.yml`.
 - **Playbook idempotency:** All playbooks must be safe to re-run. `data/` is bind-mounted, never touched by git ops.
 - **Git authentication:** ed25519 deploy key auto-generated on VPS, registered via GitHub API. No ForwardAgent.
@@ -299,6 +314,12 @@ uv run streamlit run app.py
 
 ## Resolved Design Decisions (do not revisit)
 
+- **App-level auth, single user** — username + scrypt password + optional TOTP 2FA; state in `data/auth.json` (not DB tables); stdlib crypto only
+- **Session persistence via signed cookie** — HMAC-SHA256 token, `session_days` default 30; logout and password change (rotates `session_secret`) revoke it; no server-side sessions; no lockout / rate limiting in the app (per-session lockout was cosmetic against scripts and hostile to humans)
+- **2FA setup/reset via SSH only** — QR rendered in the terminal (`qrencode`), `manage_auth.py` CLI behind the `radtracker-auth` wrapper; TOTP secret never touches the web
+- **fail2ban sshd jail** — the Caddy 401 jail died with BasicAuth (the app never returns 401); network-level web brute-force protection is TOTP (+ optional Cloudflare rate limit on the final domain)
+- **Bootstrap is idempotent** — Ansible creates `auth.json` once from vault vars; redeploys never overwrite it (password/2FA changes via `radtracker-auth`)
+
 - **API key lives in DB** (`user_settings`), not in `.env` — do not reintroduce `python-dotenv` or `.env` loading
 - **Sidebar does NOT use `st.form`** — the date-dependent pre-fill requires widgets to rerun naturally; keep the imperative save button + spinner pattern
 - **Tab navigation uses `st.radio`** (not `st.tabs`) — Material icons render correctly in radio labels
@@ -342,10 +363,14 @@ uv run streamlit run app.py      # run the app
 
 For deployment:
 ```bash
-export VPS_HOST=129.151.4.89  # Oracle Cloud Free Tier
-export VPS_USER=ubuntu
+export VPS_HOST=129.151.4.89  # Oracle Cloud Free Tier (prod)
+# or VPS_HOST=10.10.10.209 VPS_USER=galvani  # LAN dev VPS
 ansible-galaxy collection install -r ansible/requirements.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
+
+Local dev note: the auth gate needs `data/auth.json` — create a scratch one with
+`python -c "from src.auth_store import create_bootstrap_auth; print(create_bootstrap_auth('dev', 'dev-password-123', 'data/auth.json', cookie_secure=False))"`,
+or the app stops at "Autenticação não configurada".
 
 Read `README.md` for end-user setup instructions. Read `docs/context.md` for exhaustive module-by-module detail. Read `docs/deployment.md` for the complete deployment guide. Read `docs/markdown-escaping-guide.md` for `$` escaping rules.

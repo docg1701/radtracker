@@ -1,8 +1,8 @@
 # radtracker — Comprehensive Project Context
 
-**Generated:** 2026-05-06
-**Version:** v1.5.8
-**Test status:** 150 passed, 0 failed (2026-05-06)
+**Generated:** 2026-08-14
+**Version:** v1.7.9
+**Test status:** 294 passed, 0 failed (2026-08-14)
 
 ---
 
@@ -10,9 +10,9 @@
 
 **radtracker** is a personal productivity dashboard for a teleradiology physician. It tracks daily exam counts across **configurable dynamic modalities**, converts them into earnings in Brazilian Real (BRL), monitors progress toward monthly revenue goals, and generates analytical insights — both rule-based and AI-driven (OpenRouter, configurable model slug).
 
-The app is a **Streamlit single-page dashboard** with local SQLite persistence. Designed as a single-user, local-only tool for development use — no authentication, no multi-tenancy at the application layer.
+The app is a **Streamlit single-page dashboard** with local SQLite persistence. Single-user by design, with **app-level authentication** (username + scrypt password + optional TOTP 2FA) implemented by the `feat/app-auth` branch: gate in `src/ui/login.py`, state in `data/auth.json` (a JSON file, not DB tables), signed session cookie for persistence across refreshes. See `docs/auth-implementation-plan.md`.
 
-**Self-hosted deployment** is supported via Docker + Caddy (reverse proxy with BasicAuth + automatic HTTPS) + fail2ban intrusion prevention, managed with Ansible playbooks.
+**Self-hosted deployment** is supported via Docker + Caddy (reverse proxy with automatic HTTPS — no BasicAuth, authentication lives in the app) + fail2ban (sshd jail), managed with Ansible playbooks.
 
 **Target user:** A single radiologist (default name: "Galvani", configurable in settings).
 
@@ -29,11 +29,14 @@ radtracker/
 ├── app.py                  # Streamlit entry point, navigation, session init
 ├── Dockerfile              # Multi-stage Docker build (builder + runtime, non-root user)
 ├── docker-compose.yml      # Caddy + Streamlit services, loopback-only port exposure
-├── Caddyfile               # Reverse proxy config: BasicAuth, JSON logging, streamlit upstream
-├── .env.example            # Template: DOMAIN + BASICAUTH_USERS (use with Ansible .env.j2)
+├── Caddyfile               # Reverse proxy config: access logging, cache headers, streamlit upstream (auth in app)
+├── .env.example            # Template: DOMAIN + TZ (use with Ansible .env.j2)
 ├── .dockerignore           # Exclude secrets, data, git, caddy dirs, tests from build context
 ├── src/
 │   ├── __init__.py         # Empty package marker
+│   ├── auth_crypto.py      # stdlib crypto: scrypt passwords, RFC 6238 TOTP, HMAC session tokens
+│   ├── auth_store.py       # auth.json load/save/validate + pure gate helpers (no Streamlit)
+│   ├── auth_bootstrap.py   # Non-interactive bootstrap run by Ansible (reads data/.auth_creds)
 │   ├── db.py               # SQLite schema (v2, 5 tables) + CRUD + price vigency + seed + migration
 │   ├── calculations.py     # Business logic (earnings, hours, MA, projections, stats)
 │   ├── charts.py           # Plotly charts (bar, donut, sparkline, gauge, monthly earnings, modality donut)
@@ -42,7 +45,7 @@ radtracker/
 │   ├── formatting.py       # fmt_brl (BRL currency), md_escape ($ for Markdown), MONTHS_PT
 │   ├── insights_rules.py   # Rule-based insights engine (dynamic modalities)
 │   ├── llm_client.py       # OpenRouter client (one-shot + SSE streaming) + RAG context builder
-│   ├── cookies.py          # Cookie-based tab persistence (streamlit-extras)
+│   ├── cookies.py          # Cookies: tab persistence + signed session token (streamlit-extras)
 │   └── ui/
 │       ├── __init__.py
 │       ├── sidebar.py      # Dynamic data entry form (date + N modality inputs)
@@ -50,6 +53,7 @@ radtracker/
 │       ├── month.py        # "Mês Atual" tab — gauge, line chart, rhythm alert, celebration
 │       ├── analysis.py     # "Análise" tab — rule insights + 4 analysis charts (AI section removed in 1.5.0)
 │       ├── chat.py         # "Chat IA" tab — RAG-powered streaming chat (new in 1.5.0)
+│       ├── login.py        # Auth gate: session restore, login, TOTP, 2FA banner, logout
 │       └── settings.py     # "Config" tab — modality grid + add/delete, goal, LLM, danger zone
 ├── ansible/                # Self-hosted deployment automation
 │   ├── ansible.cfg         # pipelining; ForwardAgent removed (deploy key)
@@ -59,7 +63,7 @@ radtracker/
 │   │   └── all.yml         # Shared vars + Vault-encrypted secrets
 │   ├── templates/
 │   │   ├── Caddyfile.j2    # Caddy template (LAN or internet mode)
-│   │   └── .env.j2         # Docker env_file template ($ → $$ escaping)
+│   │   └── .env.j2         # Docker env_file template (DOMAIN + TZ)
 │   └── playbooks/
 │       ├── deploy.yml      # Bootstrap + deploy (idempotent)
 │       ├── update.yml      # Git update via deploy key + rebuild (preserves data/)
@@ -69,6 +73,9 @@ radtracker/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py         # FakeConnection (v2 schema) + conn/seeded_conn/active_modalities fixtures
+│   ├── test_auth_crypto.py   # 26 tests — scrypt, RFC 6238 vectors, TOTP window, session tokens
+│   ├── test_auth_store.py    # 25 tests — auth.json schema/atomic save, gate helpers
+│   ├── test_auth_bootstrap.py # 8 tests — subprocess bootstrap (creds file, idempotency, exit codes)
 │   ├── test_calculations.py  # 32 tests — pure functions + DB stats + historical (v2 dynamic)
 │   ├── test_chart_colors.py  # 14 tests — hex_to_rgba + 11 modality colors + legacy aliases
 │   ├── test_charts.py        # 3 tests — chart figure structure validation
@@ -77,10 +84,12 @@ radtracker/
 │   ├── test_insights.py      # 10 tests — dynamic modality insights, tone, trends, mix shifts
 │   └── test_llm_client.py    # 28 tests — success, errors, streaming, RAG context, prompt building
 ├── scripts/
-│   └── import_csv.py       # CSV import tool for legacy data (assemed + radiplan)
-├── data/                   # SQLite DB + imported data markdown (gitignored)
+│   ├── import_csv.py       # CSV import tool for legacy data (assemed + radiplan)
+│   └── manage_auth.py      # Auth CLI (SSH): 2FA QR/activate/disable, password, username, status, repair
+├── data/                   # SQLite DB + auth state (gitignored)
 │   ├── .gitkeep
-│   └── telerrad.db         # Main database (gitignored)
+│   ├── telerrad.db         # Main database (gitignored)
+│   └── auth.json           # Auth state: password hash, TOTP + session secrets (gitignored)
 ├── docs/
 │   ├── context.md          # This file
 │   ├── meta-prompt.md      # LLM session handoff contract
@@ -626,24 +635,28 @@ Self-hosted deployment to a VPS via Docker + Caddy + fail2ban, managed with Ansi
 ```
 Browser → Caddy (:80/:443) → Streamlit (:8501 loopback)
                 ↓
-          BasicAuth + Let's Encrypt (auto TLS)
-          fail2ban watches /var/log/caddy/access.log for 401s
+          TLS (Let's Encrypt in internet mode; plain HTTP on LAN)
+          app-level login gate (src/ui/login.py, data/auth.json)
+          fail2ban: sshd jail only — no Caddy 401 jail (the app never returns 401)
 ```
 
-**Two modes:** LAN (HTTPS with self-signed cert) and Internet (real domain, Let's Encrypt).
+**Two modes:** LAN (plain HTTP on the local IP) and Internet (real domain, Let's Encrypt).
 
 **Security layers:**
-1. Caddy BasicAuth on all routes
-2. Streamlit only on loopback (127.0.0.1:8501)
-3. fail2ban blocks IPs after 5 failed auth attempts in 10 minutes (1-hour ban)
-4. fail2ban whitelists local/RFC1918 networks
-5. Non-root container user (uid 1000)
+1. App-level authentication (username + scrypt password + optional TOTP 2FA)
+2. Session persistence: HMAC-signed cookie, 30-day expiry (logout and password change revoke it)
+3. 2FA setup/reset only via SSH (`radtracker-auth`); QR renders in the terminal, never on the web
+4. Streamlit only on loopback (127.0.0.1:8501)
+5. fail2ban sshd jail blocks SSH brute force (5 failures / 10 min → 1-hour ban)
+6. fail2ban whitelists local/RFC1918 networks
+7. Non-root container user (uid 1000)
 
 ### 10.2 Docker
 
 **`Dockerfile`** — Multi-stage build:
 - **Stage 1 (builder):** `python:3.12-slim`, installs `uv`, pins production deps
 - **Stage 2 (runtime):** Copies venv, creates `streamlit` user (uid 1000), runs as non-root
+- Installs `qrencode` (TOTP QR rendered in the terminal by `manage_auth.py`)
 - Healthcheck via `/_stcore/health`
 
 **`docker-compose.yml`** — Two services:
@@ -663,7 +676,10 @@ Git authentication via ed25519 deploy key auto-generated on VPS and registered o
 
 | File | Lines | Key Lines | Purpose |
 |------|-------|-----------|---------|
-| `app.py` | 61 | L23, L37–42, L54–63 | Page config, 5-tab navigation, dispatch |
+| `app.py` | 94 | L1–30, L36–62 | Page config, auth gate + cookie manager, 5-tab navigation, dispatch |
+| `src/auth_crypto.py` | 134 | `hash_password()`, `verify_totp()`, `totp_code()`, `sign_session()`, `verify_session()` | stdlib crypto (scrypt, RFC 6238, HMAC tokens) |
+| `src/auth_store.py` | 156 | `load_auth()`, `save_auth()`, `create_bootstrap_auth()`, `verify_login()`, `verify_session_token()` | auth.json persistence + pure gate helpers |
+| `src/auth_bootstrap.py` | 70 | `main()`, `_parse_creds()` | Ansible bootstrap (data/.auth_creds → data/auth.json) |
 | `src/db.py` | ~710 | `_MODALITY_SEED`, `_PRODUCTION_DEFAULTS`, `init_db()`, `slugify()`, `add_modality()`, `deactivate_modality()`, `save_modality()`, `save_price_vigency()`, `load_prices_at()`, `upsert_daily_items()`, migrations | DB schema, seed, CRUD, price vigency, migration |
 | `src/calculations.py` | ~510 | `_build_lookups()`, `_month_time_window()`, `compute_earnings()`, `estimate_hours()`, `compute_daily_stats()`, `compute_monthly_stats()`, `compute_historical_stats()`, `attach_revenue()` | Business logic (price-vigent revenue, calendar-day counting) |
 | `src/chart_colors.py` | ~85 | `MODALITY_COLORS`, `color_for_modality()`, `CHART_COLORS`, `hex_to_rgba()`, `get_chart_text_color()` | Color system |
@@ -672,12 +688,14 @@ Git authentication via ed25519 deploy key auto-generated on VPS and registered o
 | `src/formatting.py` | ~55 | `MONTHS_PT`, `md_escape()`, `fmt_brl()` | Locale + formatting |
 | `src/insights_rules.py` | ~130 | `_projection_scenarios()`, `generate_rule_insights()` | Rule-based insights (factual + 3 projection scenarios) |
 | `src/llm_client.py` | ~430 | `LLMUnavailableError`, `build_rag_context()`, `LLMClient.__init__()`, `LLMClient.generate()`, `LLMClient.generate_stream()`, `_enrich_stats()`, `_USER_PROMPT_TEMPLATE` | OpenRouter LLM + RAG |
-| `src/cookies.py` | ~30 | `get_last_tab_index()`, `set_last_tab_index()` | Tab cookie persistence |
+| `src/cookies.py` | 79 | `get_cookie_manager()`, `get_last_tab_index()`, `set_last_tab_index()`, `get_session_token()`, `set_session_token()`, `delete_session_token()` | Tab cookie + signed session cookie (one manager construction per run) |
 | `src/ui/sidebar.py` | ~85 | `render_sidebar()` | Dynamic sidebar form |
 | `src/ui/today.py` | ~195 | `render_today_tab()`, `_render_kpi_row()`, `_build_sparkline_figure()` | Today dashboard |
 | `src/ui/month.py` | ~225 | `render_month_tab()`, `_should_show_rhythm_alert()`, `_render_rhythm_alert()`, `_maybe_celebrate()` | Month dashboard |
 | `src/ui/analysis.py` | ~130 | `render_analysis_tab()`, `_render_insight_body()` | Analysis + insights |
 | `src/ui/chat.py` | ~280 | `render_chat_tab()`, `_trigger_initial_report()`, `_stream_response()`, `_trim_history()`, `_render_suggestion_chips()` | Chat IA with streaming |
+| `src/ui/login.py` | 110 | `render_login_gate()`, `render_logout_button()`, `_restore_session()`, `_establish_session()` | Auth gate (restore/login/TOTP/banner/logout) — only st.form usage |
 | `src/ui/settings.py` | ~340 | `ensure_settings()`, `_render_modality_grid()`, `_render_llm_section()`, `_render_danger_zone()`, `_reload_modalities()` | Settings + modality config |
 | `.streamlit/config.toml` | 60 | Full theme config | Colors, fonts, dark mode |
 | `tests/conftest.py` | ~155 | `FakeConnection`, `conn`, `seeded_conn`, `active_modalities`, `default_prices` | Test infrastructure |
+| `scripts/manage_auth.py` | 180 | `main()`, `_enable_2fa()`, `_change_password()`, `_repair()` | SSH auth CLI (KIAUH-style menu) |
