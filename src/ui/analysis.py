@@ -9,7 +9,6 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-from streamlit_extras.skeleton import skeleton
 
 from src.calculations import compute_historical_stats, historical_cache_key
 from src.charts_analysis import (
@@ -40,13 +39,6 @@ def render_analysis_tab(conn: Any) -> None:
     cached = st.session_state.get("historical_cache")
 
     if cached is None or cached.get("key") != cache_key:
-
-        sk1, sk2 = st.columns(2)
-        with sk1:
-            skeleton(height=280)
-        with sk2:
-            skeleton(height=280)
-        skeleton(height=280)
 
         with st.spinner("Analisando dados históricos..."):
             stats = compute_historical_stats(conn, year_month, goal, active_mods)
