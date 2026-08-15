@@ -153,7 +153,10 @@ uv lock   # syncs uv.lock
 # 3. Push to master
 
 # 4. Create annotated tag (first line becomes release subtitle, rest is body)
-git tag -a vX.Y.Z <commit-hash> -m "vX.Y.Z: one-line summary" \
+#    Release title format: "vX.Y.Z: <first line>" — the workflow adds the
+#    version prefix (and strips it if duplicated), so the annotation's first
+#    line must NOT start with "vX.Y.Z:".
+git tag -a vX.Y.Z <commit-hash> -m "one-line summary" \
     -m "Longer description. Bug fixes, features, breaking changes."
 
 # 5. Push the tag — this triggers CI

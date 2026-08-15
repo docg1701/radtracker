@@ -65,8 +65,10 @@ jobs:
 
           PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "${{ github.ref_name }}" | head -1 || true)
 
-          # Tag annotation first line → title subtitle (fall back to bare version)
+          # Tag annotation first line → subtitle (fall back to bare version).
+          # The annotation must not repeat the version prefix; strip defensively.
           SUBTITLE=$(git tag -l --format='%(contents)' "${{ github.ref_name }}" 2>/dev/null | head -1 || true)
+          SUBTITLE="${SUBTITLE#${{ github.ref_name }}: }"
           if [ -z "$SUBTITLE" ]; then
             TITLE="${{ github.ref_name }}"
           else
