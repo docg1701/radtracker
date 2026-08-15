@@ -25,7 +25,7 @@ RUN uv pip install \
 FROM python:3.12-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl sqlite3 \
+    curl sqlite3 qrencode \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv

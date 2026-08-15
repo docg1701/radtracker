@@ -51,14 +51,14 @@
           {{ ansible_facts.distribution_release }} stable
         state: absent
 
-    - name: Remove fail2ban radtracker jail
+    - name: Remove fail2ban sshd jail
       ansible.builtin.file:
-        path: /etc/fail2ban/jail.d/radtracker.conf
+        path: /etc/fail2ban/jail.d/sshd.conf
         state: absent
 
-    - name: Remove fail2ban radtracker filter
+    - name: Remove radtracker-auth SSH wrapper
       ansible.builtin.file:
-        path: /etc/fail2ban/filter.d/radtracker-caddy.conf
+        path: /usr/local/bin/radtracker-auth
         state: absent
 
     - name: Uninstall fail2ban

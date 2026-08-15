@@ -177,36 +177,26 @@
             name: fail2ban
             state: present
 
-        - name: Create fail2ban filter for Caddy BasicAuth failures
-          ansible.builtin.copy:
-            content: |
-              [Definition]
-              failregex = .*"remote_ip"\s*:\s*"<HOST>".*"status"\s*:\s*401
-              ignoreregex =
-            dest: /etc/fail2ban/filter.d/radtracker-caddy.conf
-            mode: "0644"
+        - name: Remove stale fail2ban radtracker files (pre-app-auth upgrade)
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/fail2ban/jail.d/radtracker.conf
+            - /etc/fail2ban/filter.d/radtracker-caddy.conf
 
-        - name: Create radtracker jail
+        - name: Create fail2ban sshd jail
           ansible.builtin.copy:
             content: |
-              [radtracker-caddy]
+              [sshd]
               enabled = true
-              port = http,https
-              filter = radtracker-caddy
-              logpath = {{ radtracker_dir }}/caddy_logs/access.log
+              port = ssh
+              logpath = %(sshd_backend)s
               maxretry = 5
               findtime = 600
               bantime = 3600
-            dest: /etc/fail2ban/jail.d/radtracker.conf
+            dest: /etc/fail2ban/jail.d/sshd.conf
             mode: "0644"
-
-    - name: Create Caddy access log file (fail2ban requires it)
-      ansible.builtin.file:
-        path: "{{ radtracker_dir }}/caddy_logs/access.log"
-        state: touch
-        owner: root
-        group: root
-        mode: "0644"
 
     - name: Ensure fail2ban is running
       ansible.builtin.systemd:
@@ -244,6 +234,42 @@
       ansible.builtin.debug:
         msg: "{{ db_migrate.stdout | default('migration ran') }}"
 
+    - name: Bootstrap app authentication (create data/auth.json)
+      block:
+        - name: Write temporary auth credentials file
+          ansible.builtin.copy:
+            content: |
+              {{ auth_username }}
+              {{ auth_password }}
+              cookie_secure:{{ deployment_mode != "lan" }}
+            dest: "{{ radtracker_data_dir }}/.auth_creds"
+            owner: "1000"
+            group: "1000"
+            mode: "0600"
+            no_log: true
+
+        - name: Run auth bootstrap in container
+          community.docker.docker_compose_v2_exec:
+            project_src: "{{ radtracker_dir }}"
+            service: streamlit
+            command: python -m src.auth_bootstrap
+          register: auth_bootstrap
+          changed_when: auth_bootstrap.stdout is search("created")
+      always:
+        - name: Remove temporary auth credentials file
+          ansible.builtin.file:
+            path: "{{ radtracker_data_dir }}/.auth_creds"
+            state: absent
+
+    - name: Install radtracker-auth SSH wrapper
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          exec docker compose --project-directory {{ radtracker_dir }} \
+            exec streamlit python -m scripts.manage_auth
+        dest: /usr/local/bin/radtracker-auth
+        mode: "0755"
+
     - name: Deployment complete
       ansible.builtin.debug:
         msg: >-
@@ -253,3 +279,5 @@
           {% else %}
           Access at https://{{ domain }}
           {% endif %}
+          Enable 2FA now: SSH in and run `radtracker-auth` (option 1).
+          Until then the app is password-only with no network rate limit.

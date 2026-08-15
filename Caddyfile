@@ -17,8 +17,5 @@
     }
     header -Server
 
-    basic_auth * {
-        {$BASICAUTH_USERS}
-    }
     reverse_proxy streamlit:8501
 }
