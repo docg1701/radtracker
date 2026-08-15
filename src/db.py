@@ -630,12 +630,7 @@ def _seed_modalities(conn: Any) -> None:
         return
     with conn.connect() as db_conn:
         for m in _MODALITY_SEED:
-            prod = _PRODUCTION_DEFAULTS.get(m["slug"])
-            if prod:
-                price, eph = prod
-                active = 1
-            else:
-                price, eph, active = 0.0, 0.0, 0
+            price, eph = _PRODUCTION_DEFAULTS[m["slug"]]
             db_conn.execute(
                 sa.text("""
                     INSERT OR IGNORE INTO modalities
@@ -644,7 +639,7 @@ def _seed_modalities(conn: Any) -> None:
                 """),
                 {
                     "slug": m["slug"], "label": m["label"],
-                    "price": price, "eph": eph, "active": active,
+                    "price": price, "eph": eph, "active": 1,
                     "sort_order": m["sort_order"],
                     "color": MODALITY_COLORS.get(m["slug"], "#64748B"),
                 },

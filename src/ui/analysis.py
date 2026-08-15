@@ -37,9 +37,7 @@ def render_analysis_tab(conn: Any) -> None:
         )
         return
 
-    stats, recomputed = get_historical_stats(conn, year_month, goal, active_mods)
-    if recomputed:
-        st.rerun()
+    stats = get_historical_stats(conn, year_month, goal, active_mods)
 
     df = stats.get("df")
     if df is None or len(df) == 0:

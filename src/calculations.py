@@ -6,7 +6,6 @@ DB-dependent functions accept a Streamlit connection as first parameter.
 """
 
 import calendar
-import json
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -292,17 +291,6 @@ def compute_monthly_stats(
 # ---------------------------------------------------------------------------
 # Historical stats (multi-month)
 # ---------------------------------------------------------------------------
-
-def historical_cache_key(
-    year_month: str, goal: float, active_modalities: list[dict[str, Any]],
-) -> str:
-    """Stable JSON cache key for compute_historical_stats results."""
-    parts = {
-        "ym": year_month,
-        "goal": goal,
-        "mods": [(m["slug"], m["price"], m["exams_per_hour"]) for m in active_modalities],
-    }
-    return json.dumps(parts, sort_keys=True)
 
 def _same_point_earnings(month_rows: pd.DataFrame, day_of_month: int) -> float:
     """Sum a month's earnings up to and including the given day-of-month.

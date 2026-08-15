@@ -13,7 +13,8 @@ rules:
     forbid-implicit-octal: true
     forbid-explicit-octal: true
   truthy:
-    allowed-values: ["true", "false", "yes", "no"]
+    # "on" é a chave obrigatória de GitHub Actions (`on: push`)
+    allowed-values: ["true", "false", "yes", "no", "on"]
   indentation:
     spaces: 2
     indent-sequences: consistent

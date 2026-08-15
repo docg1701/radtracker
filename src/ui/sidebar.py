@@ -85,7 +85,7 @@ def render_sidebar(conn: Any) -> None:
                 # Send all values — zeros will be deleted, non-zeros upserted
                 upsert_daily_items(conn, date_str, values)
 
-            st.session_state.pop("historical_cache", None)
+            st.cache_data.clear()
             formatted = selected_date.strftime("%d/%m")
             st.toast(f"Produção de {formatted} salva!", icon=":material/check_circle:")
             st.rerun()

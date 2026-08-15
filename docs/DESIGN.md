@@ -1,4 +1,6 @@
-## Overview
+# Overview
+
+<!-- markdownlint-disable MD013 -->
 
 Cal.com's marketing surface is a clean, friendly modern-SaaS interface — white canvas (`{colors.canvas}` — #ffffff) with black primary CTAs (`{colors.primary}` — #111111), custom **Cal Sans** display typography, and `{colors.surface-card}` (#f5f5f5) light-gray cards holding product UI fragments. The system reads as confidently engineered without trying to impress — every band has clear hierarchy, generous whitespace, and a single primary action.
 
@@ -9,6 +11,7 @@ Component voltage comes from **product UI fragments shown directly inside cards*
 The footer flips to `{colors.surface-dark}` (#101010) — a deep near-black that visually closes every long-scroll page. The footer is the only dark surface in the system; everything above stays white-with-light-gray-cards.
 
 **Key Characteristics:**
+
 - White canvas with black primary CTA (`{colors.primary}` — #111111). Buttons are `{rounded.md}` (8px) with confident weight-600 labels. Standard friendly-SaaS button.
 - Custom `Cal Sans` display typeface for headlines (substituted with Inter weight 600 here). Negative letter-spacing on display sizes — geometric, precise, slightly condensed.
 - Light-gray card surfaces (`{colors.surface-card}` — #f5f5f5) for feature cards, testimonials, and pricing tiers (non-featured). The featured pricing tier flips to `{colors.surface-dark}` (the only dark card on light pages).
@@ -22,11 +25,13 @@ The footer flips to `{colors.surface-dark}` (#101010) — a deep near-black that
 ## Colors
 
 ### Brand & Accent
+
 - **Primary** (`{colors.primary}` — #111111): The dominant action color. All primary CTAs, h1/h2 display type. Press state shifts to `{colors.primary-active}` (#242424).
 - **Brand Accent** (`{colors.brand-accent}` — #3b82f6): Used sparely on inline links and on a small badge / "Customer story" highlight. Cal.com is a near-monochrome brand — the blue appears rarely.
 - **Badge Pastels** — A small pastel set for category badges and avatar fills: `{colors.badge-orange}` (#fb923c), `{colors.badge-pink}` (#ec4899), `{colors.badge-violet}` (#8b5cf6), `{colors.badge-emerald}` (#34d399). These appear on tag pills and small accent moments inside product UI fragments — never on hero CTAs.
 
 ### Surface
+
 - **Canvas** (`{colors.canvas}` — #ffffff): The default page floor.
 - **Surface Soft** (`{colors.surface-soft}` — #f8f9fa): Nav-pill-group background, very-soft section dividers.
 - **Surface Card** (`{colors.surface-card}` — #f5f5f5): Feature cards, testimonial cards, badge pills, default avatar fills.
@@ -37,6 +42,7 @@ The footer flips to `{colors.surface-dark}` (#101010) — a deep near-black that
 - **Hairline Soft** (`{colors.hairline-soft}` — #f3f4f6): A barely-visible divider used between sections that share the white canvas.
 
 ### Text
+
 - **Ink** (`{colors.ink}` — #111111): All headlines and primary text.
 - **Body** (`{colors.body}` — #374151): Default running-text color.
 - **Muted** (`{colors.muted}` — #6b7280): Secondary text — sub-headings, breadcrumbs, footer body.
@@ -45,6 +51,7 @@ The footer flips to `{colors.surface-dark}` (#101010) — a deep near-black that
 - **On Dark Soft** (`{colors.on-dark-soft}` — #a1a1aa): Footer body text — slightly muted white for the link rows.
 
 ### Semantic
+
 - **Success** (`{colors.success}` — #10b981): Confirmation states, success badges in product UI.
 - **Warning** (`{colors.warning}` — #f59e0b): Warning callouts.
 - **Error** (`{colors.error}` — #ef4444): Validation errors.
@@ -52,9 +59,11 @@ The footer flips to `{colors.surface-dark}` (#101010) — a deep near-black that
 ## Typography
 
 ### Font Family
+
 The system runs **Cal Sans** for display + brand wordmark and **Inter** for everything else. Cal Sans is Cal.com's custom geometric display typeface — slightly condensed, weight 600, negative letter-spacing. Inter handles body, buttons, navigation, captions, and tabular code blocks. The fallback stack walks `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif` for both families.
 
 The split is functional:
+
 - Cal Sans (display, 600 weight, -0.5 to -2px tracking) — h1, h2, h3
 - Inter (body + UI, 400-600 weight, 0 letter-spacing) — paragraphs, labels, buttons, nav
 
@@ -77,16 +86,19 @@ The split is functional:
 | `{typography.nav-link}` | 14px | 500 | 1.4 | 0 | Top-nav menu items |
 
 ### Principles
+
 Cal Sans is the brand voice — every display headline uses it. Inter handles the supporting type. The boundary is strict: never put body copy in Cal Sans, never put a display headline in Inter. Cal Sans without negative letter-spacing reads as off-brand — the -0.5 to -2px tracking is part of the voice.
 
 Display weight stays at 600 across all sizes — never 700, never 500. The middle weight is what makes Cal Sans feel modern and confident without becoming bombastic.
 
 ### Note on Font Substitutes
+
 If Cal Sans is unavailable, **Inter** at weight 600 with -0.04em letter-spacing is a usable approximation. The geometric character of Cal Sans differs from Inter's humanist forms, but the substitution preserves the weight + tracking signature. **Manrope** at weight 700 is another close alternative.
 
 ## Layout
 
 ### Spacing System
+
 - **Base unit:** 4px.
 - **Tokens:** `{spacing.xxs}` 4px · `{spacing.xs}` 8px · `{spacing.sm}` 12px · `{spacing.md}` 16px · `{spacing.lg}` 24px · `{spacing.xl}` 32px · `{spacing.xxl}` 48px · `{spacing.section}` 96px.
 - **Section padding:** `{spacing.section}` (96px) — the universal vertical rhythm between editorial bands.
@@ -94,6 +106,7 @@ If Cal Sans is unavailable, **Inter** at weight 600 with -0.04em letter-spacing 
 - **Gutters:** `{spacing.lg}` (24px) between cards in 3-up grids; `{spacing.md}` (16px) inside footer columns.
 
 ### Grid & Container
+
 - **Max content width:** ~1200px centered on marketing pages.
 - **Editorial body:** Single 12-column grid; hero band often uses 7/5 split (h1 left, app mockup card right).
 - **Feature card grids:** 3-up at desktop, 2-up at tablet, 1-up at mobile.
@@ -101,6 +114,7 @@ If Cal Sans is unavailable, **Inter** at weight 600 with -0.04em letter-spacing 
 - **Footer:** 4-column link list at desktop, wrapping to 2-up at tablet, 1-up at mobile.
 
 ### Whitespace Philosophy
+
 Cal.com uses generous but not excessive whitespace — section padding sits at 96px (modern-SaaS standard), and card internal padding stays at 32px. The rhythm is calibrated for fast scanning: every band has a single h1 + h2 + supporting cards, never densely packed lists. The result reads as confident-not-shouting.
 
 ## Elevation & Depth
@@ -116,6 +130,7 @@ Cal.com uses generous but not excessive whitespace — section padding sits at 9
 The elevation philosophy is **soft and modern** — small drop shadows on elevated cards, color-block contrast for emphasis. No heavy shadows, no neumorphism, no glassmorphism.
 
 ### Decorative Depth
+
 - Calendar widgets and product UI fragments embedded inside marketing cards carry their own internal shadows from the product UI itself — these are not system tokens, they're product chrome shown as content.
 - Avatar circles in testimonial sections sometimes carry pastel fill colors (`{colors.badge-orange}`, `{colors.badge-pink}`, etc.) — adds a small chromatic flourish without breaking the monochrome brand voice.
 
@@ -134,6 +149,7 @@ The elevation philosophy is **soft and modern** — small drop shadows on elevat
 | `{rounded.full}` | 9999px / 50% | Avatars, icon buttons |
 
 ### Photography Geometry
+
 Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI fragments inside marketing cards retain their native chrome (which often has its own internal radii — e.g., calendar grid cells, button rows). Hero illustration zones use 16:9 or 4:3 ratios with `{rounded.xl}` corners.
 
 ## Components
@@ -201,6 +217,7 @@ Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI
 ## Do's and Don'ts
 
 ### Do
+
 - Reserve `{colors.primary}` (#111111) for primary CTAs and h1/h2 type. Cal.com's button is near-black, not blue.
 - Use Cal Sans for every display headline. Pair with Inter body. Never blur the boundary.
 - Apply negative letter-spacing on display sizes (-0.5 to -2px). Cal Sans without it reads as off-brand.
@@ -211,6 +228,7 @@ Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI
 - End every page with the dark footer. The light-to-dark transition is part of the editorial rhythm.
 
 ### Don't
+
 - Don't use accent colors (`{colors.brand-accent}`, badge pastels) on primary CTAs. The system is monochrome at the action layer.
 - Don't bold display weight beyond 600. Cal Sans at 700 reads as bombastic.
 - Don't use rounded radius beyond `{rounded.xl}` (16px) on cards. Larger radii read as consumer-app, not professional booking software.
@@ -230,12 +248,14 @@ Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI
 | Wide | > 1440px | Same as desktop with more outer breathing room; max content width caps at 1200px |
 
 ### Touch Targets
+
 - `{component.button-primary}` at minimum 40 × 40px.
 - `{component.button-icon-circular}` at exactly 36 × 36 — slightly under WCAG's 44 × 44 but the centered icon and full-circle silhouette compensate.
 - `{component.text-input}` height is 40px.
 - `{component.category-tab}` rendered inside nav-pill-group has 8 × 14 padding; effective tap area meets 44px+ with the surrounding pill.
 
 ### Collapsing Strategy
+
 - Top nav collapses to hamburger at < 768px; menu opens as a full-screen sheet.
 - Hero band's 7-5 grid collapses to single-column on mobile — h1 + sub-head + buttons first, then the app-mockup card below.
 - Feature grids reduce columns rather than scaling cards down.
@@ -244,6 +264,7 @@ Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI
 - Avatar + testimonial card layouts stay grid-aligned at every breakpoint.
 
 ### Image Behavior
+
 - Product UI fragments inside cards retain native aspect ratios; the cards themselves resize.
 - Avatar photos crop to circles at every breakpoint.
 - Hero app-mockup card scales proportionally on mobile — the calendar grid stays legible.
@@ -267,4 +288,3 @@ Avatar photos use `{rounded.full}` (perfect circles) at 36px or 40px. Product UI
 - Form validation states beyond `{component.text-input-focused}` are not extracted — error / success states would need a sign-up or booking flow to confirm.
 - The actual booking widget surface (cal.com/{username}) is the product, not a marketing surface; its spec is out of scope.
 - Avatar photos in testimonial sections sometimes carry pastel circular fills with initials instead of photographs; both treatments coexist on the same page.
-

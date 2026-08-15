@@ -43,7 +43,7 @@ python -c "from src.auth_store import create_bootstrap_auth; print(create_bootst
 
 Para insights gerados por IA:
 
-1. Crie uma conta gratuita em https://openrouter.ai
+1. Crie uma conta gratuita em <https://openrouter.ai>
 2. Gere uma API key
 3. Na aba **Config**, cole sua chave no campo "Chave API OpenRouter"
 4. Opcionalmente, personalize o nome e o prompt da IA na mesma aba
@@ -61,7 +61,7 @@ uv run pytest tests/ -v --cov=src --cov-report=term-missing
 
 ## Estrutura do projeto
 
-```
+```text
 radtracker/
 ├── app.py                  # Entry point Streamlit (auth gate após set_page_config)
 ├── src/
@@ -100,7 +100,6 @@ radtracker/
 - Plotly
 - SQLite (via SQLAlchemy)
 - httpx (OpenRouter API)
-- streamlit-extras (rain, star_rating, stoggle)
 - pytest + pytest-cov
 
 ## Deploy

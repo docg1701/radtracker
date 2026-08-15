@@ -183,7 +183,7 @@ def _trigger_initial_report(
     llm_prompt: str,
 ) -> None:
     """Compute stats, build RAG context, queue initial report prompt."""
-    stats, _ = get_historical_stats(conn, year_month, goal, active_mods)
+    stats = get_historical_stats(conn, year_month, goal, active_mods)
     system_prompt = build_rag_context(stats, active_mods, llm_prompt)
     st.session_state.messages = [
         {"role": "system", "content": system_prompt},
@@ -306,7 +306,7 @@ def _render_action_buttons() -> None:
         key="chat_new",
     ):
         st.session_state.messages = []
-        st.session_state.pop("historical_cache", None)
+        st.cache_data.clear()
         st.rerun()
 
 

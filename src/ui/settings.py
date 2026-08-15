@@ -102,7 +102,7 @@ def render_settings_tab(conn: Any) -> None:
 
 def _reload_modalities(conn: Any) -> None:
     """Clear caches and reload modalities + prices into session_state."""
-    st.session_state.pop("historical_cache", None)
+    st.cache_data.clear()
     st.session_state.all_modalities = load_all_modalities(conn)
     st.session_state.active_modalities = load_active_modalities(conn)
 
@@ -497,7 +497,7 @@ def _save_llm_settings(
     save_setting(conn, "thinking_mode", thinking_mode)
     save_setting(conn, "temperature", str(temperature))
 
-    st.session_state.pop("historical_cache", None)
+    st.cache_data.clear()
     st.session_state.goal = goal
     st.session_state.user_name = user_name
     st.session_state.api_key = api_key
@@ -555,7 +555,6 @@ def _execute_delete() -> None:
         active_modalities=[],
         llm_model="",
     )
-    st.session_state.pop("historical_cache", None)
     st.cache_data.clear()
     st.toast(":material/delete: Todos os dados foram removidos.")
 

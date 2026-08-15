@@ -8,6 +8,24 @@ on:
     branches: [master]
 
 jobs:
+  hadolint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hadolint/hadolint-action@v3.4.0
+        with:
+          dockerfile: Dockerfile
+
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - run: npm install -g markdownlint-cli
+
+      - run: markdownlint '**/*.md'
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -27,7 +45,7 @@ jobs:
       - run: uv run --frozen pytest tests/ -v
 
   release:
-    needs: test
+    needs: [test, hadolint, markdownlint]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -66,17 +84,17 @@ jobs:
             RANGE="${{ github.ref_name }}"
           fi
 
-          ADDED=$(git log --pretty=format:"- %s" $RANGE --grep="^feat" -E 2>/dev/null | strip || true)
+          ADDED=$(git log --pretty=format:"- %s" "$RANGE" --grep="^feat" -E 2>/dev/null | strip || true)
           if [ -n "$ADDED" ]; then
             { echo "### Added"; echo "$ADDED"; echo ""; } >> "$NOTES"
           fi
 
-          FIXED=$(git log --pretty=format:"- %s" $RANGE --grep="^fix" -E 2>/dev/null | strip || true)
+          FIXED=$(git log --pretty=format:"- %s" "$RANGE" --grep="^fix" -E 2>/dev/null | strip || true)
           if [ -n "$FIXED" ]; then
             { echo "### Fixed"; echo "$FIXED"; echo ""; } >> "$NOTES"
           fi
 
-          CHANGED=$(git log --pretty=format:"- %s" $RANGE | grep -E '^- (chore|docs|ci|refactor|style|test|perf|revert|build)(\(.+\))?:' | strip || true)
+          CHANGED=$(git log --pretty=format:"- %s" "$RANGE" | grep -E '^- (chore|docs|ci|refactor|style|test|perf|revert|build)(\(.+\))?:' | strip || true)
           if [ -n "$CHANGED" ]; then
             { echo "### Changed"; echo "$CHANGED"; echo ""; } >> "$NOTES"
           fi

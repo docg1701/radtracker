@@ -69,19 +69,18 @@ TAB_LABELS = [
     ":material/settings: Configuração",
 ]
 
-if "active_tab_idx" not in st.session_state:
-    try:
-        st.session_state.active_tab_idx = int(get_last_tab_index())
-    except Exception:
-        st.session_state.active_tab_idx = 0
-    if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
-        st.session_state.active_tab_idx = 0
+# index= is only used while the radio has no session state (first render);
+# afterwards key="main_tabs" owns the selection (see docs/meta-prompt.md).
+try:
+    cookie_idx = int(get_last_tab_index())
+except Exception:
+    cookie_idx = 0
 
 with st.container(horizontal=True, vertical_alignment="center"):
     active = st.radio(
         "Navegação",
         TAB_LABELS,
-        index=st.session_state.active_tab_idx,
+        index=cookie_idx if 0 <= cookie_idx < len(TAB_LABELS) else 0,
         horizontal=True,
         label_visibility="collapsed",
         key="main_tabs",
@@ -90,8 +89,7 @@ with st.container(horizontal=True, vertical_alignment="center"):
     render_logout_button()
 
 selected_idx = TAB_LABELS.index(active)
-if selected_idx != st.session_state.active_tab_idx:
-    st.session_state.active_tab_idx = selected_idx
+if str(selected_idx) != get_last_tab_index():
     set_last_tab_index(str(selected_idx))
 
 # ── Tab content ──

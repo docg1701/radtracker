@@ -11,7 +11,7 @@ data). Single user, single-page Streamlit app, SQLite persistence, PT-BR UI.
 
 ## 2. Architecture
 
-```
+```text
 Browser ──HTTPS──> Caddy ──HTTP──> Streamlit (127.0.0.1:8501) ──> SQLite data/telerrad.db
                                       └──> OpenRouter (Chat IA)
 Auth: login/TOTP gate (src/ui/login.py) ──> data/auth.json
@@ -20,7 +20,7 @@ Session: HMAC-signed cookie (src/cookies.py + src/auth_crypto.py)
 
 ### 2.1 Directory structure
 
-```
+```text
 app.py                     entry point: gate → sidebar → tab radio → tab renderer
 .streamlit/config.toml     theme
 src/
@@ -56,7 +56,7 @@ data/                      telerrad.db + auth.json (both gitignored)
 2. Every tab renderer calls `ensure_settings(conn)` → session state
    (`active_modalities`, `goal`, `user_name`, ...) from DB.
 3. Sidebar save → `upsert_daily_items` (zero = DELETE) → toast → `st.rerun()`;
-   clears `historical_cache`.
+   `st.cache_data.clear()` invalidates the historical-stats cache.
 4. Tabs render from DB queries (`ttl=0`, no caching) + pure calculations.
 5. Chat IA streams from OpenRouter with RAG context built from production history.
 

@@ -18,7 +18,7 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 | Charts | Plotly — factories in `src/charts.py`, `src/charts_analysis.py` |
 | Data | Pandas |
 | HTTP | httpx — OpenRouter (one-shot + SSE streaming) |
-| Extras | streamlit-extras: `rain`, `star_rating`, `stoggle` only (never `skeleton`, `cookie_manager`) |
+| Extras | none — native `st.balloons`, `st.expander`, markdown stars |
 | Auth | stdlib scrypt + TOTP (RFC 6238) + HMAC signed cookie — `data/auth.json` |
 | Package mgr | uv — `pyproject.toml` + `uv.lock` are the only canonical sources |
 | Tests | pytest + respx — 292 passing |
@@ -34,7 +34,8 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 - **`src/auth_crypto.py`** — scrypt hashing, TOTP, otpauth URI, HMAC session tokens
 - **`src/auth_store.py`** — `auth.json` load/save/validate (atomic 0600) + gate helpers
 - **`src/auth_bootstrap.py`** — non-interactive bootstrap run by Ansible
-- **`src/cookies.py`** — one-way CCv2 components (`_COOKIE_READER`/`_COOKIE_WRITER`) + session-token helpers
+- **`src/cookies.py`** — one-way CCv2 components (`_COOKIE_READER`/
+  `_COOKIE_WRITER`) + session-token helpers
 - **`src/db.py`** — schema (v1+v2) + CRUD + auto-migrations
 - **`src/calculations.py`** — pure business logic (earnings, projections)
 - **`src/chart_colors.py`** — palette + `color_for_modality()`
@@ -45,15 +46,21 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 - **`src/ui/login.py`** — auth gate, login/TOTP forms, sidebar header/footer, logout
 - **`src/ui/sidebar.py`** — greeting, date row, modality inputs, Salvar
 - **`src/ui/{today,month,analysis,chat,settings}.py`** — the 5 tabs
-- **`scripts/manage_auth.py`** — SSH auth CLI (wrapper `radtracker-auth`): 2FA QR/activate/disable, password, username, session days (rotates secret), status, repair
+- **`scripts/manage_auth.py`** — SSH auth CLI (wrapper `radtracker-auth`):
+  2FA QR/activate/disable, password, username, session days (rotates
+  secret), status, repair
 - **`.streamlit/config.toml`** — theme (dark primaryColor Teal-700 `#0F766E`)
 
 ## Database Schema (SQLite, 5 tables)
 
-- **`modalities`** — slug PK, label, price, exams_per_hour, active, color, sort_order. Soft-delete (`active=0`) preserves history; re-adding reactivates.
+- **`modalities`** — slug PK, label, price, exams_per_hour, active, color,
+  sort_order. Soft-delete (`active=0`) preserves history; re-adding
+  reactivates.
 - **`daily_production_items`** — PK (date, modality_slug); zero-count = DELETE, non-zero = UPSERT.
-- **`modality_prices`** — price vigencies PK (slug, effective_from); a reajust never recomputes past faturamento.
-- **`monthly_goals`** — PK year_month; missing month carries forward the most recent prior goal (45000.0 only when none ever recorded).
+- **`modality_prices`** — price vigencies PK (slug, effective_from); a
+  reajust never recomputes past faturamento.
+- **`monthly_goals`** — PK year_month; missing month carries forward the
+  most recent prior goal (45000.0 only when none ever recorded).
 - **`user_settings`** — key/value (user_name, api_key, llm_prompt, llm_model, reasoning settings).
 
 `init_db()` is idempotent: schema, modality seed, price-vigency backfill,
@@ -68,10 +75,11 @@ reasoning settings.
 | `auth_username` | login | display-only |
 | `auth_awaiting_totp` | login flow | transient between password and TOTP steps |
 | `_auth_cookie_secure` | auth.json | drives Set-Cookie Secure flag |
-| `active_tab_idx` | tab cookie | radio `key="main_tabs"` MUST stay (see constraints) |
-| `historical_cache` | analysis tab | `{"key", "stats"}` invalidated on goal/modality change |
+| `active_tab_idx` | removed | radio `key="main_tabs"` is the tab state (see constraints) |
+| `main_tabs` | tab radio key | selection persisted via cookie; index= only on first render |
+| `historical_cache` | removed | `st.cache_data` on `_cached_historical_stats`; clear() on save |
 | `messages`, `chat_suggestions` | chat tab | history capped at 15 pairs |
-| `goal_celebrated_YYYY-MM` | month tab | celebration rain once per month |
+| `goal_celebrated_YYYY-MM` | month tab | celebration balloons once per month |
 
 ## Hard Constraints
 
@@ -79,9 +87,9 @@ reasoning settings.
 - **No custom CSS / `unsafe_allow_html`** — theming via `.streamlit/config.toml`.
   Two narrow owner-approved exceptions: one CSS rule for tab font size (no font API
   exists), and `st.html()` for chat avatar colors.
-- **Never import:** `skeleton`, `cookie_manager`, `add_vertical_space`, `app_logo`,
-  `colored_header`, `row`, `stylable_container`, `tags` from streamlit-extras.
-- **No emojis as functional icons** — `:material/` only (rain is fine).
+- **No streamlit-extras dependency** — native widgets only (`st.balloons`,
+  `st.expander`; stars as markdown `★/☆`).
+- **No emojis as functional icons** — `:material/` only (balloons are fine).
 - **No `st.form` in sidebar** — breaks date-dependent pre-fill. Login/TOTP forms in
   the main area are the only `st.form` usage.
 - **No DB access in chart modules** — data as parameters.
@@ -92,8 +100,10 @@ reasoning settings.
 - **Auth state in `data/auth.json`** (gitignored) — stdlib crypto, no new deps.
 - **Never log credentials** (passwords, TOTP codes, session secrets).
 - **Tab radio requires `key="main_tabs"`** — without it, changing `index` discards
-  the next click's delta (tab pings back). Tab row = `st.container(horizontal=True)`
-  + radio + `st.space("stretch")` + natural-width Sair.
+  the next click's delta (tab pings back). The cookie restore feeds `index=` on
+  first render only; afterwards the radio key owns the value. Cookie write is
+  guarded by comparing against the synced snapshot. Tab row = `st.container(horizontal=True)`
+  - radio + `st.space("stretch")` + natural-width Sair.
 - **Cookie architecture:** `_COOKIE_READER` publishes once per server session (its
   `default` key needs `on_snapshot_json_change=lambda: None`, else
   `BidiComponentInvalidDefaultKeyError`); `_COOKIE_WRITER` never publishes; render
@@ -138,8 +148,11 @@ one paragraph breaks rendering. No config flag disables it.
 uv run pytest tests/ -q                     # 292 passing
 uv run ruff check src/ app.py scripts/ tests/
 uv run mypy src/
+hadolint Dockerfile
+uv run yamllint ansible/ .github/ docker-compose.yml
+actionlint .github/workflows/ci.yml
+markdownlint '**/*.md'
 ansible-lint ansible/                       # deployment changes
-hadolint Dockerfile                         # Dockerfile changes
 ```
 
 ## Stop / Escalate
@@ -184,6 +197,7 @@ uv sync && uv run pytest tests/ -q && uv run streamlit run app.py
 ```
 
 Deploy:
+
 ```bash
 export VPS_HOST=10.10.10.209 VPS_USER=galvani   # LAN dev VPS
 # or VPS_HOST=129.151.4.89                       # Oracle prod (internet mode)
@@ -197,6 +211,7 @@ without it the playbook switches the VPS to internet mode (Caddy ACME for the pr
 domain).
 
 Local dev scratch auth:
+
 ```bash
 python -c "from src.auth_store import create_bootstrap_auth; print(create_bootstrap_auth('dev', 'dev-password-123', 'data/auth.json', cookie_secure=False))"
 ```

@@ -18,8 +18,7 @@ RUN uv pip install \
     "numpy>=1.24.0" \
     "plotly>=5.18.0" \
     "httpx>=0.27.0" \
-    "sqlalchemy>=2.0.0" \
-    "streamlit-extras>=1.5.0"
+    "sqlalchemy>=2.0.0"
 
 # Stage 2: Runtime
 FROM python:3.12-slim AS runtime
@@ -32,7 +31,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN useradd --create-home --uid 1000 streamlit
-USER streamlit
+USER 1000
 WORKDIR /app
 
 COPY --chown=streamlit:streamlit . .
@@ -42,8 +41,6 @@ RUN mkdir -p /app/data
 EXPOSE 8501
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+    CMD ["curl", "--fail", "http://localhost:8501/_stcore/health"]
 
-ENTRYPOINT ["streamlit", "run", "app.py", \
-    "--server.port=8501", \
-    "--server.address=0.0.0.0"]
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

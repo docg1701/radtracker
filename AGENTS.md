@@ -69,9 +69,10 @@ Invoke these skills when relevant (they provide specialized instructions):
 | `ansible-automation` | Deployment tasks, playbooks, inventory, Jinja2 templates |
 
 Local references (read before relevant tasks):
+
 - `docs/streamlit_pro_tips.md` — 25+ best practices from Streamlit's co-founder
-- streamlit-extras em uso: `stoggle` (raw-data toggles), `rain` (celebração de meta),
-  `star_rating` (mês); cookies usam CCv2 próprio (`src/cookies.py`) — nada mais do catálogo
+- Sem streamlit-extras — `st.balloons()` (celebração), `st.expander` (raw-data toggles),
+  estrelas via markdown; cookies usam CCv2 próprio (`src/cookies.py`)
 
 ---
 
@@ -79,22 +80,25 @@ Local references (read before relevant tasks):
 
 ### Future linters
 
-The following linters should be configured as the project gains those file types:
-
-| Format | Tool | Status |
-|--------|------|--------|
-| YAML (Ansible, compose, CI) | `yamllint` | Not yet configured |
-| Markdown (docs, README) | `markdownlint-cli` | Not yet configured |
-| SQL | `sqlfluff` | Not yet configured |
-| Dockerfile | `hadolint` | Not yet configured |
+No pending linters. `sqlfluff` foi descartado: não há arquivos `.sql` no repo —
+todo o SQL vive embutido em strings Python (`src/db.py`) e é coberto por testes.
 
 ### Quality gate
 
-Run all configured linters + tests before declaring any task done. See
-`docs/meta-prompt.md` § "Validation" for current commands.
+Run everything below before declaring any task done — all tools must pass, not
+just Python ones. `hadolint` is installed at `~/.local/bin/hadolint` (on PATH).
 
-As each linter above is added, it must be included in the quality gate — all tools
-must pass, not just Python ones.
+```bash
+uv run pytest tests/ -q
+uv run ruff check src/ app.py scripts/ tests/
+uv run mypy src/
+hadolint Dockerfile
+uv run yamllint ansible/ .github/ docker-compose.yml
+actionlint .github/workflows/ci.yml
+markdownlint '**/*.md'
+```
+
+Ansible changes additionally require `ansible-lint ansible/`.
 
 ---
 
@@ -132,7 +136,8 @@ must pass, not just Python ones.
 
 Push a **tag** to trigger it: `.github/workflows/ci.yml`
 
-1. Runs `pytest` on Python 3.12 + 3.13.
+1. Runs `pytest` on Python 3.12 + 3.13, lints the Dockerfile with `hadolint`,
+   and lints Markdown with `markdownlint`.
 2. If tests pass **and** the pushed ref is a tag matching `v*.*.*`, the `release` job
    auto-generates a GitHub Release with grouped changelog (feat/fix/chore) from the
    commits since the previous tag.
@@ -156,7 +161,7 @@ git tag -a vX.Y.Z <commit-hash> -m "vX.Y.Z: one-line summary" \
 ```
 
 Then wait for the GitHub Actions run on the tag. If CI passes, the release
-appears automatically at https://github.com/docg1701/radtracker/releases.
+appears automatically at <https://github.com/docg1701/radtracker/releases>.
 
 ### Changelog grouping
 

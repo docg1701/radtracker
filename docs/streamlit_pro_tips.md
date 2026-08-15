@@ -1,5 +1,7 @@
 # 25+ Dicas PRO de Streamlit — De script básico a dashboard profissional
 
+<!-- markdownlint-disable MD013 -->
+
 Resumo organizado, explicado e validado contra a documentação oficial do vídeo **"25+ Streamlit PRO Tips from a Co-founder Dashboard App"** (`https://www.youtube.com/watch?v=pAPEP0j73QE`).
 
 Cada dica traz: o que o vídeo recomenda, o motivo, o trecho de código equivalente e um link direto para a documentação oficial. Onde a transcrição diverge da documentação atual, há uma nota de **Correção**.
@@ -117,6 +119,7 @@ def load_data(tickers: tuple[str, ...]) -> pd.DataFrame:
 > ⚠️ **Correção em relação à transcrição.** O vídeo (na transcrição automática) menciona `st.cache_resource` para `load_data`. A documentação recomenda **`st.cache_data`** quando o retorno é dado serializável (DataFrame, dict, lista, valor). Use `st.cache_resource` apenas para recursos compartilháveis e não-serializáveis (conexão de banco, modelo de ML, cliente HTTP).
 
 Documentação:
+
 - `st.cache_data` → <https://docs.streamlit.io/develop/api-reference/caching-and-state/st.cache_data>
 - `st.cache_resource` → <https://docs.streamlit.io/develop/api-reference/caching-and-state/st.cache_resource>
 
@@ -329,6 +332,7 @@ dataframeHeaderBackgroundColor = "#1A1530"
 ```
 
 Chaves principais:
+
 - `base` → `"light"` ou `"dark"` (ponto de partida).
 - `primaryColor` → cor de destaque (botões, foco, seleção).
 - `backgroundColor` / `secondaryBackgroundColor` → fundo do app e dos widgets.
@@ -360,6 +364,7 @@ style = "normal"
 Para hospedar fontes locais com seu app, ative `server.enableStaticServing = true`.
 
 Documentação:
+
 - Tema (cores e bordas): <https://docs.streamlit.io/develop/concepts/configuration/theming-customize-colors-and-borders>
 - Tema (fontes): <https://docs.streamlit.io/develop/concepts/configuration/theming-customize-fonts>
 - `[[theme.fontFaces]]`: <https://docs.streamlit.io/develop/concepts/configuration/theming-customize-fonts>

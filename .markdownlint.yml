@@ -1,0 +1,13 @@
+# markdownlint config — docs are PT-BR with compact-style tables.
+default: true
+
+MD013:
+  # Project line-length convention is 100 (matches ruff); code blocks and
+  # tables are exempt — wrapping there breaks content (URLs, SQL, commands).
+  line_length: 100
+  code_blocks: false
+  tables: false
+
+# Table pipe padding is cosmetic; repo mixes compact and aligned styles
+# deliberately (wide tables use compact).
+MD060: false

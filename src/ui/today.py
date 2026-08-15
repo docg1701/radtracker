@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 import pandas as pd
 import streamlit as st
-from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
     _compute_daily_earnings_from_items,
@@ -75,7 +74,8 @@ def render_today_tab(conn: Any) -> None:
         raw_lines.append(f"{label}: {count}")
     raw_lines.append(f"Faturamento: {fmt_brl(stats['earnings_today'])}")
     raw_lines.append(f"Horas: {stats['estimated_hours']:.1f}h")
-    stoggle("Ver dados brutos", "\n".join(raw_lines))
+    with st.expander("Ver dados brutos"):
+        st.text("\n".join(raw_lines))
 
 
 # ---------------------------------------------------------------------------

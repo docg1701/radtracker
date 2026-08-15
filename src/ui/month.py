@@ -9,9 +9,6 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-from streamlit_extras.let_it_rain import rain
-from streamlit_extras.star_rating import star_rating
-from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
     _compute_daily_earnings_from_items,
@@ -66,8 +63,10 @@ def render_month_tab(conn: Any) -> None:
     st.plotly_chart(gauge, width="stretch")
 
     # ── Star rating ──
-    stars = min(5.0, pct_goal / 20.0)
-    star_rating(stars)
+    # ponytail: full-star rounding replaces fractional star_rating;
+    # add half-stars if granularity matters
+    stars = round(min(5.0, pct_goal / 20.0))
+    st.markdown("★" * stars + "☆" * (5 - stars))
 
     # ── Celebration rain ──
     _maybe_celebrate(pct_goal, year_month)
@@ -99,8 +98,8 @@ def render_month_tab(conn: Any) -> None:
 
     # ── Raw data toggle ──
     if not earn_df.empty:
-        raw_text = earn_df.to_string(index=False)
-        stoggle("Ver dados brutos", raw_text)
+        with st.expander("Ver dados brutos"):
+            st.text(earn_df.to_string(index=False))
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +210,12 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
 
 
 def _maybe_celebrate(pct_goal: float, year_month: str) -> None:
-    """Trigger rain when goal is achieved."""
+    """Trigger balloons when goal is achieved."""
     if pct_goal < 100.0:
         return
     celebrate_key = f"goal_celebrated_{year_month}"
     if st.session_state.get(celebrate_key):
         return
-    rain(emoji="🎉", font_size=36, falling_speed=5, animation_length=3)
+    st.balloons()
     st.toast(":material/check_circle: Meta do mês atingida! Parabéns!")
     st.session_state[celebrate_key] = True

@@ -10,7 +10,7 @@
 
 ## Estrutura de arquivos
 
-```
+```text
 ansible/
 ├── ansible.cfg                  # Pipelining, host key check disabled
 ├── inventory.yml                # VPS_HOST + VPS_USER via env vars
@@ -32,7 +32,9 @@ ansible/
 
 ### 1.1 Secrets (Ansible Vault encrypt_string)
 
-Valores sensíveis (`deployment_mode`, `auth_username`, `auth_password`, `github_pat`) são criptografados diretamente no `all.yml` usando `ansible-vault encrypt_string`:
+Valores sensíveis (`deployment_mode`, `auth_username`, `auth_password`,
+`github_pat`) são criptografados diretamente no `all.yml` usando
+`ansible-vault encrypt_string`:
 
 ```bash
 # Criptografar um valor (o arquivo de senha do vault está em ansible/.vault_pass)
@@ -72,6 +74,7 @@ deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"
 **Nota:** O arquivo `all.yml` pode ser commitado — apenas os valores marcados com `!vault` estão criptografados.
 
 Para editar valores criptografados:
+
 ```bash
 ansible-vault edit --vault-password-file ansible/.vault_pass ansible/group_vars/all.yml
 ```
@@ -87,12 +90,15 @@ O PAT é usado uma única vez: para registrar a chave SSH do VPS como deploy key
 5. Escopo: **repo** (acesso a repositórios privados + gerenciar deploy keys)
 6. Copie o token gerado (ex: `ghp_xxxx`)
 7. Criptografe com:
+
    ```bash
    ansible-vault encrypt_string "ghp_xxxx" --name github_pat
    ```
+
 8. Substitua o bloco `github_pat: !vault |` no `all.yml` pelo output
 
-**Nota:** Após o registro da deploy key, o PAT pode expirar sem impacto — a autenticação git passa a usar a chave SSH.
+**Nota:** Após o registro da deploy key, o PAT pode expirar sem impacto —
+a autenticação git passa a usar a chave SSH.
 
 ### 1.3 Senha do login web
 
@@ -121,10 +127,14 @@ Se não tiver domínio próprio, use [DuckDNS](https://duckdns.org):
 
 1. Faça login com GitHub e crie o subdomínio `radtracker`
 2. Aponte o IP da instância:
+
    ```bash
    curl "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN&ip=129.151.4.89"
    ```
-3. Configure renovação automática via cron (o IP da Oracle Free Tier é estático, mas o DuckDNS exige update periódico):
+
+3. Configure renovação automática via cron (o IP da Oracle Free Tier é
+   estático, mas o DuckDNS exige update periódico):
+
    ```cron
    0 */12 * * * curl -s "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN" > /dev/null
    ```
@@ -158,6 +168,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-p
 ```
 
 O playbook executa em ordem:
+
 1. Instala pacotes base (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 2. Adiciona repositório Docker (Ubuntu ou Debian, detectado automaticamente)
 3. Instala Docker Engine + Compose plugin
@@ -168,11 +179,14 @@ O playbook executa em ordem:
 8. Instala e configura fail2ban (whitelist de redes locais + jail sshd)
 9. Builda imagem e sobe containers (`docker compose up --build`)
 10. Aguarda health check do Streamlit
-11. Roda o bootstrap de autenticação no container (cria `data/auth.json` a partir das credenciais do vault)
+11. Roda o bootstrap de autenticação no container (cria `data/auth.json` a
+    partir das credenciais do vault)
 12. Instala o wrapper SSH `/usr/local/bin/radtracker-auth`
 13. Imprime o endereço de acesso + lembrete para ativar a 2FA
 
-**O deploy é idempotente** — seguro rodar quantas vezes quiser. O bootstrap **não sobrescreve** um `auth.json` existente (troque senha/2FA via `radtracker-auth`).
+**O deploy é idempotente** — seguro rodar quantas vezes quiser. O bootstrap
+**não sobrescreve** um `auth.json` existente (troque senha/2FA via
+`radtracker-auth`).
 
 > ⚠️ **Cutover de autenticação:** este deploy remove o BasicAuth do Caddy.
 > Use SEMPRE `deploy.yml` (nunca `update.yml`) na primeira execução após a mudança —
@@ -186,6 +200,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --vault-p
 ```
 
 Verifica:
+
 - Container `radtracker`: existe, running, healthy
 - Endpoint Streamlit: `/_stcore/health` → 200
 - Container `caddy`: existe, running
@@ -195,23 +210,28 @@ Verifica:
 ## 4. Acesso
 
 **Oracle Cloud Free Tier (produção):**
-```
+
+```text
 https://radtracker.duckdns.org
 ```
+
 (Let's Encrypt — certificado assinado, sem aviso de segurança)
 
 Shape: VM.Standard.E2.1.Micro — 1 OCPU AMD, 1 GB RAM, 50 GB boot
 Domínio: DuckDNS gratuito (radtracker.duckdns.org → 129.151.4.89)
 
 **VPS local (LAN):**
-```
+
+```text
 https://10.10.10.209
 ```
+
 (HTTPS com certificado autoassinado — aceite o aviso de segurança no primeiro acesso;
 o Caddy redireciona HTTP→HTTPS automaticamente)
 
 **Modo internet (com domínio próprio):**
-```
+
+```text
 https://radtracker.exemplo.com
 ```
 
@@ -238,9 +258,12 @@ Menu completo do `radtracker-auth`:
 | 6 | Reparar `auth.json` |
 | 7 | Status (2FA, TOTP, sessão, arquivo — nunca exibe segredos) |
 
-- A sessão web dura 30 dias por padrão (cookie assinado), configurável na opção 5; trocar a senha, o usuário ou a duração revoga todas as sessões.
-- `auth.json` não entra nos backups (só `telerrad.db`) — se `data/` for perdido, re-inicialize com a opção 6 ou um redeploy.
-- **Ative a 2FA imediatamente após cada deploy**: até lá o app depende só da senha, sem limite de tentativas em nível de rede.
+- A sessão web dura 30 dias por padrão (cookie assinado), configurável na
+  opção 5; trocar a senha, o usuário ou a duração revoga todas as sessões.
+- `auth.json` não entra nos backups (só `telerrad.db`) — se `data/` for
+  perdido, re-inicialize com a opção 6 ou um redeploy.
+- **Ative a 2FA imediatamente após cada deploy**: até lá o app depende só
+  da senha, sem limite de tentativas em nível de rede.
 
 ## 5. Atualização
 
@@ -347,6 +370,7 @@ sudo systemctl stop nginx apache2   # parar servidores conflitantes
 - Verificar DNS: `dig +short radtracker.exemplo.com` deve retornar o IP do VPS
 - Aguardar propagação (1–10 minutos)
 - Testar com staging CA antes de produção:
+
   ```caddy
   tls {
       ca https://acme-staging-v02.api.letsencrypt.org/directory
