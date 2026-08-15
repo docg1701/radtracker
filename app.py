@@ -34,6 +34,14 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+# Tab labels (stRadio) render at 14px while sidebar exam names render at
+# 16px. Streamlit has no per-component font-size API — this single rule
+# aligns the tabs with the sidebar text, per owner's request.
+st.markdown(
+    "<style>div[data-testid='stRadio'] label p { font-size: 1rem; }</style>",
+    unsafe_allow_html=True,
+)
+
 # Authentication gate — fail loud when not configured; blocks until authenticated
 try:
     auth = load_auth(AUTH_PATH)

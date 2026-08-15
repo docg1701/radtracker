@@ -77,10 +77,9 @@ def render_sidebar(conn: Any) -> None:
                 )
                 values[slug] = val
 
-        # Save button — natural width, left aligned
+        # Save button — natural width, left aligned, same style as Sair
         if st.button(
             "Salvar", icon=":material/save:",
-            type="primary",
         ):
             with st.spinner("Salvando..."):
                 # Send all values — zeros will be deleted, non-zeros upserted
