@@ -87,8 +87,8 @@ Invoke these skills when relevant (they provide specialized instructions):
 Local references (read before relevant tasks):
 
 - `docs/streamlit_pro_tips.md` — 25+ best practices from Streamlit's co-founder
-- Sem streamlit-extras — `st.balloons()` (celebração), `st.expander` (raw-data toggles),
-  estrelas via markdown; cookies usam CCv2 próprio (`src/cookies.py`)
+- No streamlit-extras — `st.balloons()` (celebration), `st.expander` (raw-data toggles),
+  stars via markdown; cookies use our own CCv2 (`src/cookies.py`)
 
 ---
 
@@ -96,8 +96,8 @@ Local references (read before relevant tasks):
 
 ### Future linters
 
-No pending linters. `sqlfluff` foi descartado: não há arquivos `.sql` no repo —
-todo o SQL vive embutido em strings Python (`src/db.py`) e é coberto por testes.
+No pending linters. `sqlfluff` was dropped: there are no `.sql` files in the repo —
+all SQL lives embedded in Python strings (`src/db.py`) and is covered by tests.
 
 ### Quality gate
 

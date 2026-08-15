@@ -1,14 +1,14 @@
-# Guia de Deploy — radtracker
+# Deployment Guide — radtracker
 
-## Pré-requisitos
+## Prerequisites
 
-- VPS com **Debian 12+ ou Ubuntu 22.04+** limpo
-- Acesso SSH como usuário regular com `sudo`
-- Token de acesso GitHub (Personal Access Token classic) com escopo `repo`
-- Domínio com DNS tipo A apontando pro IP do VPS (modo internet)
-- IP ou hostname acessível na rede local (modo LAN)
+- Clean VPS running **Debian 12+ or Ubuntu 22.04+**
+- SSH access as a regular user with `sudo`
+- GitHub Personal Access Token (classic) with the `repo` scope
+- Domain with an A record pointing to the VPS IP (internet mode)
+- IP or hostname reachable on the local network (LAN mode)
 
-## Estrutura de arquivos
+## File layout
 
 ```text
 ansible/
@@ -16,42 +16,42 @@ ansible/
 ├── inventory.yml                # VPS_HOST + VPS_USER via env vars
 ├── requirements.yml             # community.docker + community.crypto collections
 ├── group_vars/
-│   └── all.yml                  # Variáveis compartilhadas (valores sensíveis criptografados com Vault)
+│   └── all.yml                  # Shared variables (sensitive values Vault-encrypted)
 ├── templates/
-│   ├── Caddyfile.j2             # Template do Caddy (LAN ou internet)
-│   └── .env.j2                  # Template do .env (DOMAIN + TZ)
+│   ├── Caddyfile.j2             # Caddy template (LAN or internet)
+│   └── .env.j2                  # .env template (DOMAIN + TZ)
 └── playbooks/
-    ├── deploy.yml               # Bootstrap + deploy idempotente
-    ├── update.yml               # Atualização sem perda de dados
-    ├── health.yml               # Verificação de saúde
-    ├── backup.yml               # Backup do SQLite
-    └── cleanup.yml              # Reset total do VPS
+    ├── deploy.yml               # Idempotent bootstrap + deploy
+    ├── update.yml               # Update without data loss
+    ├── health.yml               # Health check
+    ├── backup.yml               # SQLite backup
+    └── cleanup.yml              # Full VPS reset
 ```
 
-## 1. Configuração única
+## 1. One-time configuration
 
 ### 1.1 Secrets (Ansible Vault encrypt_string)
 
-Valores sensíveis (`deployment_mode`, `auth_username`, `auth_password`,
-`github_pat`) são criptografados diretamente no `all.yml` usando
+Sensitive values (`deployment_mode`, `auth_username`, `auth_password`,
+`github_pat`) are encrypted directly in `all.yml` using
 `ansible-vault encrypt_string`:
 
 ```bash
-# Criptografar um valor (o arquivo de senha do vault está em ansible/.vault_pass)
+# Encrypt a value (the vault password file lives at ansible/.vault_pass)
 printf '%s' "lan" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name deployment_mode
 
 printf '%s' "galvani" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name auth_username
 
-printf '%s' "SENHA_DO_LOGIN_WEB" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name auth_password
+printf '%s' "WEB_LOGIN_PASSWORD" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name auth_password
 
-printf '%s' "ghp_SEU_TOKEN_AQUI" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name github_pat
-# Copiar cada output (!vault | ...) e colar no all.yml
+printf '%s' "ghp_YOUR_TOKEN_HERE" | ansible-vault encrypt_string --vault-password-file ansible/.vault_pass --stdin-name github_pat
+# Paste each output (!vault | ...) into all.yml
 ```
 
-`auth_username`/`auth_password` são as credenciais do **login web** do radtracker
-(criadas no primeiro deploy pelo bootstrap — senha mínima de 8 caracteres).
+`auth_username`/`auth_password` are the **web login** credentials of radtracker
+(created by the bootstrap on first deploy — minimum 8 characters).
 
-O arquivo `all.yml` fica assim (valores sensíveis criptografados, resto em plaintext):
+`all.yml` looks like this (sensitive values encrypted, everything else plaintext):
 
 ```yaml
 ---
@@ -71,241 +71,243 @@ github_pat: !vault |
 deploy_key_path: "/home/{{ ansible_user }}/.ssh/radtracker_deploy"
 ```
 
-**Nota:** O arquivo `all.yml` pode ser commitado — apenas os valores marcados com `!vault` estão criptografados.
+**Note:** `all.yml` can be committed — only the `!vault` values are encrypted.
 
-Para editar valores criptografados:
+To edit encrypted values:
 
 ```bash
 ansible-vault edit --vault-password-file ansible/.vault_pass ansible/group_vars/all.yml
 ```
 
-### 1.2 Criar token de acesso GitHub (PAT)
+### 1.2 Create the GitHub access token (PAT)
 
-O PAT é usado uma única vez: para registrar a chave SSH do VPS como deploy key no repositório.
+The PAT is used exactly once: to register the VPS SSH key as a deploy key.
 
-1. Acesse [GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)](https://github.com/settings/tokens)
-2. Clique **Generate new token (classic)**
-3. Nome: `radtracker-deploy`
-4. Expiração: conforme sua política (recomendado 90 dias)
-5. Escopo: **repo** (acesso a repositórios privados + gerenciar deploy keys)
-6. Copie o token gerado (ex: `ghp_xxxx`)
-7. Criptografe com:
+1. Go to [GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)](https://github.com/settings/tokens)
+2. Click **Generate new token (classic)**
+3. Name: `radtracker-deploy`
+4. Expiration: per your policy (90 days recommended)
+5. Scope: **repo** (private repository access + deploy key management)
+6. Copy the generated token (e.g. `ghp_xxxx`)
+7. Encrypt it:
 
    ```bash
    ansible-vault encrypt_string "ghp_xxxx" --name github_pat
    ```
 
-8. Substitua o bloco `github_pat: !vault |` no `all.yml` pelo output
+8. Replace the `github_pat: !vault |` block in `all.yml` with the output
 
-**Nota:** Após o registro da deploy key, o PAT pode expirar sem impacto —
-a autenticação git passa a usar a chave SSH.
+**Note:** After the deploy key is registered, the PAT can expire without impact —
+git auth switches to the SSH key.
 
-### 1.3 Senha do login web
+### 1.3 Web login password
 
-A senha do login web **não é hashada manualmente** — o bootstrap roda
-`hashlib.scrypt` na primeira vez que o container sobe (`python -m src.auth_bootstrap`,
-invocado pelo `deploy.yml`). O `auth_password` do vault é o texto plano da senha;
-mínimo de 8 caracteres. Para trocá-la depois, use `radtracker-auth` opção 3 (ver §4).
+The web login password is **not hashed manually** — the bootstrap runs
+`hashlib.scrypt` the first time the container starts (`python -m src.auth_bootstrap`,
+invoked by `deploy.yml`). The vault `auth_password` is the plaintext password;
+minimum 8 characters. To change it later, use `radtracker-auth` option 3 (see §4).
 
-### 1.4 Modo internet — domínio
+### 1.4 Internet mode — domain
 
-No `all.yml`, edite o valor criptografado de `deployment_mode`:
+In `all.yml`, edit the encrypted `deployment_mode` value:
 
 ```yaml
-deployment_mode: !vault | ...  # valor criptografado = "internet"
+deployment_mode: !vault | ...  # encrypted value = "internet"
 ```
 
-E editar `all.yml`:
+And edit `all.yml`:
 
 ```yaml
 domain: radtracker.duckdns.org
 ```
 
-### 1.4.1 DuckDNS (domínio gratuito)
+### 1.4.1 DuckDNS (free domain)
 
-Se não tiver domínio próprio, use [DuckDNS](https://duckdns.org):
+If you don't own a domain, use [DuckDNS](https://duckdns.org):
 
-1. Faça login com GitHub e crie o subdomínio `radtracker`
-2. Aponte o IP da instância:
+1. Log in with GitHub and create the `radtracker` subdomain
+2. Point it to the instance IP:
 
    ```bash
-   curl "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN&ip=129.151.4.89"
+   curl "https://www.duckdns.org/update?domains=radtracker&token=YOUR_TOKEN&ip=129.151.4.89"
    ```
 
-3. Configure renovação automática via cron (o IP da Oracle Free Tier é
-   estático, mas o DuckDNS exige update periódico):
+3. Set up automatic renewal via cron (Oracle Free Tier IPs are static, but
+   DuckDNS requires periodic updates):
 
    ```cron
-   0 */12 * * * curl -s "https://www.duckdns.org/update?domains=radtracker&token=SEU_TOKEN" > /dev/null
+   0 */12 * * * curl -s "https://www.duckdns.org/update?domains=radtracker&token=YOUR_TOKEN" > /dev/null
    ```
 
-### 1.5 Ambiente
+### 1.5 Environment
 
 ```bash
-export VPS_HOST=129.151.4.89         # IP do VPS (Oracle Cloud Free Tier)
-export VPS_USER=ubuntu               # usuário SSH
+export VPS_HOST=129.151.4.89         # VPS IP (Oracle Cloud Free Tier)
+export VPS_USER=ubuntu               # SSH user
 ```
 
-### 1.6 Arquivo de senha do Vault
+### 1.6 Vault password file
 
-Crie um arquivo com a senha do Ansible Vault (já está no `.gitignore`):
+Create a file with the Ansible Vault password (already in `.gitignore`):
 
 ```bash
-echo -n "sua_senha_vault" > ansible/.vault_pass
+echo -n "your_vault_password" > ansible/.vault_pass
 chmod 600 ansible/.vault_pass
 ```
 
-Isso evita o prompt interativo de senha em todos os comandos abaixo.
+This avoids the interactive password prompt in every command below.
 
-## 2. Deploy inicial
+## 2. Initial deploy
 
 ```bash
-# Instalar collections (uma vez)
+# Install collections (once)
 ansible-galaxy collection install -r ansible/requirements.yml
 
-# Deployar (usa --vault-password-file para evitar prompt interativo)
+# Deploy (--vault-password-file avoids the interactive prompt)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/deploy.yml --vault-password-file ansible/.vault_pass
 ```
 
-O playbook executa em ordem:
+The playbook runs in order:
 
-1. Instala pacotes base (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
-2. Adiciona repositório Docker (Ubuntu ou Debian, detectado automaticamente)
-3. Instala Docker Engine + Compose plugin
-4. Gera chave SSH ed25519 no VPS e registra como deploy key no GitHub (usa `github_pat` do Vault)
-5. Cria diretórios persistentes (`data/`, `backups/`, `caddy_logs/`)
-6. Busca templates do clone VPS, gera `Caddyfile` e `.env` a partir deles
-7. Ajusta permissões (`chown 1000:1000` no `data/`)
-8. Instala e configura fail2ban (whitelist de redes locais + jail sshd)
-9. Builda imagem e sobe containers (`docker compose up --build`)
-10. Aguarda health check do Streamlit
-11. Roda o bootstrap de autenticação no container (cria `data/auth.json` a
-    partir das credenciais do vault)
-12. Instala o wrapper SSH `/usr/local/bin/radtracker-auth`
-13. Imprime o endereço de acesso + lembrete para ativar a 2FA
+1. Installs base packages (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
+2. Adds the Docker repository (Ubuntu or Debian, auto-detected)
+3. Installs Docker Engine + Compose plugin
+4. Generates an ed25519 SSH key on the VPS and registers it as a GitHub deploy key (uses the vault `github_pat`)
+5. Creates persistent directories (`data/`, `backups/`, `caddy_logs/`)
+6. Fetches templates from the VPS clone, renders `Caddyfile` and `.env` from them
+7. Fixes permissions (`chown 1000:1000` on `data/`)
+8. Installs and configures fail2ban (local network whitelist + sshd jail)
+9. Builds the image and starts the containers (`docker compose up --build`)
+10. Waits for the Streamlit health check
+11. Runs the auth bootstrap in the container (creates `data/auth.json` from the vault credentials)
+12. Installs the `/usr/local/bin/radtracker-auth` SSH wrapper
+13. Prints the access URL + a reminder to enable 2FA
 
-**O deploy é idempotente** — seguro rodar quantas vezes quiser. O bootstrap
-**não sobrescreve** um `auth.json` existente (troque senha/2FA via
-`radtracker-auth`).
+**The deploy is idempotent** — safe to run as many times as you want. The
+bootstrap **never overwrites** an existing `auth.json` (change password/2FA
+via `radtracker-auth`).
 
-> ⚠️ **Cutover de autenticação:** este deploy remove o BasicAuth do Caddy.
-> Use SEMPRE `deploy.yml` (nunca `update.yml`) na primeira execução após a mudança —
-> o `update.yml` não roda o bootstrap nem cria o wrapper. Depois que `auth.json`
-> existir, o `update.yml` volta a ser seguro.
+> ⚠️ **Auth cutover:** this deploy removes Caddy BasicAuth.
+> Always use `deploy.yml` (never `update.yml`) on the first run after the change —
+> `update.yml` does not run the bootstrap nor create the wrapper. Once `auth.json`
+> exists, `update.yml` is safe again.
 
-## 3. Verificação
+## 3. Verification
 
 ```bash
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --vault-password-file ansible/.vault_pass
 ```
 
-Verifica:
+Checks:
 
-- Container `radtracker`: existe, running, healthy
-- Endpoint Streamlit: `/_stcore/health` → 200
-- Container `caddy`: existe, running
-- Caddy servindo: página de login do radtracker (não mais 401 de BasicAuth)
+- `radtracker` container: exists, running, healthy
+- Streamlit endpoint: `/_stcore/health` → 200
+- `caddy` container: exists, running
+- Caddy serving: radtracker login page (no more BasicAuth 401)
 - fail2ban: active
 
-## 4. Acesso
+## 4. Access
 
-**Oracle Cloud Free Tier (produção):**
+**Oracle Cloud Free Tier (production):**
 
 ```text
 https://radtracker.duckdns.org
 ```
 
-(Let's Encrypt — certificado assinado, sem aviso de segurança)
+(Let's Encrypt — signed certificate, no security warning)
 
-Shape: VM.Standard.E2.1.Micro — 1 OCPU AMD, 1 GB RAM, 50 GB boot
-Domínio: DuckDNS gratuito (radtracker.duckdns.org → 129.151.4.89)
+Shape: VM.Standard.E2.1.Micro — 1 AMD OCPU, 1 GB RAM, 50 GB boot
+Domain: free DuckDNS (radtracker.duckdns.org → 129.151.4.89)
 
-**VPS local (LAN):**
+**Local VPS (LAN):**
 
 ```text
 https://10.10.10.209
 ```
 
-(HTTPS com certificado autoassinado — aceite o aviso de segurança no primeiro acesso;
-o Caddy redireciona HTTP→HTTPS automaticamente)
+(HTTPS with a self-signed certificate — accept the security warning on first
+access; Caddy redirects HTTP→HTTPS automatically)
 
-**Modo internet (com domínio próprio):**
+**Internet mode (with your own domain):**
 
 ```text
-https://radtracker.exemplo.com
+https://radtracker.example.com
 ```
 
-### Autenticação (login web + 2FA)
+### Authentication (web login + 2FA)
 
-O primeiro acesso pede usuário e senha (definidos no vault, §1.1). Sem 2FA, um aviso
-âmbar aparece no app. Para ativar a 2FA:
+First access asks for username and password (defined in the vault, §1.1).
+Without 2FA, an amber warning appears in the app. To enable 2FA:
 
 ```bash
-ssh galvani@10.10.10.209    # (ou o host de produção)
-radtracker-auth             # wrapper para o menu de gestão
-# Opção 1: Ativar / reconfigurar 2FA — escaneie o QR com o celular e digite o código
+ssh galvani@10.10.10.209    # (or the production host)
+radtracker-auth             # wrapper for the management menu
+# Option 1: Enable / reconfigure 2FA — scan the QR with your phone and enter the code
 ```
 
-Menu completo do `radtracker-auth`:
+Full `radtracker-auth` menu:
 
-| Opção | Ação |
-|-------|------|
-| 1 | Ativar / reconfigurar 2FA (QR no terminal + URI de fallback; gera segredo NOVO a cada execução — re-escaneie o QR) |
-| 2 | Desativar 2FA |
-| 3 | Trocar senha (encerra todas as sessões web) |
-| 4 | Trocar usuário (encerra todas as sessões web) |
-| 5 | Sessão web (dias, 1–365) — trocar o valor rotaciona o segredo e encerra todas as sessões na hora |
-| 6 | Reparar `auth.json` |
-| 7 | Status (2FA, TOTP, sessão, arquivo — nunca exibe segredos) |
+| Option | Action |
+|--------|--------|
+| 1 | Enable / reconfigure 2FA (terminal QR + URI fallback; generates a NEW secret on every run — re-scan the QR) |
+| 2 | Disable 2FA |
+| 3 | Change password (ends all web sessions) |
+| 4 | Change username (ends all web sessions) |
+| 5 | Web session (days, 1–365) — changing it rotates the secret and ends all sessions immediately |
+| 6 | Repair `auth.json` |
+| 7 | Status (2FA, TOTP, session, file — never shows secrets) |
+| 8 | Language / Idioma (EN) — CLI language, stored separately from the web UX language |
+| 0 | Exit |
 
-- A sessão web dura 30 dias por padrão (cookie assinado), configurável na
-  opção 5; trocar a senha, o usuário ou a duração revoga todas as sessões.
-- `auth.json` não entra nos backups (só `telerrad.db`) — se `data/` for
-  perdido, re-inicialize com a opção 6 ou um redeploy.
-- **Ative a 2FA imediatamente após cada deploy**: até lá o app depende só
-  da senha, sem limite de tentativas em nível de rede.
+- The web session lasts 30 days by default (signed cookie), configurable via
+  option 5; changing the password, username or duration revokes all sessions.
+- `auth.json` is not part of the backups (only `telerrad.db`) — if `data/` is
+  lost, re-initialize with option 6 or a redeploy.
+- **Enable 2FA immediately after every deploy**: until then the app relies
+  only on the password, with no network-level attempt limiting.
 
-## 5. Atualização
+## 5. Updating
 
 ```bash
-# VPS local (LAN) — os DOIS overrides são OBRIGATÓRIOS aqui:
+# Local VPS (LAN) — BOTH overrides are MANDATORY here:
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
   --vault-password-file ansible/.vault_pass \
   -e deployment_mode=lan -e github_branch=<branch>
 
-# Produção (modo internet do vault) — sem override de deployment_mode:
+# Production (vault internet mode) — no deployment_mode override:
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
   --vault-password-file ansible/.vault_pass -e github_branch=<branch>
 ```
 
-**Fluxo de produção (Oracle), na ordem:**
+**Production flow (Oracle), in order:**
 
 ```bash
-# 1. Backup SEMPRE antes de atualizar
+# 1. ALWAYS back up before updating
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --vault-password-file ansible/.vault_pass
-# copiar o backup do VPS para o repositório (gitignored):
+# copy the backup from the VPS to the repository (gitignored):
 scp ubuntu@129.151.4.89:~/radtracker/backups/radtracker-*.db backups/
 
-# 2. Atualizar
+# 2. Update
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
   --vault-password-file ansible/.vault_pass -e github_branch=master
 
-# 3. Verificar
+# 3. Verify
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --vault-password-file ansible/.vault_pass
 ```
 
-- Atualiza repositório via deploy key SSH (`git` module) no branch informado
-- Regenera `Caddyfile` e `.env` a partir dos templates do clone VPS
-  (sem `deployment_mode=lan`, um VPS LAN vira modo internet e o Caddy tenta ACME para o domínio de produção)
-- `RADTRACKER_MODE` no `.env` segue `deployment_mode`: lan → `local`, internet → `web` (rodapé da sidebar)
-- Rebuilda imagem e recria container
-- Aguarda health check
+- Updates the repository via the SSH deploy key (`git` module) on the given branch
+- Re-renders `Caddyfile` and `.env` from the VPS clone templates
+  (without `deployment_mode=lan`, a LAN VPS switches to internet mode and
+  Caddy tries ACME for the production domain)
+- `RADTRACKER_MODE` in `.env` follows `deployment_mode`: lan → `local`, internet → `web` (sidebar footer)
+- Rebuilds the image and recreates the container
+- Waits for the health check
 
-**Playbook interrompido?** Re-rodar o MESMO comando — os playbooks são idempotentes
-(e.g. o bootstrap de auth só cria `auth.json` se não existir). Nunca corrija o
-servidor à mão; o re-run repara qualquer estado parcial.
+**Playbook interrupted?** Re-run the SAME command — the playbooks are idempotent
+(e.g. the auth bootstrap only creates `auth.json` if missing). Never fix the
+server by hand; a re-run repairs any partial state.
 
-**Dados preservados:** O bind mount `data/` não é tocado. SQLite sobrevive a updates.
+**Data preserved:** the `data/` bind mount is never touched. SQLite survives updates.
 
 ## 6. Backup
 
@@ -313,119 +315,119 @@ servidor à mão; o re-run repara qualquer estado parcial.
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --vault-password-file ansible/.vault_pass
 ```
 
-- Cria `.backup` dentro do container com `sqlite3`
-- Copia pro host em `backups/`
-- Verifica integridade com `PRAGMA integrity_check`
-- Rotaciona backups antigos (>30 dias)
+- Creates a `.backup` inside the container with `sqlite3`
+- Copies it to the host under `backups/`
+- Verifies integrity with `PRAGMA integrity_check`
+- Rotates old backups (>30 days)
 
-## 7. Limpeza
+## 7. Cleanup
 
 ```bash
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --vault-password-file ansible/.vault_pass
 ```
 
-- Para e remove containers
-- Prune Docker (imagens, volumes, networks, build cache)
-- Remove Docker (pacotes, GPG key, repositório APT)
-- Remove fail2ban (jail sshd, pacote)
-- Remove o wrapper `/usr/local/bin/radtracker-auth`
-- Remove diretório do projeto
-- Remove pré-requisitos (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
+- Stops and removes containers
+- Docker prune (images, volumes, networks, build cache)
+- Removes Docker (packages, GPG key, APT repository)
+- Removes fail2ban (sshd jail, package)
+- Removes the `/usr/local/bin/radtracker-auth` wrapper
+- Removes the project directory
+- Removes prerequisites (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
 
-## 8. Cloudflare (produção)
+## 8. Cloudflare (production)
 
-O domínio de produção `radtracker.drgalvanimd.com` é gerido pelo Cloudflare
-(zona `drgalvanimd.com`). Esta é a única proteção de rede contra brute-force
-no login — **não desligue o proxy nem remova a regra de rate limiting**.
+The production domain `radtracker.drgalvanimd.com` is managed by Cloudflare
+(`drgalvanimd.com` zone). This is the only network-level brute-force protection
+on the login — **never disable the proxy nor remove the rate-limiting rule**.
 
-### 8.1 Registro DNS
+### 8.1 DNS record
 
-- Type `A`, name `radtracker`, IPv4 `129.151.4.89` (IP da Oracle), TTL Auto,
-  **Proxy: Proxied** (nuvem laranja — obrigatório para o rate limiting).
-- SSL/TLS da zona: **Full (strict)**. A origem (Caddy) tem certificado
-  Let's Encrypt próprio emitido via HTTP-01 através do proxy; o Flexible
-  quebra o fluxo (o Caddy redireciona HTTP→HTTPS em loop).
+- Type `A`, name `radtracker`, IPv4 `129.151.4.89` (Oracle IP), TTL Auto,
+  **Proxy: Proxied** (orange cloud — required for rate limiting).
+- Zone SSL/TLS: **Full (strict)**. The origin (Caddy) has its own Let's
+  Encrypt certificate issued via HTTP-01 through the proxy; Flexible breaks
+  the flow (Caddy loops on HTTP→HTTPS redirects).
 
 ### 8.2 Rate limiting (WAF → Rate limiting rules)
 
-Regra única para todo o login:
+Single rule covering the whole login:
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | `radtracker-login` |
+| Name | `radtracker-login` |
 | Expression | `http.host eq "radtracker.drgalvanimd.com" and http.request.method eq "POST" and http.request.uri.path eq "/"` |
-| Limite | 10 requisições / 10 segundos |
-| Ação | Block (10 segundos) |
+| Limit | 10 requests / 10 seconds |
+| Action | Block (10 seconds) |
 
-> No plano Free, período e duração do block são **fixos em 10 segundos** —
-> valores maiores exigem plano pago. A regra estrangula rajadas de brute
-> force; tentativas espaçadas são contidas por scrypt + TOTP.
+> On the Free plan, period and block duration are **fixed at 10 seconds** —
+> larger values require a paid plan. The rule throttles brute-force bursts;
+> spaced-out attempts are contained by scrypt + TOTP.
 
-Por que essa expressão: o formulário de login e o passo TOTP do Streamlit
-são os únicos `POST` em `/` — o app autenticado roda sobre um único
-websocket (`GET /_stcore/stream`), que a regra não conta. Bloqueia força
-bruta contra senha e código TOTP sem tocar em sessão legítima.
+Why this expression: the Streamlit login form and TOTP step are the only
+`POST` requests to `/` — the authenticated app runs over a single websocket
+(`GET /_stcore/stream`), which the rule does not count. It blocks brute force
+against the password and TOTP code without touching legitimate sessions.
 
-### 8.3 Logs atrás do proxy
+### 8.3 Logs behind the proxy
 
-O Caddy vê o IP de borda do Cloudflare (não o do cliente) — o IP real vem
-no header `Cf-Connecting-Ip`. O fail2ban atual cobre só a jail sshd, então
-não há impacto; se um dia houver jail HTTP, filtrar pelo header, não pelo
-IP de origem da conexão.
+Caddy sees the Cloudflare edge IP (not the client) — the real IP arrives in
+the `Cf-Connecting-Ip` header. Current fail2ban only covers the sshd jail, so
+there is no impact; if an HTTP jail is added someday, filter by that header,
+not by the connection's source IP.
 
-## Solução de problemas
+## Troubleshooting
 
-### Deploy key não registra no GitHub
+### Deploy key fails to register on GitHub
 
-Se o deploy falhar na tarefa "Register deploy key with GitHub":
+If the deploy fails at the "Register deploy key with GitHub" task:
 
 ```bash
-# 1. Verificar se o github_pat está válido (não expirado)
+# 1. Check that github_pat is valid (not expired)
 ansible-vault view ansible/group_vars/all.yml --vault-password-file ansible/.vault_pass | grep github_pat
 
-# 2. Testar o PAT manualmente:
-curl -H "Authorization: Bearer SEU_PAT" https://api.github.com/repos/docg1701/radtracker/keys
+# 2. Test the PAT manually:
+curl -H "Authorization: Bearer YOUR_PAT" https://api.github.com/repos/docg1701/radtracker/keys
 
-# 3. Se o PAT expirou, gerar novo em https://github.com/settings/tokens
-#    e re-criptografar:
-ansible-vault encrypt_string "ghp_NOVO_TOKEN" --name github_pat
-#    Substituir o bloco no all.yml
+# 3. If the PAT expired, generate a new one at https://github.com/settings/tokens
+#    and re-encrypt:
+ansible-vault encrypt_string "ghp_NEW_TOKEN" --name github_pat
+#    Replace the block in all.yml
 
-# 4. Se a chave já existe mas corrompeu, removê-la manualmente:
-#    Acesse https://github.com/docg1701/radtracker/settings/keys
-#    Delete "radtracker-vps-<IP>" (ou qualquer chave radtracker-vps-* obsoleta) e re-rode deploy.yml
-#    Cada VPS registra sua própria chave com nome único baseado no ansible_host (o IP do VPS)
+# 4. If the key exists but is corrupted, remove it manually:
+#    Go to https://github.com/docg1701/radtracker/settings/keys
+#    Delete "radtracker-vps-<IP>" (or any obsolete radtracker-vps-* key) and re-run deploy.yml
+#    Each VPS registers its own key with a unique name based on ansible_host (the VPS IP)
 
-# 5. Para re-gerar a chave SSH no VPS (force):
+# 5. To force-regenerate the SSH key on the VPS:
 ssh galvani@VPS "rm ~/.ssh/radtracker_deploy*"
-# Re-rodar deploy.yml — a task openssh_keypair recria a chave
+# Re-run deploy.yml — the openssh_keypair task recreates the key
 ```
 
-### fail2ban não inicia
+### fail2ban won't start
 
 ```bash
 sudo tail -50 /var/log/fail2ban.log
-sudo fail2ban-client status sshd   # o jail ativo agora é o do sshd (journald)
+sudo fail2ban-client status sshd   # the active jail is sshd (journald)
 ```
 
-### Docker não instala (Debian)
+### Docker won't install (Debian)
 
-O playbook usa `signed-by=/etc/apt/keyrings/docker.asc` (método moderno).
-Funciona em Debian 12+ e Ubuntu 22.04+. Sem dependência de `apt-key` (removido no Debian 13).
+The playbook uses `signed-by=/etc/apt/keyrings/docker.asc` (the modern method).
+Works on Debian 12+ and Ubuntu 22.04+. No `apt-key` dependency (removed in Debian 13).
 
-### Porta 80/443 em uso
+### Port 80/443 already in use
 
 ```bash
 sudo lsof -i :80
 sudo lsof -i :443
-sudo systemctl stop nginx apache2   # parar servidores conflitantes
+sudo systemctl stop nginx apache2   # stop conflicting servers
 ```
 
-### Let's Encrypt falha (modo internet)
+### Let's Encrypt fails (internet mode)
 
-- Verificar DNS: `dig +short radtracker.exemplo.com` deve retornar o IP do VPS
-- Aguardar propagação (1–10 minutos)
-- Testar com staging CA antes de produção:
+- Check DNS: `dig +short radtracker.example.com` must return the VPS IP
+- Wait for propagation (1–10 minutes)
+- Test with the staging CA before production:
 
   ```caddy
   tls {
@@ -433,14 +435,14 @@ sudo systemctl stop nginx apache2   # parar servidores conflitantes
   }
   ```
 
-### Senha errada / reset de senha
+### Wrong password / password reset
 
 ```bash
-# Conecte via SSH e use o menu de gestão:
+# Connect via SSH and use the management menu:
 radtracker-auth
-# Opção 3: Trocar senha (mínimo 8 caracteres, encerra todas as sessões web)
-# Opção 6: Reparar auth.json (se o arquivo estiver ausente/corrompido)
+# Option 3: Change password (minimum 8 characters, ends all web sessions)
+# Option 6: Repair auth.json (if the file is missing/corrupted)
 ```
 
-Re-rodar o `deploy.yml` **não** troca a senha — o bootstrap é idempotente e nunca
-sobrescreve um `auth.json` existente.
+Re-running `deploy.yml` does **not** change the password — the bootstrap is
+idempotent and never overwrites an existing `auth.json`.

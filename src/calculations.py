@@ -239,8 +239,8 @@ def compute_monthly_stats(
              projection_month_end.
 
     days_worked (days with >=1 exam) is a displayed statistic only; daily_avg,
-    daily_target_needed and projection all use dias corridos so the units stay
-    consistent (R$/dia corrido in both numerator and denominator).
+    daily_target_needed and projection all use calendar days so the units stay
+    consistent ($/calendar day in both numerator and denominator).
     """
     month_df = load_month_items(conn, year_month)
 

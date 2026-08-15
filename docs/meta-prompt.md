@@ -6,7 +6,8 @@ see AGENTS.md "Documentation rule".
 ## Goal
 
 **radtracker** — personal productivity dashboard for a teleradiology physician.
-Streamlit single-page app, SQLite persistence, PT-BR UI. Production: Oracle Cloud
+Streamlit single-page app, SQLite persistence, **English-native UI with a
+PT-BR option** (language selector, persisted per user). Production: Oracle Cloud
 Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 
 ## Tech Stack
@@ -40,7 +41,9 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 - **`src/calculations.py`** — pure business logic (earnings, projections)
 - **`src/chart_colors.py`** — palette + `color_for_modality()`
 - **`src/charts.py` / `src/charts_analysis.py`** — Plotly factories (no DB access)
-- **`src/formatting.py`** — `fmt_brl()`, `md_escape()`, `MONTHS_PT`
+- **`src/formatting.py`** — `fmt_money()`, `md_escape()`, `MONTHS` (per lang)
+- **`src/i18n.py`** — EN/PT translation catalog + `translate()`/`t()`
+- **`src/text_sanitize.py`** — markdown/`$` sanitization for LLM output
 - **`src/insights_rules.py`** — rule-based PT insights
 - **`src/llm_client.py`** — OpenRouter client + RAG context
 - **`src/ui/login.py`** — auth gate, login/TOTP forms, sidebar header/footer, logout
@@ -79,11 +82,15 @@ reasoning settings.
 | `main_tabs` | tab radio key | selection persisted via cookie; index= only on first render |
 | `historical_cache` | removed | `st.cache_data` on `_cached_historical_stats`; clear() on save |
 | `messages`, `chat_suggestions` | chat tab | history capped at 15 pairs |
+| `lang` / `lang_selector` | DB `user_settings.language` / selector widget | `lang` loaded pre-gate on first run of each server session; toggle always saves; `ensure_settings` loads it when absent |
 | `goal_celebrated_YYYY-MM` | month tab | celebration balloons once per month |
 
 ## Hard Constraints
 
-- Python ≥ 3.12; Streamlit ≥ 1.54; PT-BR for all user-facing text.
+- Python ≥ 3.12; Streamlit ≥ 1.54; **English is the native language**: UI
+  defaults to EN (US), PT-BR is an opt-in via the sidebar selector. Code,
+  comments, docstrings, logs and docs are English. User data (modality
+  labels, user name, custom LLM prompt) is never translated.
 - **No custom CSS / `unsafe_allow_html`** — theming via `.streamlit/config.toml`.
   Two narrow owner-approved exceptions: one CSS rule for tab font size (no font API
   exists), and `st.html()` for chat avatar colors.
@@ -117,14 +124,17 @@ reasoning settings.
 
 ## Markdown `$` escaping
 
-Streamlit markdown treats paired `$…$` as LaTeX math; BRL text with multiple `$` in
-one paragraph breaks rendering. No config flag disables it.
+Streamlit markdown treats paired `$…$` as LaTeX math; money text with
+multiple `$` in one paragraph breaks rendering. No config flag disables it.
 
-- **UI-side BRL strings:** `md_escape()` (`R$ 100` → `R\$ 100`).
+- **UI-side money strings:** `md_escape()` (`$100` → `\$100`).
 - **LLM output:** `sanitize_token()` per streaming chunk + `sanitize_text()` on the
   full response and on every re-render (idempotent). User messages are NOT sanitized.
-- **`sanitize_text` order:** whitespace normalize → legacy `\\$` strip → currency
-  escape `(?<=R)\$(?![a-zA-Z\\])` → `\[...\]`→`$$...$$`, `\(...\)`→`$...$` →
+- **`sanitize_text` order:** whitespace normalize → legacy `\\$` strip →
+  protect genuine math pairs (`$x^2$`, `$\frac{a}{b}$`, `$25\times4=100$`;
+  pair spans never contain a bare `$` nor a `\$` sequence — regression: escaped
+  currencies must never pair across each other) → escape currency-pattern `$`
+  (`$50`, `$ 100`, `R$ 100`) → `\[...\]`→`$$...$$`, `\(...\)`→`$...$` →
   strip backslashes from unmatched delimiters.
 
 ## Style
@@ -132,7 +142,8 @@ one paragraph breaks rendering. No config flag disables it.
 - Functions 4–20 lines; files under 500 lines; early returns; max 2 indent levels.
 - Explicit types (no `Any` except Streamlit API); docstrings on public functions.
 - Charts: colors only via `color_for_modality()` / `CHART_COLORS` — no inline hex.
-- Currency: `fmt_brl()` (Decimal HALF_UP).
+- Currency: `fmt_money(value, lang)` — `$1,250.00` (en) / `$1.250,00` (pt),
+  Decimal HALF_UP; the bare `$` marks money generically (amounts are reais).
 
 ## Business Constants
 

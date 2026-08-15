@@ -7,7 +7,8 @@ and decisions live in `docs/meta-prompt.md`.
 
 Personal productivity dashboard for teleradiology: daily exam counts per modality,
 monthly revenue vs goal, historical analysis, and an LLM chat (RAG over production
-data). Single user, single-page Streamlit app, SQLite persistence, PT-BR UI.
+data). Single user, single-page Streamlit app, SQLite persistence, English-native
+UI with a PT-BR option.
 
 ## 2. Architecture
 
@@ -33,8 +34,10 @@ src/
   chart_colors.py          palette + color_for_modality()
   charts.py                Plotly factories (Today/Month)
   charts_analysis.py       Plotly factories (Analysis)
-  formatting.py            fmt_brl(), md_escape(), MONTHS_PT
-  insights_rules.py        rule-based PT insights
+  formatting.py            fmt_money(), md_escape(), MONTHS (per lang)
+  i18n.py                  EN/PT catalog + translate()/t()
+  text_sanitize.py         markdown/$ sanitization for LLM output
+  insights_rules.py        bilingual rule-based insights
   llm_client.py            OpenRouter one-shot + SSE streaming + RAG context
   ui/
     login.py               auth gate, login/TOTP forms, sidebar header/footer, logout
@@ -100,8 +103,10 @@ via Settings.
 - **`src/chart_colors.py`** — DB-stored per-modality color via `color_for_modality`;
   legacy aliases (rm/tc/rx) kept for history.
 - **`src/charts*.py`** — no DB access; data in, fig out.
-- **`src/formatting.py`** — BRL via `fmt_brl()`; `$` must be escaped in markdown.
-- **`src/insights_rules.py`** — Portuguese rule-based insights, dynamic modalities.
+- **`src/formatting.py`** — money via `fmt_money()`; `$` must be escaped in markdown.
+- **`src/insights_rules.py`** — bilingual rule-based insights, dynamic modalities.
+- **`src/i18n.py`** — translation catalog (`web.*`/`cli.*`); `translate()` pure,
+  `t()` reads `st.session_state.lang`; parity between en/pt enforced by tests.
 - **`src/llm_client.py`** — OpenRouter; one-shot 15s timeout, streaming 30s;
   SSE parser uses safe accessor chains.
 - **`src/cookies.py`** — reader/writer contract above; tab cookie stores last tab.
