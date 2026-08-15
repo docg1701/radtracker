@@ -83,6 +83,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "web.today.kpi.earnings": {"en": "Today's revenue", "pt": "Faturamento hoje"},
     "web.today.kpi.exams": {"en": "Today's exams", "pt": "Exames hoje"},
     "web.today.kpi.hours": {"en": "Estimated hours", "pt": "Horas estimadas"},
+    "web.today.kpi.exams_per_hour": {
+        "en": "{rate} exams/h",
+        "pt": "{rate} exames/h",
+    },
     "web.today.kpi.goal": {"en": "Monthly goal", "pt": "Meta mensal"},
     "web.today.kpi.vs_yesterday": {
         "en": "{delta} vs yesterday",
@@ -92,8 +96,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "— no data from yesterday",
         "pt": "— sem dados de ontem",
     },
-    "web.today.badge.on_pace": {"en": "On pace", "pt": "No ritmo"},
-    "web.today.badge.watch": {"en": "Watch out", "pt": "Atenção"},
     "web.today.raw.revenue": {"en": "Revenue:", "pt": "Faturamento:"},
     "web.today.raw.hours": {"en": "Hours:", "pt": "Horas:"},
     "web.month.start_hint": {

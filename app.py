@@ -47,7 +47,7 @@ st.set_page_config(
 st.markdown(
     "<style>"
     "div[data-testid='stRadio'] label p { font-size: 1rem; }"
-    "[data-testid='stMainBlockContainer'] { padding-top: 1.5rem; }"
+    "[data-testid='stMainBlockContainer'] { padding-top: 4.5rem; }"
     "</style>",
     unsafe_allow_html=True,
 )

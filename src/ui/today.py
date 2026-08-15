@@ -5,7 +5,7 @@ v2: dynamic modalities from st.session_state.active_modalities.
 """
 
 from datetime import date
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -99,7 +99,7 @@ def _render_kpi_row(
 
     # ── Card 1: Faturamento Hoje ──
     with k1:
-        with st.container(border=True, height="stretch"):
+        with st.container(border=True):
             earnings = stats["earnings_today"]
             if stats["delta_pct"] is not None:
                 delta_str = t(
@@ -118,7 +118,7 @@ def _render_kpi_row(
 
     # ── Card 2: Exames Hoje ──
     with k2:
-        with st.container(border=True, height="stretch"):
+        with st.container(border=True):
             total = stats["exam_count_today"]
             parts = []
             for slug, count in sorted(stats["modality_counts"].items()):
@@ -135,7 +135,7 @@ def _render_kpi_row(
 
     # ── Card 3: Horas Estimadas ──
     with k3:
-        with st.container(border=True, height="stretch"):
+        with st.container(border=True):
             hours = stats["estimated_hours"]
             st.metric(
                 label=f":material/timer: {t('web.today.kpi.hours')}",
@@ -144,27 +144,16 @@ def _render_kpi_row(
 
     # ── Card 4: Meta Mensal ──
     with k4:
-        with st.container(border=True, height="stretch"):
+        with st.container(border=True):
             month_stats = compute_monthly_stats(conn, year_month, goal, active_mods)
             mtd = month_stats["mtd_earnings"]
             pct = (mtd / goal * 100) if goal > 0 else 0.0
-            badge_color: Literal["green", "orange"] = (
-                "green" if pct >= 50 else "orange"
-            )
-            # First line: label text left, icon-less badge right.
-            with st.container(horizontal=True, vertical_alignment="center"):
-                st.caption(f":material/target: {t('web.today.kpi.goal')}")
-                st.space("stretch")
-                st.badge(
-                    t("web.today.badge.on_pace" if pct >= 50 else "web.today.badge.watch"),
-                    color=badge_color,
-                )
             st.metric(
-                label=t("web.today.kpi.goal"),
-                label_visibility="collapsed",
+                label=f":material/target: {t('web.today.kpi.goal')}",
                 value=f"{pct:.0f}%",
+                delta=md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"),
+                delta_color="off",
             )
-            st.caption(md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"))
 
 
 def _build_sparkline_figure(
