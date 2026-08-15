@@ -181,3 +181,23 @@ class TestSanitizeText:
     def test_normalizes_escaped_opener_inside_math_pair(self) -> None:
         # Token-level escape of a complete math pair is normalized back.
         assert sanitize_text(r"\$25\times4 = 100$") == r"$25\times4 = 100$"
+
+
+class TestMultiCurrencyRegression:
+    """Regression: escaped currencies must never pair across each other."""
+
+    def test_multiple_escaped_currencies_stay_intact(self) -> None:
+        text = r"July's \$1,731, while Jan 29 (\$2,479) and Feb 26 (\$1,677)."
+        assert sanitize_text(text) == text
+
+    def test_stream_then_full_pass_does_not_corrupt(self) -> None:
+        streamed = "July's $1,731, while Jan 29 ($2,479) and Feb 26 ($1,677)."
+        accumulated = " ".join(sanitize_token(p) for p in streamed.split(" "))
+        assert sanitize_text(accumulated) == accumulated
+
+    def test_tilde_amounts_and_slashes_stay_intact(self) -> None:
+        text = r"~\$347/h, RM \$350/h and \$2,451/day for 17 days"
+        assert sanitize_text(text) == text
+
+    def test_letter_math_followed_by_escaped_currency(self) -> None:
+        assert sanitize_text(r"$x=2$ costs \$50") == r"$x=2$ costs \$50"

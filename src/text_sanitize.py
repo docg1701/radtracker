@@ -22,12 +22,23 @@ Architecture
 import re
 
 # ── Math-pair protection (runs before currency escape) ──
-# Opener may carry a leading backslash left by a sanitize_token escape —
-# a confirmed pair is normalized back to plain $...$.
+# A pair span may contain LaTeX backslash commands (\frac) but never a
+# bare $ nor a backslash-dollar (\$) sequence: without that rule, an
+# escaped currency ($1,731) pairs with the next amount's dollar and eats
+# its backslash, leaving unpaired dollars that open giant math spans.
+_SPAN = r"(?:[^$\\]|\\[^$])*"
 # Letter/backslash opener: $x^2$, $\frac{a}{b}$, $f(x)=2x$.
-_LETTER_PAIR_RE = re.compile(r"\\?\$([A-Za-z\\][\s\S]*?)\$")
+_LETTER_PAIR_RE = re.compile(r"(?<!\\)\$([A-Za-z\\]" + _SPAN + r")\$")
 # Digit opener with a LaTeX command inside: $25\times4 = 100$.
-_DIGIT_PAIR_RE = re.compile(r"\\?\$(\d[\s\S]*?\\[\s\S]*?)\$")
+_DIGIT_PAIR_RE = re.compile(
+    r"(?<!\\)\$(\d" + _SPAN + r"\\(?!\$)" + _SPAN + r")\$"
+)
+# Token-level escaping may have escaped a digit-opener that turned out to be
+# part of a complete pair (\$25\times4 = 100$). Remove the stray backslash
+# when — and only when — a full, valid pair follows it.
+_RESCUE_RE = re.compile(
+    r"\\(?=\$\d" + _SPAN + r"\\(?!\$)" + _SPAN + r"\$)"
+)
 
 # ── Currency-pattern dollar sign ──
 # Unescaped $ followed by optional whitespace then digit: $50, $ 100, R$ 100.
@@ -50,6 +61,7 @@ _UNPAIRED_CLOSE_RE = re.compile(r"\\(?=[\]\)])")
 
 def _protect_math_pairs(text: str) -> str:
     """Replace genuine math pairs with a sentinel so the currency rule skips them."""
+    text = _RESCUE_RE.sub("", text)
     text = _LETTER_PAIR_RE.sub(lambda m: f"\x00{m.group(1)}\x00", text)
     return _DIGIT_PAIR_RE.sub(lambda m: f"\x00{m.group(1)}\x00", text)
 
