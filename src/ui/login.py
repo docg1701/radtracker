@@ -62,26 +62,22 @@ def render_sidebar_footer(auth: dict) -> None:
 
 
 def render_sidebar_header() -> None:
-    """Sidebar title row: 'Radtracker' left + Sair right, only when authenticated.
+    """Sidebar top row: the Sair button, only when authenticated.
 
-    The app title belongs in the sidebar (where the app name already shows),
-    not as a banner over the main content. The gate stops the script before
-    app.py reaches this call when unauthenticated; the guard keeps the
-    invariant explicit.
+    The app name is not repeated here — the Streamlit chrome already shows
+    it in the sidebar footer (dev) / browser tab; duplicating it looked wrong.
+    The gate stops the script before app.py reaches this call when
+    unauthenticated; the guard keeps the invariant explicit.
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    title_col, logout_col = st.sidebar.columns([3, 1], vertical_alignment="center")
-    with title_col:
-        st.markdown("## Radtracker")
-    with logout_col:
-        if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
-            st.session_state.auth_authenticated = False
-            st.session_state.pop("auth_username", None)
-            delete_session_token(
-                secure=bool(st.session_state.get("_auth_cookie_secure", True))
-            )
-            st.rerun()
+    if st.sidebar.button("Sair", icon=":material/logout:", key="auth_logout"):
+        st.session_state.auth_authenticated = False
+        st.session_state.pop("auth_username", None)
+        delete_session_token(
+            secure=bool(st.session_state.get("_auth_cookie_secure", True))
+        )
+        st.rerun()
 
 
 def _restore_session(auth: dict) -> None:
