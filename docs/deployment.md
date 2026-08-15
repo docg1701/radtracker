@@ -203,7 +203,7 @@ Checks:
 - `radtracker` container: exists, running, healthy
 - Streamlit endpoint: `/_stcore/health` → 200
 - `caddy` container: exists, running
-- Caddy serving: radtracker login page (no more BasicAuth 401)
+- Caddy serving: Radtracker login page (no more BasicAuth 401)
 - fail2ban: active
 
 ## 4. Access

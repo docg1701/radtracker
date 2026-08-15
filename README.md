@@ -1,4 +1,4 @@
-# radtracker
+# Radtracker
 
 Personal productivity dashboard for teleradiology.
 Track revenue, goals and trends with Streamlit + SQLite.
@@ -108,7 +108,7 @@ radtracker/
 
 ## Deploy
 
-radtracker can be deployed to any VPS with Docker + Ansible.
+Radtracker can be deployed to any VPS with Docker + Ansible.
 Works on a local network (HTTP) or with your own domain (HTTPS + Let's Encrypt).
 
 ```bash
