@@ -61,6 +61,15 @@ def _validate(auth: object) -> dict:
     if auth["totp_secret"] is not None and not isinstance(auth["totp_secret"], str):
         got = type(auth["totp_secret"]).__name__
         raise AuthError(f"auth key 'totp_secret': expected str or null, got {got}")
+    cli_lang = auth.get("cli_language")
+    if cli_lang is not None:
+        _check_type("cli_language", cli_lang, str)
+        if cli_lang not in ("en", "pt"):
+            raise AuthError(
+                f"auth key 'cli_language': expected 'en' or 'pt', got {cli_lang!r}"
+            )
+    # Optional key (older auth.json files lack it): CLI language, default EN.
+    auth.setdefault("cli_language", "en")
     return auth
 
 
@@ -110,6 +119,7 @@ def create_bootstrap_auth(
             "session_secret": new_session_secret(),
             "session_days": 30,
             "session_cookie_secure": cookie_secure,
+            "cli_language": "en",
         },
         path,
     )

@@ -44,6 +44,7 @@ class TestCreateBootstrapAuth:
         assert len(auth["session_secret"]) == 64
         assert auth["session_days"] == 30
         assert auth["session_cookie_secure"] is True
+        assert auth["cli_language"] == "en"
 
     def test_create_bootstrap_auth_existing_returns_exists_and_keeps_file(self, auth_path):
         create_bootstrap_auth("admin", "s3cret-password", auth_path)
@@ -102,6 +103,29 @@ class TestLoadAuth:
 
     def test_load_auth_roundtrip(self, bootstrapped):
         assert bootstrapped["username"] == "admin"
+
+    def test_load_auth_missing_cli_language_defaults_to_en(self, auth_path):
+        create_bootstrap_auth("admin", "s3cret-password", auth_path)
+        auth = load_auth(auth_path)
+        del auth["cli_language"]
+        with open(auth_path, "w") as fh:
+            json.dump(auth, fh)
+        assert load_auth(auth_path)["cli_language"] == "en"
+
+    def test_load_auth_cli_language_pt_roundtrip(self, auth_path):
+        create_bootstrap_auth("admin", "s3cret-password", auth_path)
+        auth = {**load_auth(auth_path), "cli_language": "pt"}
+        with open(auth_path, "w") as fh:
+            json.dump(auth, fh)
+        assert load_auth(auth_path)["cli_language"] == "pt"
+
+    def test_load_auth_cli_language_invalid_raises(self, auth_path):
+        create_bootstrap_auth("admin", "s3cret-password", auth_path)
+        auth = {**load_auth(auth_path), "cli_language": "fr"}
+        with open(auth_path, "w") as fh:
+            json.dump(auth, fh)
+        with pytest.raises(AuthError, match="cli_language"):
+            load_auth(auth_path)
 
 
 class TestSaveAuth:

@@ -3,7 +3,9 @@ Interactive SSH CLI to manage radtracker authentication (KIAUH-style).
 
 Run inside the container: `python -m scripts.manage_auth`
 (host wrapper: /usr/local/bin/radtracker-auth). Plain input()/getpass,
-PT-BR. All writes go through auth_store.save_auth (atomic, 0600).
+English-native with a PT-BR option (menu item before Exit). All writes go
+through auth_store.save_auth (atomic, 0600). The CLI language lives in
+auth.json (`cli_language`) — separate from the web UX language.
 """
 
 import getpass
@@ -28,49 +30,36 @@ from src.auth_store import (
     load_auth,
     save_auth,
 )
-
-_MENU = """
-┌──────────────────────────────────────────┐
-│ Radtracker — Gestão de autenticação      │
-├──────────────────────────────────────────┤
-│ 1) Ativar / reconfigurar 2FA (QR code)   │
-│ 2) Desativar 2FA                         │
-│ 3) Trocar senha                          │
-│ 4) Trocar usuário                        │
-│ 5) Sessão web (dias)                     │
-│ 6) Reparar auth.json                     │
-│ 7) Status                                │
-│ 0) Sair                                  │
-└──────────────────────────────────────────┘"""
+from src.i18n import translate
 
 
-def _confirm(prompt: str) -> bool:
-    return input(f"{prompt} [s/N] ").strip().lower() == "s"
+def _confirm(prompt: str, lang: str) -> bool:
+    yes = "y" if lang == "en" else "s"
+    return input(translate("cli.confirm", lang, prompt=prompt)).strip().lower() == yes
 
 
-def _read_new_password() -> str | None:
-    first = getpass.getpass("Nova senha: ")
-    if first != getpass.getpass("Repita a nova senha: "):
-        print("As senhas não conferem.")
+def _read_new_password(lang: str) -> str | None:
+    first = getpass.getpass(translate("cli.new_password", lang))
+    if first != getpass.getpass(translate("cli.repeat_password", lang)):
+        print(translate("cli.passwords_mismatch", lang))
         return None
     if len(first) < MIN_PASSWORD_LEN:
-        print(f"Senha curta demais — mínimo {MIN_PASSWORD_LEN} caracteres.")
+        print(translate("cli.password_too_short", lang, min=MIN_PASSWORD_LEN))
         return None
     return first
 
 
-def _enable_2fa(auth: dict) -> None:
+def _enable_2fa(auth: dict, lang: str) -> None:
     if auth["totp_required"]:
-        print("2FA já ativada — o QR abaixo contém um NOVO segredo; "
-              "re-escaneie antes de digitar o código.")
+        print(translate("cli.2fa_already", lang))
     secret = new_totp_secret()
     uri = otpauth_uri(secret, auth["username"])
     if shutil.which("qrencode"):
         subprocess.run(["qrencode", "-t", "ANSIUTF8", uri], check=False)
     else:
-        print("qrencode não encontrado — cadastre a URI manualmente.")
-    print(f"\nURI manual: {uri}\n")
-    code = input("Digite o código atual do autenticador: ").strip()
+        print(translate("cli.qrencode_missing", lang))
+    print(translate("cli.manual_uri", lang, uri=uri))
+    code = input(translate("cli.enter_code", lang)).strip()
     ok = verify_totp(
         secret,
         code,
@@ -78,94 +67,132 @@ def _enable_2fa(auth: dict) -> None:
         window_steps=auth["totp_window_steps"],
     )
     if not ok:
-        print("Código inválido — 2FA inalterada.")
+        print(translate("cli.2fa_invalid", lang))
         return
     auth["totp_secret"] = secret
     auth["totp_required"] = True
     save_auth(auth, AUTH_PATH)
-    print("2FA ativada.")
+    print(translate("cli.2fa_enabled", lang))
 
 
-def _disable_2fa(auth: dict) -> None:
-    if not _confirm("Confirma desativar a 2FA?"):
-        print("Nada alterado.")
+def _disable_2fa(auth: dict, lang: str) -> None:
+    if not _confirm(translate("cli.confirm_disable_2fa", lang), lang):
+        print(translate("cli.nothing_changed", lang))
         return
     auth["totp_required"] = False
     save_auth(auth, AUTH_PATH)
-    print("2FA desativada (segredo mantido para reativação).")
+    print(translate("cli.2fa_disabled", lang))
 
 
-def _change_password(auth: dict) -> None:
-    password = _read_new_password()
+def _change_password(auth: dict, lang: str) -> None:
+    password = _read_new_password(lang)
     if password is None:
         return
     auth["password_hash"] = hash_password(password)
     auth["session_secret"] = new_session_secret()
     save_auth(auth, AUTH_PATH)
-    print("Senha alterada — todas as sessões web foram encerradas.")
+    print(translate("cli.password_changed", lang))
 
 
-def _change_username(auth: dict) -> None:
-    username = input("Novo usuário: ").strip()
+def _change_username(auth: dict, lang: str) -> None:
+    username = input(translate("cli.new_username", lang)).strip()
     if not username:
-        print("Usuário não pode ser vazio.")
+        print(translate("cli.username_empty", lang))
         return
     auth["username"] = username
     save_auth(auth, AUTH_PATH)
-    print("Usuário alterado — sessões web anteriores foram encerradas.")
+    print(translate("cli.username_changed", lang))
 
 
-def _status(auth: dict) -> None:
+def _status(auth: dict, lang: str) -> None:
     mode = stat.S_IMODE(os.stat(AUTH_PATH).st_mode)
-    print(f"Usuário: {auth['username']}")
-    print(f"2FA: {'ativada' if auth['totp_required'] else 'DESATIVADA'}")
-    print(f"TOTP: passo {auth['totp_step_seconds']}s, janela ±{auth['totp_window_steps']}")
-    print(f"Sessão web: {auth['session_days']} dias, cookie secure={auth['session_cookie_secure']}")
-    print(f"Arquivo: {AUTH_PATH} (modo {mode:o})")
+    state = (
+        translate("cli.status.2fa_on", lang)
+        if auth["totp_required"]
+        else translate("cli.status.2fa_off", lang)
+    )
+    print(translate("cli.status.user", lang, name=auth["username"]))
+    print(translate("cli.status.2fa", lang, state=state))
+    print(translate(
+        "cli.status.totp", lang,
+        step=auth["totp_step_seconds"], window=auth["totp_window_steps"],
+    ))
+    print(translate(
+        "cli.status.session", lang,
+        days=auth["session_days"], secure=auth["session_cookie_secure"],
+    ))
+    print(translate("cli.status.file", lang, path=AUTH_PATH, mode=mode))
 
 
-def _repair() -> None:
+def _repair(lang: str) -> None:
     """Re-init auth.json after confirming; removes a corrupt file first."""
-    if not _confirm(f"Re-inicializar {AUTH_PATH} (2FA desativada)?"):
-        print("Nada alterado.")
+    if not _confirm(translate("cli.repair_confirm", lang, path=AUTH_PATH), lang):
+        print(translate("cli.nothing_changed", lang))
         return
-    username = input("Usuário: ").strip()
-    password = _read_new_password()
+    username = input(translate("cli.username_prompt", lang)).strip()
+    password = _read_new_password(lang)
     if password is None:
         return
-    https = _confirm("Acesso via HTTPS (domínio com certificado)?")
+    https = _confirm(translate("cli.https_confirm", lang), lang)
     if os.path.exists(AUTH_PATH):
         os.remove(AUTH_PATH)
     create_bootstrap_auth(username, password, AUTH_PATH, cookie_secure=https)
-    print("auth.json re-inicializado.")
+    print(translate("cli.repaired", lang))
 
 
-def _repair_if_healthy(auth: dict) -> None:
+def _repair_if_healthy(auth: dict, lang: str) -> None:
     load_auth(AUTH_PATH)
-    print("auth.json íntegro — nada a reparar.")
+    print(translate("cli.healthy", lang))
 
 
-def _set_session_days(auth: dict) -> None:
+def _set_session_days(auth: dict, lang: str) -> None:
     """Change session cookie lifetime; rotates the secret so existing
     cookies die immediately and every browser must log in again."""
-    raw = input(f"Dias de duração da sessão (atual: {auth['session_days']}, 1–365): ").strip()
+    prompt = translate(
+        "cli.session_days_prompt", lang, current=auth["session_days"]
+    )
+    raw = input(prompt).strip()
     try:
         days = int(raw)
     except ValueError:
-        print("Valor inválido — precisa ser um número inteiro.")
+        print(translate("cli.invalid_number", lang))
         return
     if not 1 <= days <= 365:
-        print("Fora do intervalo permitido (1–365).")
+        print(translate("cli.out_of_range", lang))
         return
     auth["session_days"] = days
     auth["session_secret"] = new_session_secret()
     save_auth(auth, AUTH_PATH)
-    print(f"Sessão web agora dura {days} dia(s). "
-          "Cookies existentes foram invalidados — faça login novamente.")
+    print(translate("cli.session_updated", lang, days=days))
 
 
-def _dispatch(choice: str, auth: dict) -> None:
-    actions: dict[str, Callable[[dict], None]] = {
+def _toggle_language(auth: dict, lang: str) -> None:
+    """Flip cli_language in auth.json (web UX language is separate)."""
+    new_lang = "pt" if lang == "en" else "en"
+    auth["cli_language"] = new_lang
+    save_auth(auth, AUTH_PATH)
+    print(translate("cli.lang_switched", new_lang))
+
+
+def _menu(lang: str) -> str:
+    """Build the menu box with the language option right before Exit."""
+    lines = [
+        f"Radtracker — {translate('cli.menu.subtitle', lang)}",
+    ] + [
+        f"{i}) {translate(f'cli.menu.{i}', lang)}" for i in range(1, 9)
+    ] + [
+        f"0) {translate('cli.menu.exit', lang)}",
+    ]
+    width = max(len(line) for line in lines) + 4
+    box = ["┌" + "─" * width + "┐"]
+    for line in lines:
+        box.append(f"│  {line.ljust(width - 2)}│")
+    box.append("└" + "─" * width + "┘")
+    return "\n".join(box)
+
+
+def _dispatch(choice: str, auth: dict, lang: str) -> None:
+    actions: dict[str, Callable[[dict, str], None]] = {
         "1": _enable_2fa,
         "2": _disable_2fa,
         "3": _change_password,
@@ -173,12 +200,13 @@ def _dispatch(choice: str, auth: dict) -> None:
         "5": _set_session_days,
         "6": _repair_if_healthy,
         "7": _status,
+        "8": _toggle_language,
     }
     action = actions.get(choice)
     if action is None:
-        print("Opção inválida.")
+        print(translate("cli.invalid_option", lang))
         return
-    action(auth)
+    action(auth, lang)
 
 
 def main() -> int:
@@ -186,23 +214,24 @@ def main() -> int:
     try:
         auth = load_auth(AUTH_PATH)
     except AuthError as exc:
-        print(f"Problema em {AUTH_PATH}: {exc}")
-        if _confirm("Reparar agora?"):
-            _repair()
+        print(translate("cli.auth_problem", "en", path=AUTH_PATH, error=exc))
+        if _confirm(translate("cli.repair_now", "en"), "en"):
+            _repair("en")
         return 1
     while True:
-        print(_MENU)
+        lang = auth.get("cli_language", "en")
+        print(_menu(lang))
         try:
-            choice = input("Opção: ").strip()
+            choice = input(translate("cli.option.prompt", lang)).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
         if choice == "0":
             return 0
         try:
-            _dispatch(choice, auth)
+            _dispatch(choice, auth, lang)
         except (AuthError, EOFError, KeyboardInterrupt) as exc:
-            print(f"\nOperação abortada: {exc}")
+            print(translate("cli.operation_aborted", lang, error=exc))
 
 
 if __name__ == "__main__":

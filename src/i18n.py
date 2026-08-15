@@ -546,6 +546,147 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Answer in American English.",
         "pt": "Responda em português brasileiro.",
     },
+    "cli.menu.subtitle": {
+        "en": "Authentication management",
+        "pt": "Gestão de autenticação",
+    },
+    "cli.menu.1": {
+        "en": "Enable / reconfigure 2FA (QR code)",
+        "pt": "Ativar / reconfigurar 2FA (QR code)",
+    },
+    "cli.menu.2": {"en": "Disable 2FA", "pt": "Desativar 2FA"},
+    "cli.menu.3": {"en": "Change password", "pt": "Trocar senha"},
+    "cli.menu.4": {"en": "Change username", "pt": "Trocar usuário"},
+    "cli.menu.5": {"en": "Web session (days)", "pt": "Sessão web (dias)"},
+    "cli.menu.6": {"en": "Repair auth.json", "pt": "Reparar auth.json"},
+    "cli.menu.7": {"en": "Status", "pt": "Status"},
+    "cli.menu.8": {
+        "en": "Language / Idioma (EN)",
+        "pt": "Idioma / Language (PT)",
+    },
+    "cli.menu.exit": {"en": "Exit", "pt": "Sair"},
+    "cli.option.prompt": {"en": "Option: ", "pt": "Opção: "},
+    "cli.confirm": {"en": "{prompt} [y/N] ", "pt": "{prompt} [s/N] "},
+    "cli.invalid_option": {"en": "Invalid option.", "pt": "Opção inválida."},
+    "cli.2fa_already": {
+        "en": "2FA is already enabled — the QR below contains a NEW secret; "
+              "re-scan before entering the code.",
+        "pt": "2FA já ativada — o QR abaixo contém um NOVO segredo; "
+              "re-escaneie antes de digitar o código.",
+    },
+    "cli.qrencode_missing": {
+        "en": "qrencode not found — register the URI manually.",
+        "pt": "qrencode não encontrado — cadastre a URI manualmente.",
+    },
+    "cli.manual_uri": {
+        "en": "\nManual URI: {uri}\n",
+        "pt": "\nURI manual: {uri}\n",
+    },
+    "cli.enter_code": {
+        "en": "Enter the current authenticator code: ",
+        "pt": "Digite o código atual do autenticador: ",
+    },
+    "cli.2fa_invalid": {
+        "en": "Invalid code — 2FA unchanged.",
+        "pt": "Código inválido — 2FA inalterada.",
+    },
+    "cli.2fa_enabled": {"en": "2FA enabled.", "pt": "2FA ativada."},
+    "cli.confirm_disable_2fa": {
+        "en": "Confirm disabling 2FA?",
+        "pt": "Confirma desativar a 2FA?",
+    },
+    "cli.nothing_changed": {"en": "Nothing changed.", "pt": "Nada alterado."},
+    "cli.2fa_disabled": {
+        "en": "2FA disabled (secret kept for reactivation).",
+        "pt": "2FA desativada (segredo mantido para reativação).",
+    },
+    "cli.new_password": {"en": "New password: ", "pt": "Nova senha: "},
+    "cli.repeat_password": {
+        "en": "Repeat new password: ",
+        "pt": "Repita a nova senha: ",
+    },
+    "cli.passwords_mismatch": {
+        "en": "Passwords do not match.",
+        "pt": "As senhas não conferem.",
+    },
+    "cli.password_too_short": {
+        "en": "Password too short — minimum {min} characters.",
+        "pt": "Senha curta demais — mínimo {min} caracteres.",
+    },
+    "cli.password_changed": {
+        "en": "Password changed — all web sessions were ended.",
+        "pt": "Senha alterada — todas as sessões web foram encerradas.",
+    },
+    "cli.new_username": {"en": "New username: ", "pt": "Novo usuário: "},
+    "cli.username_empty": {
+        "en": "Username cannot be empty.",
+        "pt": "Usuário não pode ser vazio.",
+    },
+    "cli.username_changed": {
+        "en": "Username changed — previous web sessions were ended.",
+        "pt": "Usuário alterado — sessões web anteriores foram encerradas.",
+    },
+    "cli.status.2fa": {"en": "2FA: {state}", "pt": "2FA: {state}"},
+    "cli.status.user": {"en": "Username: {name}", "pt": "Usuário: {name}"},
+    "cli.status.2fa_on": {"en": "enabled", "pt": "ativada"},
+    "cli.status.2fa_off": {"en": "DISABLED", "pt": "DESATIVADA"},
+    "cli.status.totp": {
+        "en": "TOTP: {step}s step, ±{window} window",
+        "pt": "TOTP: passo {step}s, janela ±{window}",
+    },
+    "cli.status.session": {
+        "en": "Web session: {days} days, cookie secure={secure}",
+        "pt": "Sessão web: {days} dias, cookie secure={secure}",
+    },
+    "cli.status.file": {
+        "en": "File: {path} (mode {mode:o})",
+        "pt": "Arquivo: {path} (modo {mode:o})",
+    },
+    "cli.repair_confirm": {
+        "en": "Re-initialize {path} (2FA disabled)?",
+        "pt": "Re-inicializar {path} (2FA desativada)?",
+    },
+    "cli.username_prompt": {"en": "Username: ", "pt": "Usuário: "},
+    "cli.https_confirm": {
+        "en": "HTTPS access (domain with certificate)?",
+        "pt": "Acesso via HTTPS (domínio com certificado)?",
+    },
+    "cli.repaired": {"en": "auth.json re-initialized.", "pt": "auth.json re-inicializado."},
+    "cli.healthy": {
+        "en": "auth.json healthy — nothing to repair.",
+        "pt": "auth.json íntegro — nada a reparar.",
+    },
+    "cli.session_days_prompt": {
+        "en": "Session duration in days (current: {current}, 1–365): ",
+        "pt": "Dias de duração da sessão (atual: {current}, 1–365): ",
+    },
+    "cli.invalid_number": {
+        "en": "Invalid value — must be an integer.",
+        "pt": "Valor inválido — precisa ser um número inteiro.",
+    },
+    "cli.out_of_range": {
+        "en": "Out of the allowed range (1–365).",
+        "pt": "Fora do intervalo permitido (1–365).",
+    },
+    "cli.session_updated": {
+        "en": "Web session now lasts {days} day(s). Existing cookies were "
+              "invalidated — log in again.",
+        "pt": "Sessão web agora dura {days} dia(s). "
+              "Cookies existentes foram invalidados — faça login novamente.",
+    },
+    "cli.auth_problem": {
+        "en": "Problem in {path}: {error}",
+        "pt": "Problema em {path}: {error}",
+    },
+    "cli.repair_now": {"en": "Repair now?", "pt": "Reparar agora?"},
+    "cli.operation_aborted": {
+        "en": "\nOperation aborted: {error}",
+        "pt": "\nOperação abortada: {error}",
+    },
+    "cli.lang_switched": {
+        "en": "Language set to English.",
+        "pt": "Idioma definido como Português (Brasil).",
+    },
 }
 
 
