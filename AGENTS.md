@@ -26,8 +26,24 @@ single source), no duplicated facts across docs.
 - **LAN VPS update ALWAYS needs `-e deployment_mode=lan -e github_branch=<branch>`.**
   Without `deployment_mode=lan` the playbook switches the VPS to internet mode and
   Caddy tries ACME for the production domain. Never run update.yml without both vars.
+- **Oracle production:** `VPS_HOST=129.151.4.89`, `VPS_USER=ubuntu`; the vault has
+  `deployment_mode=internet`, so run WITHOUT the `-e deployment_mode` override.
+  Production update flow: `backup.yml` first, copy the backup from
+  `~/radtracker/backups/` on the VPS into the repo's `backups/` dir (gitignored),
+  then `update.yml` (or `deploy.yml` for a first deploy), then `health.yml`.
+- **Never fix things by hand on any server.** Everything goes through the playbooks
+  (all idempotent). If a playbook is interrupted (e.g. tool timeout), re-running it
+  is the recovery — a half-finished deploy is repaired by the same command.
+- **All playbooks use `gather_subset: ["!all", "min", "default_ipv4"]`.** The full
+  facts run hangs intermittently on Oracle micro instances, and the bare `min`
+  subset does NOT include `default_ipv4` — without it the LAN `.env` template falls
+  back to `DOMAIN=localhost` and breaks the Caddy config. Don't remove or change
+  the subset without testing both environments.
 - **`RADTRACKER_MODE` follows `deployment_mode`** (ansible `.env` template):
   `lan` → sidebar shows `local`; internet → `web`. No hardcode.
+- **`radtracker-auth` works without sudo on both VPSs** — deploy.yml adds the SSH
+  user to the docker group, `.env` is 0644 (no secrets), and `scripts/` IS part of
+  the image (was excluded by `.dockerignore` once — don't re-add it).
 - **Version lives only in `pyproject.toml`** — sidebar reads it at runtime (tomllib).
   Never pin versions in docs; bump = `pyproject.toml` + `uv lock` only.
 - **Auth state:** `data/auth.json` (gitignored, single user), stdlib crypto only;

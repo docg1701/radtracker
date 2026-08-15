@@ -2,6 +2,8 @@
 - name: Backup radtracker SQLite database
   hosts: all
   become: true
+  # Oracle micro instances can hang the full facts run (see deploy.yml)
+  gather_subset: ["!all", "min", "default_ipv4"]
 
   vars:
     backup_timestamp: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"

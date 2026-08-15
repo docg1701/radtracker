@@ -2,6 +2,8 @@
 - name: Full cleanup — reset VPS to fresh state
   hosts: all
   become: true
+  # Oracle micro instances can hang the full facts run (see deploy.yml)
+  gather_subset: ["!all", "min", "default_ipv4"]
 
   tasks:
     - name: Ensure python3-requests is available (needed for docker_prune)

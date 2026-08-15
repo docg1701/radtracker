@@ -273,9 +273,25 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
   --vault-password-file ansible/.vault_pass \
   -e deployment_mode=lan -e github_branch=<branch>
 
-# Produção (modo internet do vault):
+# Produção (modo internet do vault) — sem override de deployment_mode:
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
   --vault-password-file ansible/.vault_pass -e github_branch=<branch>
+```
+
+**Fluxo de produção (Oracle), na ordem:**
+
+```bash
+# 1. Backup SEMPRE antes de atualizar
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/backup.yml --vault-password-file ansible/.vault_pass
+# copiar o backup do VPS para o repositório (gitignored):
+scp ubuntu@129.151.4.89:~/radtracker/backups/radtracker-*.db backups/
+
+# 2. Atualizar
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
+  --vault-password-file ansible/.vault_pass -e github_branch=master
+
+# 3. Verificar
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/health.yml --vault-password-file ansible/.vault_pass
 ```
 
 - Atualiza repositório via deploy key SSH (`git` module) no branch informado
@@ -284,6 +300,10 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
 - `RADTRACKER_MODE` no `.env` segue `deployment_mode`: lan → `local`, internet → `web` (rodapé da sidebar)
 - Rebuilda imagem e recria container
 - Aguarda health check
+
+**Playbook interrompido?** Re-rodar o MESMO comando — os playbooks são idempotentes
+(e.g. o bootstrap de auth só cria `auth.json` se não existir). Nunca corrija o
+servidor à mão; o re-run repara qualquer estado parcial.
 
 **Dados preservados:** O bind mount `data/` não é tocado. SQLite sobrevive a updates.
 

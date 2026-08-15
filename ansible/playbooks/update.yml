@@ -2,6 +2,8 @@
 - name: Update radtracker without data loss
   hosts: all
   become: true
+  # Oracle micro instances can hang the full facts run (see deploy.yml)
+  gather_subset: ["!all", "min", "default_ipv4"]
 
   tasks:
     - name: Update repository via deploy key

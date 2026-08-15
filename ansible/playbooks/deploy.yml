@@ -6,7 +6,7 @@
   # Oracle micro instances can hang the full facts run (intermittent
   # collector stalls); the min subset still provides default_ipv4 for
   # LAN mode and everything the templates/debug use.
-  gather_subset: ["!all", "min"]
+  gather_subset: ["!all", "min", "default_ipv4"]
 
   tasks:
     - name: Install prerequisites
