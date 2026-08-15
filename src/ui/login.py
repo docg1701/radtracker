@@ -76,35 +76,52 @@ def _render_login_form(auth: dict, mgr: CookieManager | None) -> None:
     if st.session_state.get("auth_awaiting_totp"):
         _render_totp_form(auth, mgr)
         return
-    st.markdown(":material/lock: **radtracker — acesso restrito**")
-    with st.form("auth_login"):
-        username = st.text_input("Usuário", key="auth_login_username")
-        password = st.text_input("Senha", type="password", key="auth_login_password")
-        submitted = st.form_submit_button("Entrar", type="primary")
-    if not submitted:
-        return
-    if not verify_login(auth, username, password):
-        st.error("Usuário ou senha inválidos.")
-        return
-    if is_totp_required(auth):
-        st.session_state.auth_awaiting_totp = True
-    else:
-        _establish_session(auth, mgr)
-    st.rerun()
+    st.container(height=140)
+    left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
+    with card:
+        with st.container(border=True, height=340, vertical_alignment="center"):
+            st.markdown("## :material/lock: **radtracker**")
+            with st.form("auth_login"):
+                username = st.text_input(
+                    "Usuário", key="auth_login_username", placeholder="seu usuário"
+                )
+                password = st.text_input("Senha", type="password", key="auth_login_password")
+                submitted = st.form_submit_button(
+                    "Entrar", type="primary", icon=":material/login:", width="stretch"
+                )
+        if not submitted:
+            return
+        if not verify_login(auth, username, password):
+            st.error("Usuário ou senha inválidos.")
+            return
+        if is_totp_required(auth):
+            st.session_state.auth_awaiting_totp = True
+        else:
+            _establish_session(auth, mgr)
+        st.rerun()
 
 
 def _render_totp_form(auth: dict, mgr: CookieManager | None) -> None:
-    st.markdown(":material/lock: **radtracker — verificação em duas etapas**")
-    with st.form("auth_totp"):
-        code = st.text_input(
-            "Código do autenticador", type="password", max_chars=6, key="auth_totp_code"
-        )
-        submitted = st.form_submit_button("Verificar", type="primary")
-    if not submitted:
-        return
-    if not verify_totp_code(auth, code, int(time.time())):
-        st.error("Código inválido ou expirado.")
-        return
-    st.session_state.pop("auth_awaiting_totp", None)
-    _establish_session(auth, mgr)
-    st.rerun()
+    st.container(height=140)
+    left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
+    with card:
+        with st.container(border=True, height=340, vertical_alignment="center"):
+            st.markdown("## :material/verified_user: **Verificação em duas etapas**")
+            with st.form("auth_totp"):
+                code = st.text_input(
+                    "Código do autenticador",
+                    type="password",
+                    max_chars=6,
+                    key="auth_totp_code",
+                )
+                submitted = st.form_submit_button(
+                    "Verificar", type="primary", icon=":material/key:", width="stretch"
+                )
+        if not submitted:
+            return
+        if not verify_totp_code(auth, code, int(time.time())):
+            st.error("Código inválido ou expirado.")
+            return
+        st.session_state.pop("auth_awaiting_totp", None)
+        _establish_session(auth, mgr)
+        st.rerun()
