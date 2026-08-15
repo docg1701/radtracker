@@ -54,6 +54,9 @@ def _read_new_password() -> str | None:
 
 
 def _enable_2fa(auth: dict) -> None:
+    if auth["totp_required"]:
+        print("2FA já ativada — o QR abaixo contém um NOVO segredo; "
+              "re-escaneie antes de digitar o código.")
     secret = new_totp_secret()
     uri = otpauth_uri(secret, auth["username"])
     if shutil.which("qrencode"):
@@ -69,7 +72,7 @@ def _enable_2fa(auth: dict) -> None:
         window_steps=auth["totp_window_steps"],
     )
     if not ok:
-        print("Código inválido — 2FA NÃO ativada.")
+        print("Código inválido — 2FA inalterada.")
         return
     auth["totp_secret"] = secret
     auth["totp_required"] = True
