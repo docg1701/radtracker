@@ -237,6 +237,7 @@
     - name: Bootstrap app authentication (create data/auth.json)
       block:
         - name: Write temporary auth credentials file
+          no_log: true
           ansible.builtin.copy:
             content: |
               {{ auth_username }}
@@ -246,9 +247,9 @@
             owner: "1000"
             group: "1000"
             mode: "0600"
-            no_log: true
 
         - name: Run auth bootstrap in container
+          no_log: true
           community.docker.docker_compose_v2_exec:
             project_src: "{{ radtracker_dir }}"
             service: streamlit
