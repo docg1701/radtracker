@@ -32,9 +32,9 @@ _MENU = """
 │ 2) Desativar 2FA                         │
 │ 3) Trocar senha                          │
 │ 4) Trocar usuário                        │
-│ 5) Status                                │
+│ 5) Sessão web (dias)                     │
 │ 6) Reparar auth.json                     │
-│ 7) Sessão web (dias)                     │
+│ 7) Status                                │
 │ 0) Sair                                  │
 └──────────────────────────────────────────┘"""
 
@@ -165,9 +165,9 @@ def _dispatch(choice: str, auth: dict) -> None:
         "2": _disable_2fa,
         "3": _change_password,
         "4": _change_username,
-        "5": _status,
+        "5": _set_session_days,
         "6": _repair_if_healthy,
-        "7": _set_session_days,
+        "7": _status,
     }
     action = actions.get(choice)
     if action is None:
