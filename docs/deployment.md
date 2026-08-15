@@ -331,6 +331,44 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/cleanup.yml --vault-
 - Remove o wrapper `/usr/local/bin/radtracker-auth`
 - Remove diretório do projeto
 - Remove pré-requisitos (`ca-certificates`, `curl`, `gnupg`, `git`, `sqlite3`, `python3-requests`)
+
+## 8. Cloudflare (produção)
+
+O domínio de produção `radtracker.drgalvanimd.com` é gerido pelo Cloudflare
+(zona `drgalvanimd.com`). Esta é a única proteção de rede contra brute-force
+no login — **não desligue o proxy nem remova a regra de rate limiting**.
+
+### 8.1 Registro DNS
+
+- Type `A`, name `radtracker`, IPv4 `129.151.4.89` (IP da Oracle), TTL Auto,
+  **Proxy: Proxied** (nuvem laranja — obrigatório para o rate limiting).
+- SSL/TLS da zona: **Full (strict)**. A origem (Caddy) tem certificado
+  Let's Encrypt próprio emitido via HTTP-01 através do proxy; o Flexible
+  quebra o fluxo (o Caddy redireciona HTTP→HTTPS em loop).
+
+### 8.2 Rate limiting (WAF → Rate limiting rules)
+
+Regra única para todo o login:
+
+| Campo | Valor |
+|-------|-------|
+| Nome | `radtracker-login` |
+| Expression | `http.host eq "radtracker.drgalvanimd.com" and http.request.method eq "POST" and http.request.uri.path eq "/"` |
+| Limite | 10 requisições / 1 minuto |
+| Ação | Block (10 minutos) |
+| Sensitivity | High |
+
+Por que essa expressão: o formulário de login e o passo TOTP do Streamlit
+são os únicos `POST` em `/` — o app autenticado roda sobre um único
+websocket (`GET /_stcore/stream`), que a regra não conta. Bloqueia força
+bruta contra senha e código TOTP sem tocar em sessão legítima.
+
+### 8.3 Logs atrás do proxy
+
+O Caddy vê o IP de borda do Cloudflare (não o do cliente) — o IP real vem
+no header `Cf-Connecting-Ip`. O fail2ban atual cobre só a jail sshd, então
+não há impacto; se um dia houver jail HTTP, filtrar pelo header, não pelo
+IP de origem da conexão.
 - `apt autoremove` + `apt autoclean`
 
 VPS volta ao estado original — pronto pra um novo bootstrap + deploy.

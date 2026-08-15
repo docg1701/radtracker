@@ -8,6 +8,8 @@ Sprints 1–5: sidebar, SQLite persistence, KPI cards, charts,
 LLM insights, settings, session_state wiring.
 """
 
+import logging
+
 import streamlit as st
 
 from src.auth_store import AUTH_PATH, AuthError, load_auth
@@ -46,8 +48,10 @@ st.markdown(
 try:
     auth = load_auth(AUTH_PATH)
 except AuthError as exc:
-    st.error(f"Autenticação não configurada: {exc}")
-    st.markdown("Execute o deploy Ansible ou o script `radtracker-auth` via SSH.")
+    # Detail goes to the server log only — the browser must not expose file
+    # paths, schema internals, or validation messages.
+    logging.getLogger(__name__).error("auth gate: %s", exc)
+    st.error("Autenticação indisponível neste servidor. Contate o administrador.")
     st.stop()
 
 render_login_gate(auth)
