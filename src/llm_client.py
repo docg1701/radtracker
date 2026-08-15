@@ -22,7 +22,7 @@ import httpx
 import pandas as pd
 
 from src.calculations import daily_avg_for_month
-from src.formatting import fmt_brl
+from src.formatting import MONTHS_PT, fmt_brl, month_name
 
 
 class LLMUnavailableError(Exception):
@@ -93,17 +93,8 @@ def _enrich_stats(
     current_ym = stats.get("year_month") or ""
     current_stats = stats.get("current_month_stats", {})
 
-    MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
               "Sexta-feira", "Sábado", "Domingo"]
-
-    def _month_name(ym: str) -> str:
-        try:
-            m = int(ym[5:7])
-            return MESES[m] if 1 <= m <= 12 else ym
-        except (IndexError, ValueError):
-            return ym
 
     # ── YTD ──
     current_year = current_ym[:4] if len(current_ym) >= 4 else ""
@@ -178,7 +169,7 @@ def _enrich_stats(
                 best_val = fmt_brl(float(best_row.get("earnings", 0.0)))
 
         block = (
-            f"--- {_month_name(ym).upper()} ---\n"
+            f"--- {month_name(ym).upper()} ---\n"
             f"Faturamento: {fmt_brl(mtd)} | "
             f"Dias trabalhados: {days_worked} | "
             f"Média diária: {fmt_brl(daily_avg)} | "
@@ -220,7 +211,7 @@ def _enrich_stats(
 
     return {
         "today": (
-            f"{date.today().day} de {MESES[date.today().month]}"
+            f"{date.today().day} de {MONTHS_PT[date.today().month]}"
             f" de {date.today().year} ({SEMANA[date.today().weekday()]})"
         ),
         "goal": fmt_brl(float(current_stats.get("goal", 0))),

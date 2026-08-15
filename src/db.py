@@ -19,27 +19,81 @@ from src.chart_colors import MODALITY_COLORS
 
 DEFAULT_GOAL: float = 45000.0
 
-# ── Predefined modality catalog (5 production modalities) ──
+# Canonical schema — tests/conftest.py imports these so tests exercise the
+# same schema as init_db.
+CREATE_MODALITIES_SQL = """
+    CREATE TABLE IF NOT EXISTS modalities (
+        slug            TEXT PRIMARY KEY,
+        label           TEXT NOT NULL,
+        price           REAL NOT NULL DEFAULT 0.0,
+        exams_per_hour  REAL NOT NULL DEFAULT 0.0,
+        active          INTEGER NOT NULL DEFAULT 0,
+        sort_order      INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    """
+CREATE_DAILY_ITEMS_SQL = """
+    CREATE TABLE IF NOT EXISTS daily_production_items (
+        date            TEXT NOT NULL,
+        modality_slug   TEXT NOT NULL,
+        count           INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        PRIMARY KEY (date, modality_slug),
+        FOREIGN KEY (modality_slug) REFERENCES modalities(slug)
+    );
+    """
+CREATE_GOALS_SQL = """
+    CREATE TABLE IF NOT EXISTS monthly_goals (
+        year_month  TEXT PRIMARY KEY,
+        goal_reais  REAL NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    """
+CREATE_SETTINGS_SQL = """
+    CREATE TABLE IF NOT EXISTS user_settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    """
+CREATE_MODALITY_PRICES_SQL = """
+    CREATE TABLE IF NOT EXISTS modality_prices (
+        slug            TEXT NOT NULL,
+        price           REAL NOT NULL,
+        effective_from  TEXT NOT NULL,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        PRIMARY KEY (slug, effective_from)
+    );
+    """
+
+SCHEMA_DDL: tuple[str, ...] = (
+    CREATE_MODALITIES_SQL,
+    CREATE_DAILY_ITEMS_SQL,
+    CREATE_GOALS_SQL,
+    CREATE_SETTINGS_SQL,
+    CREATE_MODALITY_PRICES_SQL,
+)
+
+# ── Predefined modality catalog (5 production modalities) — labels and sort
+# order; colors come from chart_colors.MODALITY_COLORS. ──
 _MODALITY_SEED: list[dict[str, Any]] = [
-    {"slug": "angiotomografia",  "label": "Angiotomografia",
-     "sort_order": 1, "color": "#0D9488"},
-    {"slug": "radiografia",  "label": "Radiografia",
-     "sort_order": 2, "color": "#2563EB"},
+    {"slug": "angiotomografia",  "label": "Angiotomografia",  "sort_order": 1},
+    {"slug": "radiografia",  "label": "Radiografia",  "sort_order": 2},
     {"slug": "ressonancia_magnetica",  "label": "Ressonância Magnética",
-     "sort_order": 3, "color": "#7C3AED"},
-    {"slug": "tc_geral",  "label": "TC Geral",
-     "sort_order": 4, "color": "#6366F1"},
-    {"slug": "tc_abdome_total",  "label": "TC de Abdome Total",
-     "sort_order": 5, "color": "#0891B2"},
+     "sort_order": 3},
+    {"slug": "tc_geral",  "label": "TC Geral",  "sort_order": 4},
+    {"slug": "tc_abdome_total",  "label": "TC de Abdome Total",  "sort_order": 5},
 ]
 
-# Production default values for the 5 standard modalities.
-_PRODUCTION_DEFAULTS: dict[str, tuple[str, float, float]] = {
-    "angiotomografia":       ("Angiotomografia",       30.00, 4.0),
-    "radiografia":           ("Radiografia",            4.00, 80.0),
-    "ressonancia_magnetica": ("Ressonância Magnética", 35.00, 8.0),
-    "tc_geral":              ("TC Geral",              30.00, 10.0),
-    "tc_abdome_total":       ("TC de Abdome Total",    60.00, 5.0),
+# Production price + exams/hour for the 5 standard modalities.
+_PRODUCTION_DEFAULTS: dict[str, tuple[float, float]] = {
+    "angiotomografia":       (30.00, 4.0),
+    "radiografia":           (4.00, 80.0),
+    "ressonancia_magnetica": (35.00, 8.0),
+    "tc_geral":              (30.00, 10.0),
+    "tc_abdome_total":       (60.00, 5.0),
 }
 
 
@@ -52,79 +106,43 @@ def get_connection() -> Any:
     )
 
 
+class SqliteConn:
+    """Minimal st.connection-compatible SQLite handle (.connect() + .query()).
+
+    Used by src/migrate.py (deploy-time init_db without a browser session) and
+    tests/conftest.py (in-memory variant).
+    """
+
+    def __init__(self, path: str) -> None:
+        self._engine = sa.create_engine(f"sqlite:///{path}")
+
+    def connect(self) -> sa.engine.Connection:
+        return self._engine.connect()  # type: ignore[return-value]
+
+    def query(self, sql: str, *, params: dict | None = None, ttl: int = 0) -> pd.DataFrame:
+        with self._engine.connect() as c:
+            result = c.execute(sa.text(sql), params or {})
+            return pd.DataFrame(result.fetchall(), columns=result.keys())
+
+
 def init_db(conn: Any) -> None:
     """Create all tables if they don't exist. Idempotent.
 
     Tables: modalities, daily_production_items, modality_prices,
     monthly_goals, user_settings.
     """
-    # ── v2 tables ──
-    create_modalities = """
-    CREATE TABLE IF NOT EXISTS modalities (
-        slug            TEXT PRIMARY KEY,
-        label           TEXT NOT NULL,
-        price           REAL NOT NULL DEFAULT 0.0,
-        exams_per_hour  REAL NOT NULL DEFAULT 0.0,
-        active          INTEGER NOT NULL DEFAULT 0,
-        sort_order      INTEGER NOT NULL DEFAULT 0,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """
-    create_daily_items = """
-    CREATE TABLE IF NOT EXISTS daily_production_items (
-        date            TEXT NOT NULL,
-        modality_slug   TEXT NOT NULL,
-        count           INTEGER NOT NULL DEFAULT 0,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        PRIMARY KEY (date, modality_slug),
-        FOREIGN KEY (modality_slug) REFERENCES modalities(slug)
-    );
-    """
-    create_goals = """
-    CREATE TABLE IF NOT EXISTS monthly_goals (
-        year_month  TEXT PRIMARY KEY,
-        goal_reais  REAL NOT NULL,
-        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """
-    create_settings = """
-    CREATE TABLE IF NOT EXISTS user_settings (
-        key         TEXT PRIMARY KEY,
-        value       TEXT NOT NULL,
-        updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    """
-    create_modality_prices = """
-    CREATE TABLE IF NOT EXISTS modality_prices (
-        slug            TEXT NOT NULL,
-        price           REAL NOT NULL,
-        effective_from  TEXT NOT NULL,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        PRIMARY KEY (slug, effective_from)
-    );
-    """
-
     os.makedirs("data", exist_ok=True)
     with conn.connect() as db_conn:
-        db_conn.execute(sa.text(create_modalities))
-        db_conn.execute(sa.text(create_daily_items))
-        db_conn.execute(sa.text(create_goals))
-        db_conn.execute(sa.text(create_settings))
-        db_conn.execute(sa.text(create_modality_prices))
+        for ddl in SCHEMA_DDL:
+            db_conn.execute(sa.text(ddl))
         db_conn.commit()
 
     # Add color column if missing (must run before seed so seed can set colors)
     _add_color_column(conn)
     # Seed modalities if table is empty
     _seed_modalities(conn)
-    # Apply v1.4 production defaults to untouched modalities
-    _migrate_v1_3_to_v1_4_defaults(conn)
     # Backfill price vigencies (one-shot) so the past is immutable
     _backfill_price_vigencies(conn)
-    # Drop v1 legacy tables once v2 is populated (one-shot, guarded)
-    _migrate_v1_cleanup(conn)
     # Seed reasoning settings for thinking/temperature configuration
     _seed_reasoning_settings(conn)
 
@@ -614,7 +632,7 @@ def _seed_modalities(conn: Any) -> None:
         for m in _MODALITY_SEED:
             prod = _PRODUCTION_DEFAULTS.get(m["slug"])
             if prod:
-                _, price, eph = prod
+                price, eph = prod
                 active = 1
             else:
                 price, eph, active = 0.0, 0.0, 0
@@ -627,7 +645,8 @@ def _seed_modalities(conn: Any) -> None:
                 {
                     "slug": m["slug"], "label": m["label"],
                     "price": price, "eph": eph, "active": active,
-                    "sort_order": m["sort_order"], "color": m["color"],
+                    "sort_order": m["sort_order"],
+                    "color": MODALITY_COLORS.get(m["slug"], "#64748B"),
                 },
             )
         db_conn.commit()
@@ -657,51 +676,4 @@ def _add_color_column(conn: Any) -> None:
         db_conn.commit()
 
 
-def _migrate_v1_3_to_v1_4_defaults(conn: Any) -> None:
-    """One-shot migration: apply production defaults to the 5 standard modalities.
 
-    Only updates modalities that still have price=0 AND active=0 (untouched by
-    the user). Guarded by a user_settings flag so it runs exactly once — a user
-    who later deactivates and zeroes a seed modality is not silently re-activated
-    on the next boot.
-    """
-    if load_setting(conn, "migration_v1_4_defaults_done") == "1":
-        return
-    with conn.connect() as db_conn:
-        for slug, (label, price, eph) in _PRODUCTION_DEFAULTS.items():
-            db_conn.execute(
-                sa.text("""
-                    UPDATE modalities
-                    SET label = :label,
-                        price = :price,
-                        exams_per_hour = :eph,
-                        active = 1,
-                        updated_at = datetime('now','localtime')
-                    WHERE slug = :slug
-                      AND price = 0.0
-                      AND active = 0
-                """),
-                {"slug": slug, "label": label, "price": price, "eph": eph},
-            )
-        db_conn.commit()
-    save_setting(conn, "migration_v1_4_defaults_done", "1")
-
-
-def _migrate_v1_cleanup(conn: Any) -> None:
-    """One-shot: drop the v1 legacy tables (daily_production, exam_prices) once
-    the v2 daily_production_items is populated.
-
-    Guarded by a user_settings flag so it runs exactly once and never drops v1
-    before its data was migrated. Idempotent and safe: only drops when v2
-    already holds the production history.
-    """
-    if load_setting(conn, "migration_v1_cleanup_done") == "1":
-        return
-    v2_count = conn.query("SELECT COUNT(*) AS cnt FROM daily_production_items", ttl=0)
-    if v2_count["cnt"].iloc[0] == 0:
-        return  # v2 empty — keep v1 until its data is migrated
-    with conn.connect() as db_conn:
-        db_conn.execute(sa.text("DROP TABLE IF EXISTS daily_production"))
-        db_conn.execute(sa.text("DROP TABLE IF EXISTS exam_prices"))
-        db_conn.commit()
-    save_setting(conn, "migration_v1_cleanup_done", "1")

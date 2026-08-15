@@ -19,6 +19,7 @@ from src.calculations import (
 from src.charts import build_daily_sparkline, build_modality_bar
 from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
+from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
 
 
@@ -33,14 +34,19 @@ def render_today_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     if not active_mods:
-        _render_empty_state("Nenhuma modalidade ativa. Configure na aba Configuração.")
+        render_empty_state(
+            ":material/content_paste:",
+            "Nenhuma modalidade ativa. Configure na aba Configuração.",
+        )
         return
 
     stats = compute_daily_stats(conn, today_str, active_mods)
 
     if not stats["has_data"]:
-        _render_empty_state(
-            "Comece registrando sua produção de hoje na **barra lateral**."
+        render_empty_state(
+            ":material/content_paste:",
+            "Comece registrando sua produção de hoje na **barra lateral**.",
+            caption="Os dados aparecerão aqui assim que você salvar.",
         )
         return
 
@@ -75,16 +81,6 @@ def render_today_tab(conn: Any) -> None:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-def _render_empty_state(message: str) -> None:
-    """Render the friendly empty-state card."""
-    _, col2, _ = st.columns([1, 2, 1])
-    with col2:
-        with st.container(border=True):
-            st.markdown(":material/content_paste:", text_alignment="center")
-            st.subheader("Nenhum registro ainda")
-            st.markdown(message)
-            st.caption("Os dados aparecerão aqui assim que você salvar.")
 
 
 def _render_kpi_row(

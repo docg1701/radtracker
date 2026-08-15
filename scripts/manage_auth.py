@@ -20,9 +20,14 @@ from src.auth_crypto import (
     otpauth_uri,
     verify_totp,
 )
-from src.auth_store import AUTH_PATH, AuthError, create_bootstrap_auth, load_auth, save_auth
-
-_MIN_PASSWORD_LEN = 8
+from src.auth_store import (
+    AUTH_PATH,
+    MIN_PASSWORD_LEN,
+    AuthError,
+    create_bootstrap_auth,
+    load_auth,
+    save_auth,
+)
 
 _MENU = """
 ┌──────────────────────────────────────────┐
@@ -48,8 +53,8 @@ def _read_new_password() -> str | None:
     if first != getpass.getpass("Repita a nova senha: "):
         print("As senhas não conferem.")
         return None
-    if len(first) < _MIN_PASSWORD_LEN:
-        print(f"Senha curta demais — mínimo {_MIN_PASSWORD_LEN} caracteres.")
+    if len(first) < MIN_PASSWORD_LEN:
+        print(f"Senha curta demais — mínimo {MIN_PASSWORD_LEN} caracteres.")
         return None
     return first
 

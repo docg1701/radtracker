@@ -11,9 +11,9 @@ from typing import Any
 
 import streamlit as st
 
-from src.calculations import compute_historical_stats, historical_cache_key
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
 from src.text_sanitize import sanitize_text, sanitize_token
+from src.ui.common import get_historical_stats, render_empty_state
 from src.ui.settings import ensure_settings
 
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
@@ -59,39 +59,49 @@ def render_chat_tab(conn: Any) -> None:
         llm_prompt = llm_prompt.replace("{user_name}", user_name)
 
     if not api_key:
-        _render_chat_empty_state(
+        render_empty_state(
+            ":material/smart_toy:",
             "Configure sua **chave API OpenRouter** na aba "
             ":material/settings: **Configuração** para ativar "
             "o chat com inteligência artificial.",
+            title="Chat com IA",
             caption="[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)",
         )
         return
 
     if not active_mods:
-        _render_chat_empty_state(
+        render_empty_state(
+            ":material/smart_toy:",
             "Nenhuma modalidade ativa. Configure na aba "
-            ":material/settings: **Configuração**."
+            ":material/settings: **Configuração**.",
+            title="Chat com IA",
         )
         return
 
     if not st.session_state.get("user_name", "").strip():
-        _render_chat_empty_state(
+        render_empty_state(
+            ":material/smart_toy:",
             "Configure seu **nome** na aba "
-            ":material/settings: **Configuração**."
+            ":material/settings: **Configuração**.",
+            title="Chat com IA",
         )
         return
 
     if not (goal > 0.0):
-        _render_chat_empty_state(
+        render_empty_state(
+            ":material/smart_toy:",
             "Configure a **meta mensal** na aba "
-            ":material/settings: **Configuração**."
+            ":material/settings: **Configuração**.",
+            title="Chat com IA",
         )
         return
 
     if not (llm_prompt or "").strip():
-        _render_chat_empty_state(
+        render_empty_state(
+            ":material/smart_toy:",
             "Configure o **prompt da IA** na aba "
-            ":material/settings: **Configuração**."
+            ":material/settings: **Configuração**.",
+            title="Chat com IA",
         )
         return
 
@@ -161,21 +171,6 @@ def render_chat_tab(conn: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Empty state helper
-# ---------------------------------------------------------------------------
-
-def _render_chat_empty_state(message: str, caption: str | None = None) -> None:
-    _, col, _ = st.columns([1, 2, 1])
-    with col:
-        with st.container(border=True):
-            st.markdown(":material/smart_toy:", text_alignment="center")
-            st.subheader("Chat com IA")
-            st.markdown(message)
-            if caption:
-                st.caption(caption)
-
-
-# ---------------------------------------------------------------------------
 # Initial report trigger
 # ---------------------------------------------------------------------------
 
@@ -188,16 +183,7 @@ def _trigger_initial_report(
     llm_prompt: str,
 ) -> None:
     """Compute stats, build RAG context, queue initial report prompt."""
-    cache_key = historical_cache_key(year_month, goal, active_mods)
-    cached = st.session_state.get("historical_cache")
-
-    if cached is None or cached.get("key") != cache_key:
-        with st.spinner("Analisando dados históricos..."):
-            stats = compute_historical_stats(conn, year_month, goal, active_mods)
-        st.session_state.historical_cache = {"key": cache_key, "stats": stats}
-    else:
-        stats = cached["stats"]
-
+    stats, _ = get_historical_stats(conn, year_month, goal, active_mods)
     system_prompt = build_rag_context(stats, active_mods, llm_prompt)
     st.session_state.messages = [
         {"role": "system", "content": system_prompt},

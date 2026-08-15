@@ -480,7 +480,7 @@ class TestBuildRagContext:
 # ── Helpers ──
 
 
-def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
+def _minimal_stats(mom: float | None = None):
     import pandas as pd
 
     dates = [f"2026-04-{d:02d}" for d in range(1, 14)]
@@ -516,19 +516,12 @@ def _minimal_stats(wow: float | None = 5.0, mom: float | None = None):
             "projection_month_end": 45000.0,
             "remaining_days": 17,
         },
-        "wow_change_pct": wow,
         "mom_change_pct": mom,
-        "modality_mix_current": {
-            "ressonancia_magnetica": 60.0,
-            "tc_geral": 25.0,
-            "radiografia": 15.0,
-        },
         "modality_mix_historical": {
             "2026-01": {"ressonancia_magnetica": 55.0, "tc_geral": 30.0, "radiografia": 15.0},
             "2026-02": {"ressonancia_magnetica": 58.0, "tc_geral": 28.0, "radiografia": 14.0},
             "2026-03": {"ressonancia_magnetica": 60.0, "tc_geral": 25.0, "radiografia": 15.0},
         },
-        "consecutive_below_target": 0,
     }
 
 
@@ -561,15 +554,8 @@ def _multi_month_stats():
             "projection_month_end": 700.0,
             "remaining_days": 23,
         },
-        "wow_change_pct": None,
         "mom_change_pct": None,
-        "modality_mix_current": {
-            "ressonancia_magnetica": 35.0,
-            "tc_geral": 50.0,
-            "radiografia": 15.0,
-        },
         "modality_mix_historical": {},
-        "consecutive_below_target": 0,
     }
 
 
@@ -600,9 +586,8 @@ class TestEnrichStatsVigency:
                 "daily_avg": 250.0, "daily_target_needed": 0.0,
                 "projection_month_end": 250.0, "goal": 500.0,
             },
-            "wow_change_pct": None, "mom_change_pct": None,
-            "modality_mix_current": {}, "modality_mix_historical": {},
-            "consecutive_below_target": 0, "current_month_daily_std": None,
+            "mom_change_pct": None,
+            "modality_mix_historical": {},
             "prev_month_earnings": None,
         }
 

@@ -7,10 +7,8 @@ v2: dynamic modalities, configurable LLM model.
 from datetime import date
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
-from src.calculations import compute_historical_stats, historical_cache_key
 from src.charts_analysis import (
     build_modality_mix_evolution,
     build_moving_averages_chart,
@@ -19,6 +17,7 @@ from src.charts_analysis import (
 )
 from src.formatting import md_escape
 from src.insights_rules import generate_rule_insights
+from src.ui.common import get_historical_stats, render_empty_state
 from src.ui.settings import ensure_settings
 
 
@@ -32,31 +31,28 @@ def render_analysis_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     if not active_mods:
-        _render_empty_state("Nenhuma modalidade ativa. Configure na aba **Configuração**.")
+        render_empty_state(
+            ":material/bar_chart:",
+            "Nenhuma modalidade ativa. Configure na aba **Configuração**.",
+        )
         return
 
-    cache_key = historical_cache_key(year_month, goal, active_mods)
-    cached = st.session_state.get("historical_cache")
-
-    if cached is None or cached.get("key") != cache_key:
-
-        with st.spinner("Analisando dados históricos..."):
-            stats = compute_historical_stats(conn, year_month, goal, active_mods)
-        st.session_state.historical_cache = {"key": cache_key, "stats": stats}
+    stats, recomputed = get_historical_stats(conn, year_month, goal, active_mods)
+    if recomputed:
         st.rerun()
-    else:
-        stats = cached["stats"]
 
     df = stats.get("df")
     if df is None or len(df) == 0:
-        _render_empty_state(
-            "Registre sua produção na **barra lateral**."
+        render_empty_state(
+            ":material/bar_chart:",
+            "Registre sua produção na **barra lateral**.",
+            caption="As análises históricas aparecerão aqui.",
         )
         return
 
     # ── Insights por regras ──
     with st.expander(":material/lightbulb: Insights", expanded=True):
-        rule_text = generate_rule_insights(stats, active_mods)
+        rule_text = generate_rule_insights(stats)
         _render_insight_body(rule_text)
 
     # ── Two-column: MA + WoW ──
@@ -73,12 +69,9 @@ def render_analysis_tab(conn: Any) -> None:
 
     with col_right:
         st.subheader(":material/analytics: Comparação semanal")
-        if not df.empty:
-            wow_items = stats.get("items_df", pd.DataFrame())
-            wow_chart = build_wow_comparison_chart(wow_items, active_mods)
-            st.plotly_chart(wow_chart, width="stretch")
-        else:
-            st.info("Dados insuficientes para comparação semanal.")
+        wow_items = stats["items_df"]
+        wow_chart = build_wow_comparison_chart(wow_items, active_mods)
+        st.plotly_chart(wow_chart, width="stretch")
 
     # ── Modality Mix Evolution ──
     st.subheader(":material/pie_chart: Evolução do mix de modalidades")
@@ -93,21 +86,6 @@ def render_analysis_tab(conn: Any) -> None:
     st.subheader(":material/bar_chart: Faturamento por mês")
     ytd_chart = build_ytd_earnings_chart(df, year_month, goal)
     st.plotly_chart(ytd_chart, width="stretch")
-
-
-# ---------------------------------------------------------------------------
-# Empty state
-# ---------------------------------------------------------------------------
-
-def _render_empty_state(message: str) -> None:
-    _, col2, _ = st.columns([1, 2, 1])
-    with col2:
-        with st.container(border=True):
-            st.markdown(":material/bar_chart:", text_alignment="center")
-            st.subheader("Nenhum registro ainda")
-            st.markdown(message)
-            st.caption("As análises históricas aparecerão aqui.")
-
 
 
 # ---------------------------------------------------------------------------

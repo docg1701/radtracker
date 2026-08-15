@@ -17,7 +17,7 @@ from src.chart_colors import (
     get_chart_text_color,
     hex_to_rgba,
 )
-from src.formatting import MONTHS_PT
+from src.formatting import month_abbr
 
 # ---------------------------------------------------------------------------
 # Moving averages line chart (MA7 + MA30)
@@ -194,11 +194,7 @@ def build_modality_mix_evolution(
     """
     months_sorted = sorted(mix_history.keys())
 
-    month_labels: list[str] = []
-    for ym in months_sorted:
-        y, month_num = int(ym[:4]), int(ym[5:7])
-        abbr = MONTHS_PT.get(month_num, f"M{month_num}")[:3]
-        month_labels.append(f"{abbr}/{y % 100:02d}")
+    month_labels = [month_abbr(ym) for ym in months_sorted]
 
     fig = go.Figure()
 
@@ -263,11 +259,7 @@ def build_ytd_earnings_chart(
     ).reset_index()
     monthly = monthly.sort_values("ym")
 
-    month_labels: list[str] = []
-    for ym in monthly["ym"]:
-        y, month_num = int(ym[:4]), int(ym[5:7])
-        abbr = MONTHS_PT.get(month_num, f"M{month_num}")[:3]
-        month_labels.append(f"{abbr}/{y % 100:02d}")
+    month_labels = [month_abbr(ym) for ym in monthly["ym"]]
 
     colors: list[str] = []
     for ym in monthly["ym"]:

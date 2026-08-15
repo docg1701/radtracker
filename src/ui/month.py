@@ -14,6 +14,7 @@ from streamlit_extras.star_rating import star_rating
 from streamlit_extras.stoggle import stoggle
 
 from src.calculations import (
+    _compute_daily_earnings_from_items,
     attach_revenue,
     compute_daily_target,
     compute_monthly_stats,
@@ -25,6 +26,7 @@ from src.charts import (
 )
 from src.db import load_month_items
 from src.formatting import fmt_brl, md_escape
+from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
 
 
@@ -38,15 +40,20 @@ def render_month_tab(conn: Any) -> None:
     goal = st.session_state.goal
 
     if not active_mods:
-        _render_empty_state("Nenhuma modalidade ativa. Configure na aba **Configuração**.")
+        render_empty_state(
+            ":material/calendar_month:",
+            "Nenhuma modalidade ativa. Configure na aba **Configuração**.",
+        )
         return
 
     stats = compute_monthly_stats(conn, year_month, goal, active_mods)
     daily_target = compute_daily_target(goal, stats["total_calendar_days"])
 
     if stats["days_worked"] == 0:
-        _render_empty_state(
-            "Comece registrando sua produção na **barra lateral**."
+        render_empty_state(
+            ":material/calendar_month:",
+            "Comece registrando sua produção na **barra lateral**.",
+            caption="Os dados mensais aparecerão aqui.",
         )
         return
 
@@ -100,15 +107,6 @@ def render_month_tab(conn: Any) -> None:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _render_empty_state(message: str) -> None:
-    _, col2, _ = st.columns([1, 2, 1])
-    with col2:
-        with st.container(border=True):
-            st.markdown(":material/calendar_month:", text_alignment="center")
-            st.subheader("Nenhum registro ainda")
-            st.markdown(message)
-            st.caption("Os dados mensais aparecerão aqui.")
-
 
 def _build_earnings_dataframe(
     conn: Any, year_month: str,
@@ -118,9 +116,8 @@ def _build_earnings_dataframe(
     if items_df.empty:
         return pd.DataFrame()
 
-    items_df = attach_revenue(conn, items_df)
-    daily = items_df.groupby("date", as_index=False).agg(earnings=("revenue", "sum"))
-    return daily
+    daily = _compute_daily_earnings_from_items(conn, items_df)
+    return daily[["date", "earnings"]]
 
 
 def _render_kpi_row(

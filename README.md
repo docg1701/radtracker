@@ -84,7 +84,6 @@ radtracker/
 │       ├── chat.py         # "Chat IA" tab
 │       └── settings.py     # "Config" tab
 ├── scripts/
-│   ├── import_csv.py       # Importador CSV legado
 │   └── manage_auth.py      # CLI de gestão de auth (SSH): 2FA, senha, repair
 ├── tests/                  # Test suite (294 testes)
 ├── data/                   # SQLite DB + auth.json (gitignored)

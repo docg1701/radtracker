@@ -19,6 +19,20 @@ MONTHS_PT: dict[int, str] = {
 }
 
 
+def month_abbr(year_month: str) -> str:
+    """'2026-03' → 'Mar/26' (3-letter PT month + 2-digit year)."""
+    y, m = int(year_month[:4]), int(year_month[5:7])
+    return f"{MONTHS_PT.get(m, f'M{m}')[:3]}/{y % 100:02d}"
+
+
+def month_name(year_month: str) -> str:
+    """'2026-03' → 'Março'; malformed input returned as-is."""
+    try:
+        return MONTHS_PT[int(year_month[5:7])]
+    except (ValueError, IndexError):
+        return year_month
+
+
 def md_escape(text: str) -> str:
     """Escape $ for Streamlit markdown (prevents LaTeX math-mode corruption).
 

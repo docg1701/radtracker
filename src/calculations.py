@@ -359,43 +359,10 @@ def compute_historical_stats(
         return _empty_historical_stats(conn, year_month, goal, active_modalities)
 
     df = daily_earnings.sort_values("date").reset_index(drop=True)
-    df["date_dt"] = pd.to_datetime(df["date"])
 
     # MA7 / MA30
     df["ma7"] = df["earnings"].rolling(window=7, min_periods=1).mean()
     df["ma30"] = df["earnings"].rolling(window=30, min_periods=1).mean()
-
-    # Week grouping
-    df["week"] = df["date_dt"].dt.isocalendar().week
-    df["iso_year"] = df["date_dt"].dt.isocalendar().year
-
-    weekly_agg = (
-        df.groupby(["iso_year", "week"], sort=False)
-        .agg(total_earnings=("earnings", "sum"),
-             first_date=("date_dt", "min"))
-        .reset_index()
-        .sort_values("first_date")
-    )
-
-    weekly_agg["week_label"] = weekly_agg["first_date"].apply(
-        lambda dt: f"Semana {dt.isocalendar().week} — {dt.strftime('%d/%m')}"
-        if pd.notna(dt) else "—"
-    )
-    weekly_totals_last_4: list[dict[str, Any]] = [
-        {"week_label": str(r["week_label"]),
-         "total_earnings": float(r["total_earnings"])}
-        for _, r in weekly_agg.tail(4).iterrows()
-    ]
-
-    # WoW
-    wow_change_pct: float | None = None
-    if len(weekly_agg) >= 2:
-        last, prev = weekly_agg.iloc[-1], weekly_agg.iloc[-2]
-        if prev["total_earnings"] > 0:
-            wow_change_pct = float(
-                (last["total_earnings"] - prev["total_earnings"])
-                / prev["total_earnings"] * 100
-            )
 
     # Monthly aggregation
     monthly = (
@@ -443,42 +410,19 @@ def compute_historical_stats(
             return {m["slug"]: 0.0 for m in active_modalities}
         return {slug: round(val / total * 100, 1) for slug, val in rev.items()}
 
-    current_month_df = df[df["date"].str[:7] == year_month]
-    # Std of daily earnings (worked days) for projection scenarios; None if <3 days
-    if len(current_month_df) >= 3:
-        current_month_daily_std = float(current_month_df["earnings"].std(ddof=0))
-    else:
-        current_month_daily_std = None
-    modality_mix_current = _modality_mix(year_month)
-
     modality_mix_historical: dict[str, dict[str, float]] = {}
     for ym in all_months:
         modality_mix_historical[ym] = _modality_mix(ym)
 
     current_stats = compute_monthly_stats(conn, year_month, goal, active_modalities)
-    total_calendar_days = current_stats["total_calendar_days"]
-    daily_target = compute_daily_target(goal, total_calendar_days)
-
-    curr_sorted = current_month_df.sort_values("date", ascending=False)
-    consecutive_below_target = 0
-    for _, row in curr_sorted.iterrows():
-        if float(row["earnings"]) < daily_target:
-            consecutive_below_target += 1
-        else:
-            break
 
     return {
         "df": df,
         "year_month": year_month,
-        "wow_change_pct": wow_change_pct,
         "mom_change_pct": mom_change_pct,
-        "weekly_totals_last_4": weekly_totals_last_4,
-        "modality_mix_current": modality_mix_current,
         "modality_mix_historical": modality_mix_historical,
-        "consecutive_below_target": consecutive_below_target,
         "current_month_stats": current_stats,
         "items_df": items_df,
-        "current_month_daily_std": current_month_daily_std,
         "prev_month_earnings": prev_month_earnings,
     }
 
@@ -517,17 +461,11 @@ def _empty_historical_stats(
     """Minimal stats dict when no historical data exists."""
     current_stats = compute_monthly_stats(conn, year_month, goal, active_modalities)
     return {
-        "df": pd.DataFrame(columns=[
-            "date", "earnings", "date_dt", "ma7", "ma30", "week", "iso_year",
-        ]),
+        "df": pd.DataFrame(columns=["date", "earnings", "ma7", "ma30"]),
         "year_month": year_month,
-        "wow_change_pct": None, "mom_change_pct": None,
-        "weekly_totals_last_4": [],
-        "modality_mix_current": {},
+        "mom_change_pct": None,
         "modality_mix_historical": {},
-        "consecutive_below_target": 0,
         "current_month_stats": current_stats,
         "items_df": pd.DataFrame(columns=["date", "modality_slug", "count", "revenue"]),
-        "current_month_daily_std": None,
         "prev_month_earnings": None,
     }

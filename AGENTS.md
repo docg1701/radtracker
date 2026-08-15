@@ -70,7 +70,8 @@ Invoke these skills when relevant (they provide specialized instructions):
 
 Local references (read before relevant tasks):
 - `docs/streamlit_pro_tips.md` — 25+ best practices from Streamlit's co-founder
-- `docs/streamlit_extras_guide.md` — Catalog of 56 streamlit-extras components
+- streamlit-extras em uso: `stoggle` (raw-data toggles), `rain` (celebração de meta),
+  `star_rating` (mês); cookies usam CCv2 próprio (`src/cookies.py`) — nada mais do catálogo
 
 ---
 

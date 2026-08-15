@@ -1,8 +1,5 @@
 """Tests for src.db — v2 schema, modalities CRUD, daily_production_items CRUD."""
 
-
-import sqlalchemy as sa
-
 from src.db import (
     DEFAULT_GOAL,
     _backfill_price_vigencies,
@@ -466,99 +463,7 @@ class TestSeed:
         assert values["tc_abdome_total"] == (60.0, 5.0, 1)
 
 
-# ── v1.4: migration v1.3 → v1.4 ──
-
-
-class TestMigrationV134:
-    def test_migration_applies_defaults_to_untouched_mods(self, conn):
-        """Modalities with price=0, active=0 get production defaults."""
-        # Manually insert 5 mods with price=0, active=0 (simulating old DB)
-        from src.db import _MODALITY_SEED, _migrate_v1_3_to_v1_4_defaults
-        with conn.connect() as c:
-            c.execute(sa.text("""
-                CREATE TABLE IF NOT EXISTS modalities (
-                    slug TEXT PRIMARY KEY, label TEXT NOT NULL,
-                    price REAL DEFAULT 0.0, exams_per_hour REAL DEFAULT 0.0,
-                    active INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
-                    color TEXT DEFAULT '#64748B'
-                )
-            """))
-            c.commit()
-        for m in _MODALITY_SEED:
-            with conn.connect() as c:
-                c.execute(sa.text("""
-                    INSERT INTO modalities (slug, label, price, exams_per_hour,
-                                            active, sort_order, color)
-                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
-                """), m)
-                c.commit()
-
-        # Verify they start at 0/0/0
-        mods = load_all_modalities(conn)
-        for m in mods:
-            assert m["price"] == 0.0
-            assert m["exams_per_hour"] == 0.0
-            assert m["active"] == 0
-
-        # Run migration
-        _migrate_v1_3_to_v1_4_defaults(conn)
-
-        # Verify they got production values
-        mods = load_all_modalities(conn)
-        values = {m["slug"]: (m["price"], m["exams_per_hour"], m["active"])
-                  for m in mods}
-        assert values["angiotomografia"] == (30.0, 4.0, 1)
-        assert values["radiografia"] == (4.0, 80.0, 1)
-        assert values["ressonancia_magnetica"] == (35.0, 8.0, 1)
-        assert values["tc_geral"] == (30.0, 10.0, 1)
-        assert values["tc_abdome_total"] == (60.0, 5.0, 1)
-
-    def test_migration_preserves_user_config(self, conn):
-        """Modalities already configured by user are not overwritten."""
-        from src.db import _MODALITY_SEED, _migrate_v1_3_to_v1_4_defaults
-        with conn.connect() as c:
-            c.execute(sa.text("""
-                CREATE TABLE IF NOT EXISTS modalities (
-                    slug TEXT PRIMARY KEY, label TEXT NOT NULL,
-                    price REAL DEFAULT 0.0, exams_per_hour REAL DEFAULT 0.0,
-                    active INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
-                    color TEXT DEFAULT '#64748B'
-                )
-            """))
-            c.commit()
-        for m in _MODALITY_SEED:
-            with conn.connect() as c:
-                c.execute(sa.text("""
-                    INSERT INTO modalities (slug, label, price, exams_per_hour,
-                                            active, sort_order, color)
-                    VALUES (:slug, :label, 0.0, 0.0, 0, :sort_order, :color)
-                """), m)
-                c.commit()
-
-        # User configured tc_geral manually
-        with conn.connect() as c:
-            c.execute(sa.text("""
-                UPDATE modalities
-                SET price = 50.0, exams_per_hour = 3.0, active = 1
-                WHERE slug = 'tc_geral'
-            """))
-            c.commit()
-
-        # Run migration
-        _migrate_v1_3_to_v1_4_defaults(conn)
-
-        # tc_geral should keep user's values
-        mods = load_all_modalities(conn)
-        tc = next(m for m in mods if m["slug"] == "tc_geral")
-        assert tc["price"] == 50.0
-        assert tc["exams_per_hour"] == 3.0
-        assert tc["active"] == 1
-
-        # Untouched modalities should get defaults
-        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
-        assert rm["price"] == 35.0
-        assert rm["active"] == 1
-
+class TestInitDbIdempotent:
     def test_init_db_idempotent_on_existing_db(self, conn):
         """Calling init_db on a DB with existing modalities should not add
         duplicates or crash."""
@@ -625,8 +530,8 @@ class TestAddModalityReactivate:
 
 
 class TestMigrationV14OneShot:
-    """The v1.3->v1.4 defaults migration runs once; a later deactivation+zero
-    of a seed modality is not silently re-activated on reboot."""
+    """A later deactivation+zero of a seed modality is not silently re-activated
+    on reboot."""
 
     def test_migration_does_not_reactivate_deactivated_seed(self, conn):
         init_db(conn)  # seeds + runs migration once (sets the one-shot flag)

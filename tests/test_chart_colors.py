@@ -27,11 +27,6 @@ class TestChartColors:
         required = {"primary", "muted", "neutral", "track", "progress_danger"}
         assert required.issubset(set(CHART_COLORS.keys()))
 
-    def test_chart_colors_has_legacy_aliases(self):
-        assert "rm" in CHART_COLORS
-        assert "tc" in CHART_COLORS
-        assert "rx" in CHART_COLORS
-
     def test_all_start_with_hash(self):
         for key, value in CHART_COLORS.items():
             assert isinstance(value, str), f"{key} should be str"

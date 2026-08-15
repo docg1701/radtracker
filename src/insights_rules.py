@@ -35,10 +35,7 @@ def _prev_month_label(year_month: str) -> str:
     return MONTHS_PT[prev].lower()
 
 
-def generate_rule_insights(
-    stats: dict[str, Any],
-    active_modalities: list[dict[str, Any]],  # kept for API stability
-) -> str:
+def generate_rule_insights(stats: dict[str, Any]) -> str:
     """Generate a short human narrative of the month vs the goal.
 
     Covers: current total and % of goal; comparison with the same point of the
@@ -59,7 +56,7 @@ def generate_rule_insights(
     remaining = current["remaining_days"]
     daily_needed = max(0.0, current.get("daily_target_needed", 0.0))
     proj = current.get("projection_month_end", 0.0)
-    goal = current.get("goal") or ((mtd / pct * 100) if pct > 0 else 0.0)
+    goal = current["goal"]
     elapsed = current.get("elapsed_days", 0)
     prev_same = stats.get("prev_month_earnings")
     mom = stats.get("mom_change_pct")

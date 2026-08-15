@@ -22,7 +22,7 @@ from src.auth_crypto import (
 AUTH_PATH = "data/auth.json"
 
 _SCHEMA_VERSION = 1
-_MIN_PASSWORD_LEN = 8
+MIN_PASSWORD_LEN = 8
 _SESSION_SECRET_HEX_LEN = 64
 
 
@@ -94,9 +94,9 @@ def create_bootstrap_auth(
         return "exists"
     if not username.strip():
         raise AuthError("username is empty: expected a non-empty username")
-    if len(password) < _MIN_PASSWORD_LEN:
+    if len(password) < MIN_PASSWORD_LEN:
         raise AuthError(
-            f"password too short ({len(password)} chars): expected >= {_MIN_PASSWORD_LEN}"
+            f"password too short ({len(password)} chars): expected >= {MIN_PASSWORD_LEN}"
         )
     save_auth(
         {

@@ -21,7 +21,7 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 | Extras | streamlit-extras: `rain`, `star_rating`, `stoggle` only (never `skeleton`, `cookie_manager`) |
 | Auth | stdlib scrypt + TOTP (RFC 6238) + HMAC signed cookie — `data/auth.json` |
 | Package mgr | uv — `pyproject.toml` + `uv.lock` are the only canonical sources |
-| Tests | pytest + resppx — 294 passing |
+| Tests | pytest + respx — 292 passing |
 | Lint/types | ruff (E,F,I,UP, line-length 100), mypy |
 | Container | Docker multi-stage, non-root uid 1000, `qrencode` for TOTP QR |
 | Proxy | Caddy 2 — TLS + Let's Encrypt; NO BasicAuth (auth is app-level) |
@@ -54,15 +54,16 @@ Free Tier via Docker + Caddy + fail2ban + Ansible. LAN dev VPS: 10.10.10.209.
 - **`daily_production_items`** — PK (date, modality_slug); zero-count = DELETE, non-zero = UPSERT.
 - **`modality_prices`** — price vigencies PK (slug, effective_from); a reajust never recomputes past faturamento.
 - **`monthly_goals`** — PK year_month; missing month carries forward the most recent prior goal (45000.0 only when none ever recorded).
-- **`user_settings`** — key/value (user_name, api_key, llm_prompt, llm_model, migration flags).
+- **`user_settings`** — key/value (user_name, api_key, llm_prompt, llm_model, reasoning settings).
 
-Auto-migrations run by `init_db()` are idempotent; legacy v1 tables dropped once.
+`init_db()` is idempotent: schema, modality seed, price-vigency backfill,
+reasoning settings.
 
 ## Session State
 
 | Key | Source | Notes |
 |-----|--------|-------|
-| `all_modalities` / `active_modalities` / `prices` / `goal` / `user_name` | DB via `ensure_settings(conn)` | loaded lazily by every tab renderer |
+| `all_modalities` / `active_modalities` / `goal` / `user_name` | DB via `ensure_settings(conn)` | loaded lazily by every tab renderer |
 | `auth_authenticated` | cookie restore / login | presence triggers cookie restore once per server session; logout sets False, never removes |
 | `auth_username` | login | display-only |
 | `auth_awaiting_totp` | login flow | transient between password and TOTP steps |
@@ -86,7 +87,7 @@ Auto-migrations run by `init_db()` are idempotent; legacy v1 tables dropped once
 - **No DB access in chart modules** — data as parameters.
 - **Dynamic modalities** — never hardcode slugs/labels/prices in UI code.
 - **`md_escape()`** on all LLM/BRL text rendered via markdown; `safe_stream` wrapper
-  for `st.write_stream()`; both $ escaping rules per `docs/markdown-escaping-guide.md`.
+  for `st.write_stream()`; `$` rules per § Markdown `$` escaping below.
 - **Streamlit on loopback only** (127.0.0.1:8501) — Caddy is the sole public endpoint.
 - **Auth state in `data/auth.json`** (gitignored) — stdlib crypto, no new deps.
 - **Never log credentials** (passwords, TOTP codes, session secrets).
@@ -103,6 +104,18 @@ Auto-migrations run by `init_db()` are idempotent; legacy v1 tables dropped once
   re-read from `auth.json` every run.
 - **"Radtracker"** capitalized in every user-visible string; code identifiers
   lowercase (`radtracker-session`, `radtracker-auth`).
+
+## Markdown `$` escaping
+
+Streamlit markdown treats paired `$…$` as LaTeX math; BRL text with multiple `$` in
+one paragraph breaks rendering. No config flag disables it.
+
+- **UI-side BRL strings:** `md_escape()` (`R$ 100` → `R\$ 100`).
+- **LLM output:** `sanitize_token()` per streaming chunk + `sanitize_text()` on the
+  full response and on every re-render (idempotent). User messages are NOT sanitized.
+- **`sanitize_text` order:** whitespace normalize → legacy `\\$` strip → currency
+  escape `(?<=R)\$(?![a-zA-Z\\])` → `\[...\]`→`$$...$$`, `\(...\)`→`$...$` →
+  strip backslashes from unmatched delimiters.
 
 ## Style
 
@@ -122,7 +135,7 @@ Auto-migrations run by `init_db()` are idempotent; legacy v1 tables dropped once
 ## Validation
 
 ```bash
-uv run pytest tests/ -q                     # 294 passing
+uv run pytest tests/ -q                     # 292 passing
 uv run ruff check src/ app.py scripts/ tests/
 uv run mypy src/
 ansible-lint ansible/                       # deployment changes
@@ -189,4 +202,4 @@ python -c "from src.auth_store import create_bootstrap_auth; print(create_bootst
 ```
 
 Read `docs/context.md` for module/data flow, `docs/deployment.md` for the full
-deployment guide, `docs/markdown-escaping-guide.md` for `$` rules.
+deployment guide.

@@ -48,14 +48,8 @@ def color_for_modality(slug: str, modalities: list[dict] | None = None) -> str:
     return MODALITY_COLORS.get(slug, "#64748B")
 
 
-# Modality color aliases for backward compatibility in tests
+# Chart accent + semantic colors
 CHART_COLORS: dict[str, str] = {
-    **MODALITY_COLORS,
-    # Legacy aliases (kept for transition)
-    "rm": MODALITY_COLORS["ressonancia_magnetica"],
-    "tc": MODALITY_COLORS["tc_geral"],
-    "rx": MODALITY_COLORS["radiografia"],
-
     # Chart accent
     "primary": "#0D9488",  # Teal-600 — main line/bar color
     "muted": "#94A3B8",    # Slate-400 — secondary lines, grid

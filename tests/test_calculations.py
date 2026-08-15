@@ -295,9 +295,7 @@ class TestHistoricalStats:
         init_db(conn)
         result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
         assert "df" in result
-        assert result["wow_change_pct"] is None
         assert result["mom_change_pct"] is None
-        assert result["weekly_totals_last_4"] == []
 
     def test_ma7_with_one_day(self, conn, active_modalities):
         init_db(conn)
@@ -317,19 +315,6 @@ class TestHistoricalStats:
         assert len(df) == 10
         assert df["ma7"].iloc[-1] == 350.0
 
-    def test_wow_positive(self, conn, active_modalities):
-        init_db(conn)
-        # Week 1
-        upsert_daily_items(conn, "2026-03-02", {"ressonancia_magnetica": 10})
-        upsert_daily_items(conn, "2026-03-03", {"ressonancia_magnetica": 10})
-        # Week 2 (higher)
-        upsert_daily_items(conn, "2026-03-09", {"ressonancia_magnetica": 20})
-        upsert_daily_items(conn, "2026-03-10", {"ressonancia_magnetica": 20})
-
-        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
-        assert result["wow_change_pct"] is not None
-        assert result["wow_change_pct"] > 0
-
     def test_modality_mix_sum_to_100(self, conn, active_modalities):
         init_db(conn)
         upsert_daily_items(conn, "2026-03-10", {
@@ -338,23 +323,15 @@ class TestHistoricalStats:
             "radiografia": 35,
         })
         result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
-        mix = result["modality_mix_current"]
+        mix = result["modality_mix_historical"]["2026-03"]
         total = sum(mix.values())
         assert total == pytest.approx(100.0, abs=0.5)
-
-    def test_consecutive_below_target(self, conn, active_modalities):
-        init_db(conn)
-        year_month = "2026-03"
-        for day in ("2026-03-29", "2026-03-30", "2026-03-31"):
-            upsert_daily_items(conn, day, {"radiografia": 1})
-        result = compute_historical_stats(conn, year_month, 45000.0, active_modalities)
-        assert result["consecutive_below_target"] >= 3
 
     def test_empty_historical_stats_columns(self, conn, active_modalities):
         init_db(conn)
         result = _empty_historical_stats(conn, "2026-03", 45000.0, active_modalities)
         df = result["df"]
-        expected = {"date", "earnings", "date_dt", "ma7", "ma30", "week", "iso_year"}
+        expected = {"date", "earnings", "ma7", "ma30"}
         assert set(df.columns) == expected
 
     def test_multiple_modalities_in_historical(self, conn, active_modalities):

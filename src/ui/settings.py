@@ -8,11 +8,13 @@ Each modality gets a row: label, price, exams/hour, active toggle.
 from datetime import date
 from typing import Any
 
+import sqlalchemy as sa
 import streamlit as st
 
 from src.db import (
     add_modality,
     deactivate_modality,
+    get_connection,
     load_active_modalities,
     load_all_modalities,
     load_goal,
@@ -33,10 +35,6 @@ def ensure_settings(conn: Any) -> None:
         st.session_state.all_modalities = load_all_modalities(conn)
     if "active_modalities" not in st.session_state:
         st.session_state.active_modalities = load_active_modalities(conn)
-    if "prices" not in st.session_state:
-        st.session_state.prices = {
-            m["slug"]: m["price"] for m in st.session_state.active_modalities
-        }
     if "goal" not in st.session_state:
         today = date.today()
         st.session_state.goal = load_goal(conn, today.isoformat()[:7])
@@ -107,9 +105,6 @@ def _reload_modalities(conn: Any) -> None:
     st.session_state.pop("historical_cache", None)
     st.session_state.all_modalities = load_all_modalities(conn)
     st.session_state.active_modalities = load_active_modalities(conn)
-    st.session_state.prices = {
-        m["slug"]: m["price"] for m in st.session_state.active_modalities
-    }
 
 
 @st.fragment
@@ -382,9 +377,6 @@ def _render_ai_section(conn: Any) -> None:
              "Mais qualidade analítica, maior custo de tokens.",
     )
 
-    if "thinking_mode" not in st.session_state:
-        st.session_state.thinking_mode = "effort"
-
     thinking_mode = st.session_state.thinking_mode
 
     if thinking_enabled:
@@ -558,7 +550,6 @@ def _execute_delete() -> None:
     _delete_all_data()
     st.session_state.update(
         confirm_delete=False,
-        prices={},
         goal=0.0,
         all_modalities=[],
         active_modalities=[],
@@ -571,10 +562,7 @@ def _execute_delete() -> None:
 
 def _delete_all_data() -> None:
     """Delete all rows from all tables via the app's SQL connection."""
-    import sqlalchemy as sa
-    import streamlit as st
-
-    conn = st.connection("telerrad", type="sql")
+    conn = get_connection()
     with conn.connect() as db_conn:
         db_conn.execute(sa.text("DELETE FROM daily_production_items"))
         db_conn.execute(sa.text("DELETE FROM modality_prices"))
