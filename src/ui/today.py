@@ -137,9 +137,13 @@ def _render_kpi_row(
     with k3:
         with st.container(border=True):
             hours = stats["estimated_hours"]
+            total = stats["exam_count_today"]
+            rate = (total / hours) if hours > 0 else 0.0
             st.metric(
                 label=f":material/timer: {t('web.today.kpi.hours')}",
                 value=f"{hours:.1f}h",
+                delta=t("web.today.kpi.exams_per_hour", rate=f"{rate:.0f}"),
+                delta_color="off",
             )
 
     # ── Card 4: Meta Mensal ──
