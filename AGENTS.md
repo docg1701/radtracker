@@ -5,18 +5,38 @@ Streamlit + SQLite + Plotly.
 
 ## Documentation map
 
-**Always read `docs/meta-prompt.md` first** — it contains the full project context: tech stack,
-database schema, session state, hard constraints, validation commands, style conventions,
-color palette, business constants, and stop/ask rules.
-
-Use these when you need more depth:
+**Always read `docs/meta-prompt.md` first** — it contains the project context: tech stack,
+hard constraints, session state, validation commands, and resolved decisions.
 
 | File | When |
 |------|------|
 | `README.md` | Setup, usage, directory structure |
-| `docs/context.md` | Exhaustive module-by-module detail, data flow |
+| `docs/context.md` | Module map, data flow, auth flow |
 | `docs/deployment.md` | Ansible deployment guide |
 | `docs/DESIGN.md` | Cal.com design system reference |
+
+Documentation rule: keep docs lean — only what keeps the project sane and research
+relevant to future phases. No file counts, no version pins (pyproject.toml is the
+single source), no duplicated facts across docs.
+
+---
+
+## Deployment & auth critical facts
+
+- **LAN VPS update ALWAYS needs `-e deployment_mode=lan -e github_branch=<branch>`.**
+  Without `deployment_mode=lan` the playbook switches the VPS to internet mode and
+  Caddy tries ACME for the production domain. Never run update.yml without both vars.
+- **`RADTRACKER_MODE` follows `deployment_mode`** (ansible `.env` template):
+  `lan` → sidebar shows `local`; internet → `web`. No hardcode.
+- **Version lives only in `pyproject.toml`** — sidebar reads it at runtime (tomllib).
+  Never pin versions in docs; bump = `pyproject.toml` + `uv lock` only.
+- **Auth state:** `data/auth.json` (gitignored, single user), stdlib crypto only;
+  managed via SSH `radtracker-auth` (scripts/manage_auth.py). 2FA state is re-read
+  every run. No app-level rate limiting (TOTP is the anti-robot barrier).
+- **UX conventions:** "Radtracker" capitalized in all user-visible strings, code
+  identifiers lowercase; PT-BR UI; Material icons only, no emojis as icons;
+  Sair button = main tab row right-aligned (`st.space("stretch")`), natural width;
+  Salvar = secondary style (no primary fill).
 
 ---
 

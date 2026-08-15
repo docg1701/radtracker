@@ -101,7 +101,7 @@ radtracker/
 - Plotly
 - SQLite (via SQLAlchemy)
 - httpx (OpenRouter API)
-- streamlit-extras (skeleton loading)
+- streamlit-extras (rain, star_rating, stoggle)
 - pytest + pytest-cov
 
 ## Deploy

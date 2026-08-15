@@ -244,18 +244,20 @@ Menu completo do `radtracker-auth`:
 ## 5. Atualização
 
 ```bash
-# VPS local (LAN) — o override deployment_mode é OBRIGATÓRIO aqui:
+# VPS local (LAN) — os DOIS overrides são OBRIGATÓRIOS aqui:
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
-  --vault-password-file ansible/.vault_pass -e deployment_mode=lan
+  --vault-password-file ansible/.vault_pass \
+  -e deployment_mode=lan -e github_branch=<branch>
 
 # Produção (modo internet do vault):
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/update.yml \
-  --vault-password-file ansible/.vault_pass
+  --vault-password-file ansible/.vault_pass -e github_branch=<branch>
 ```
 
-- Atualiza repositório via deploy key SSH (`git` module)
+- Atualiza repositório via deploy key SSH (`git` module) no branch informado
 - Regenera `Caddyfile` e `.env` a partir dos templates do clone VPS
-  (sem o override, um VPS LAN vira modo internet e o Caddy tenta ACME para o domínio de produção)
+  (sem `deployment_mode=lan`, um VPS LAN vira modo internet e o Caddy tenta ACME para o domínio de produção)
+- `RADTRACKER_MODE` no `.env` segue `deployment_mode`: lan → `local`, internet → `web` (rodapé da sidebar)
 - Rebuilda imagem e recria container
 - Aguarda health check
 
