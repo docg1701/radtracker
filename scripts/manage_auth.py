@@ -34,6 +34,7 @@ _MENU = """
 │ 4) Trocar usuário                        │
 │ 5) Status                                │
 │ 6) Reparar auth.json                     │
+│ 7) Sessão web (dias)                     │
 │ 0) Sair                                  │
 └──────────────────────────────────────────┘"""
 
@@ -139,6 +140,25 @@ def _repair_if_healthy(auth: dict) -> None:
     print("auth.json íntegro — nada a reparar.")
 
 
+def _set_session_days(auth: dict) -> None:
+    """Change session cookie lifetime; rotates the secret so existing
+    cookies die immediately and every browser must log in again."""
+    raw = input(f"Dias de duração da sessão (atual: {auth['session_days']}, 1–365): ").strip()
+    try:
+        days = int(raw)
+    except ValueError:
+        print("Valor inválido — precisa ser um número inteiro.")
+        return
+    if not 1 <= days <= 365:
+        print("Fora do intervalo permitido (1–365).")
+        return
+    auth["session_days"] = days
+    auth["session_secret"] = new_session_secret()
+    save_auth(auth, AUTH_PATH)
+    print(f"Sessão web agora dura {days} dia(s). "
+          "Cookies existentes foram invalidados — faça login novamente.")
+
+
 def _dispatch(choice: str, auth: dict) -> None:
     actions: dict[str, Callable[[dict], None]] = {
         "1": _enable_2fa,
@@ -147,6 +167,7 @@ def _dispatch(choice: str, auth: dict) -> None:
         "4": _change_username,
         "5": _status,
         "6": _repair_if_healthy,
+        "7": _set_session_days,
     }
     action = actions.get(choice)
     if action is None:
