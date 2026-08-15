@@ -635,12 +635,12 @@ Self-hosted deployment to a VPS via Docker + Caddy + fail2ban, managed with Ansi
 ```
 Browser → Caddy (:80/:443) → Streamlit (:8501 loopback)
                 ↓
-          TLS (Let's Encrypt in internet mode; plain HTTP on LAN)
+          TLS (Let's Encrypt in internet mode; self-signed cert on LAN)
           app-level login gate (src/ui/login.py, data/auth.json)
           fail2ban: sshd jail only — no Caddy 401 jail (the app never returns 401)
 ```
 
-**Two modes:** LAN (plain HTTP on the local IP) and Internet (real domain, Let's Encrypt).
+**Two modes:** LAN (HTTPS with self-signed cert — Caddy redirects HTTP→HTTPS) and Internet (real domain, Let's Encrypt).
 
 **Security layers:**
 1. App-level authentication (username + scrypt password + optional TOTP 2FA)

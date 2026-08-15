@@ -242,7 +242,7 @@
             content: |
               {{ auth_username }}
               {{ auth_password }}
-              cookie_secure:{{ deployment_mode != "lan" }}
+              cookie_secure:true
             dest: "{{ radtracker_data_dir }}/.auth_creds"
             owner: "1000"
             group: "1000"
@@ -276,7 +276,7 @@
         msg: >-
           radtracker deployed!
           {% if deployment_mode == "lan" %}
-          Access at http://{{ ansible_facts.default_ipv4.address | default('localhost') }}
+          Access at https://{{ ansible_facts.default_ipv4.address | default('localhost') }} (self-signed cert — accept the browser warning)
           {% else %}
           Access at https://{{ domain }}
           {% endif %}

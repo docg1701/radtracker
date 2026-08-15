@@ -177,9 +177,11 @@ explicit tmp path.
 - `totp_required: false` until `manage_auth.py` activates 2FA.
 - `session_secret` is generated at bootstrap and signs the session cookie.
   Changing the password rotates it (§9 option 3) — invalidating all cookies.
-- `session_cookie_secure: false` only on plain-HTTP LAN deploys (browsers
-  refuse `Secure` cookies over HTTP); Ansible writes it from
-  `deployment_mode` (§8, §10).
+- `session_cookie_secure: false` only when the site is really served over
+  plain HTTP (browsers refuse `Secure` cookies over HTTP). Both deploy modes
+  end up on HTTPS (Caddy redirects HTTP→HTTPS even in LAN mode, with a
+  self-signed cert), so Ansible always writes `true` — the flag exists for
+  hypothetical plain-HTTP setups (§8, §10).
 
 ### Functions
 
@@ -330,7 +332,9 @@ quirk as the tab cookie).
 - Reads credentials from `data/.auth_creds` (**relative** — same convention as
   `AUTH_PATH`; line 1 = username, line 2 = password, optional line 3 =
   `cookie_secure:true|false`; Ansible creates and later deletes this file).
-  Missing line 3 → `true`.
+  Missing line 3 → `true`. Ansible always writes `true`: Caddy serves HTTPS
+  in both modes (LAN gets a self-signed cert), so `Secure` cookies work
+  everywhere.
 - Bootstrap writes the §6 defaults, including a fresh `session_secret`
   (`new_session_secret()`), `session_days: 30`, and `session_cookie_secure`
   from the creds flag.
@@ -434,10 +438,10 @@ Runtime stage apt install: add `qrencode` to the existing
    - `block:`
      - `copy` task: `/app/data/.auth_creds` equivalent on host =
        `{{ radtracker_data_dir }}/.auth_creds`, content
-       `{{ auth_username }}\n{{ auth_password }}\ncookie_secure:{{
-       deployment_mode != "lan" }}\n`, `owner: 1000, group: 1000,
-       mode: "0600"`, `no_log: true`. (LAN = plain HTTP → browsers refuse
-       `Secure` cookies; HTTPS deploys get `True`.)
+       `{{ auth_username }}\n{{ auth_password }}\ncookie_secure:true\n`,
+       `owner: 1000, group: 1000,
+       mode: "0600"`, `no_log: true`. (Caddy serves HTTPS in both modes —
+       LAN uses a self-signed cert — so `Secure` cookies work everywhere.)
      - `community.docker.docker_compose_v2_exec`: `service: streamlit`,
        `command: python -m src.auth_bootstrap`,
        `register: auth_bootstrap`, `changed_when:
@@ -622,16 +626,19 @@ Conventional commits, one per logical unit, e.g.:
 
 Two live targets share one inventory (host from `VPS_HOST`/`VPS_USER` env):
 production `radtracker.duckdns.org` (Oracle) and the LAN dev VPS
-`10.10.10.209` (`deployment_mode=lan`, plain HTTP — the gate works the same).
+`10.10.10.209` (`deployment_mode=lan`; Caddy serves HTTPS with a self-signed
+cert even on LAN — the gate works the same).
 Order is mandatory:
 
 1. **Implement + quality gate locally** (§12).
 2. **Dev VPS 10.10.10.209** — full `deploy.yml` with the vault auth vars
    (`VPS_HOST=10.10.10.209 VPS_USER=galvani ... -e deployment_mode=lan`).
-   Validate before touching production:
+   The site is served over HTTPS with a self-signed cert (Caddy redirects
+   HTTP→HTTPS) — accept the browser warning once. Validate before touching
+   production:
    - gate blocks the app; login works; wrong password → generic error;
-   - **F5 and new tab keep the session** (cookie round-trip over plain HTTP
-     proves `session_cookie_secure=false` took effect);
+   - **F5 and new tab keep the session** (Secure cookie round-trip over
+     HTTPS proves `session_cookie_secure=true` took effect);
    - `radtracker-auth` via SSH: QR renders, phone scans, code activates 2FA;
    - TOTP login; logout button (cookie deleted → next F5 shows the form);
    - fail2ban: sshd jail active, old radtracker jail/filter gone;

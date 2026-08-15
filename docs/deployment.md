@@ -205,9 +205,10 @@ Domínio: DuckDNS gratuito (radtracker.duckdns.org → 129.151.4.89)
 
 **VPS local (LAN):**
 ```
-http://10.10.10.209
+https://10.10.10.209
 ```
-(HTTP sem TLS — modo LAN; a rede local é o perímetro de segurança)
+(HTTPS com certificado autoassinado — aceite o aviso de segurança no primeiro acesso;
+o Caddy redireciona HTTP→HTTPS automaticamente)
 
 **Modo internet (com domínio próprio):**
 ```
