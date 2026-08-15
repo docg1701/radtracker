@@ -11,6 +11,7 @@ from typing import Any
 
 import streamlit as st
 
+from src.i18n import t
 from src.llm_client import LLMClient, LLMUnavailableError, build_rag_context
 from src.text_sanitize import sanitize_text, sanitize_token
 from src.ui.common import get_historical_stats, render_empty_state
@@ -19,13 +20,13 @@ from src.ui.settings import ensure_settings
 _MAX_MESSAGE_PAIRS = 15  # system + 15 user/assistant pairs (30 mensagens)
 _REASONING_STATUS_MAX_CHARS = 80  # truncamento do snippet de thinking (uma linha no status)
 
-_SUGGESTIONS = [
-    "Qual dia foi mais produtivo?",
-    "Minha média é consistente?",
-    "Como está o mix de modalidades?",
-    "Qual a projeção para fechar o mês?",
-    "Compare esta semana com a anterior",
-]
+_SUGGESTION_KEYS = (
+    "web.chat.sugg.q1",
+    "web.chat.sugg.q2",
+    "web.chat.sugg.q3",
+    "web.chat.sugg.q4",
+    "web.chat.sugg.q5",
+)
 
 
 @st.fragment
@@ -61,47 +62,41 @@ def render_chat_tab(conn: Any) -> None:
     if not api_key:
         render_empty_state(
             ":material/smart_toy:",
-            "Configure sua **chave API OpenRouter** na aba "
-            ":material/settings: **Configuração** para ativar "
-            "o chat com inteligência artificial.",
-            title="Chat com IA",
-            caption="[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)",
+            t("web.chat.need_api_key"),
+            title=t("web.tab.chat"),
+            caption=t("web.chat.get_key"),
         )
         return
 
     if not active_mods:
         render_empty_state(
             ":material/smart_toy:",
-            "Nenhuma modalidade ativa. Configure na aba "
-            ":material/settings: **Configuração**.",
-            title="Chat com IA",
+            t("web.chat.need_modalities"),
+            title=t("web.tab.chat"),
         )
         return
 
     if not st.session_state.get("user_name", "").strip():
         render_empty_state(
             ":material/smart_toy:",
-            "Configure seu **nome** na aba "
-            ":material/settings: **Configuração**.",
-            title="Chat com IA",
+            t("web.chat.need_name"),
+            title=t("web.tab.chat"),
         )
         return
 
     if not (goal > 0.0):
         render_empty_state(
             ":material/smart_toy:",
-            "Configure a **meta mensal** na aba "
-            ":material/settings: **Configuração**.",
-            title="Chat com IA",
+            t("web.chat.need_goal"),
+            title=t("web.tab.chat"),
         )
         return
 
     if not (llm_prompt or "").strip():
         render_empty_state(
             ":material/smart_toy:",
-            "Configure o **prompt da IA** na aba "
-            ":material/settings: **Configuração**.",
-            title="Chat com IA",
+            t("web.chat.need_prompt"),
+            title=t("web.tab.chat"),
         )
         return
 
@@ -117,13 +112,10 @@ def render_chat_tab(conn: Any) -> None:
                 st.markdown(
                     ":material/smart_toy:", text_alignment="center"
                 )
-                st.subheader("Chat com IA")
-                st.markdown(
-                    "O assistente analisa seus dados de produção "
-                    "e responde perguntas em português."
-                )
+                st.subheader(t("web.tab.chat"))
+                st.markdown(t("web.chat.intro"))
                 if st.button(
-                    ":material/psychology: Iniciar análise",
+                    f":material/psychology: {t('web.chat.start')}",
                     type="primary",
                     key="chat_start",
                 ):
@@ -154,7 +146,7 @@ def render_chat_tab(conn: Any) -> None:
 
     # Chat input
     user_input = st.chat_input(
-        "Pergunte algo sobre seus dados...", key="chat_input_main"
+        t("web.chat.input_ph"), key="chat_input_main"
     )
     if user_input:
         st.session_state.messages.append(
@@ -187,7 +179,7 @@ def _trigger_initial_report(
     system_prompt = build_rag_context(stats, active_mods, llm_prompt)
     st.session_state.messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": "Gere um relatório completo da minha produtividade."},
+        {"role": "user", "content": t("web.chat.initial_report")},
     ]
 
 
@@ -252,15 +244,13 @@ def _stream_response(api_key: str, llm_model: str) -> None:
         except LLMUnavailableError:
             status_ph.empty()
             response = (
-                ":material/error: Não foi possível gerar a resposta. "
-                "Verifique sua conexão ou chave de API."
+                f":material/error: {t('web.chat.error.unavailable')}"
             )
             st.error(response)
         except Exception as exc:
             status_ph.empty()
             response = (
-                ":material/error: Erro inesperado ao gerar a resposta. "
-                f"Detalhes: {exc}"
+                f":material/error: {t('web.chat.error.unexpected', detail=exc)}"
             )
             st.error(response)
         # Apply full-string sanitization before storing (handles token-boundary issues)
@@ -280,8 +270,8 @@ def _stream_response(api_key: str, llm_model: str) -> None:
 def _render_suggestion_chips() -> None:
     """Render follow-up question pills below the conversation."""
     selected = st.pills(
-        "Sugestões de perguntas:",
-        _SUGGESTIONS,
+        t("web.chat.suggestions_label"),
+        [t(key) for key in _SUGGESTION_KEYS],
         label_visibility="collapsed",
         key="chat_suggestions",
     )
@@ -301,7 +291,7 @@ def _render_suggestion_chips() -> None:
 def _render_action_buttons() -> None:
     """Render Novo chat button."""
     if st.button(
-        ":material/refresh: Novo chat",
+        f":material/refresh: {t('web.chat.new')}",
         type="secondary",
         key="chat_new",
     ):

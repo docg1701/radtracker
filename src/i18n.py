@@ -168,6 +168,278 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "pt": "Dados insuficientes para evolução do mix.",
     },
     "web.analysis.by_month": {"en": "Revenue by month", "pt": "Faturamento por mês"},
+    "web.settings.section.modalities": {"en": "Modalities", "pt": "Modalidades"},
+    "web.settings.modalities.caption": {
+        "en": "Configure name, price ($) and productivity (exams/hour) for each "
+              "modality. Check **Active** to show it in the sidebar. "
+              "Modalities without price or productivity do not appear on the dashboard.",
+        "pt": "Configure nome, preço ($) e produtividade (exames/hora) de cada "
+              "modalidade. Marque **Ativo** para que apareça na barra lateral. "
+              "Modalidades sem preço ou produtividade não aparecem no dashboard.",
+    },
+    "web.settings.grid.modality": {"en": "Modality", "pt": "Modalidade"},
+    "web.settings.grid.price": {"en": "Price ($)", "pt": "Preço ($)"},
+    "web.settings.grid.exams_h": {"en": "Exams/h", "pt": "Exames/h"},
+    "web.settings.grid.color": {"en": "Color", "pt": "Cor"},
+    "web.settings.grid.active": {"en": "Active", "pt": "Ativo"},
+    "web.settings.grid.name_a11y": {"en": "Name {slug}", "pt": "Nome {slug}"},
+    "web.settings.grid.price_a11y": {"en": "Price {slug}", "pt": "Preço {slug}"},
+    "web.settings.grid.eph_a11y": {"en": "Exams/h {slug}", "pt": "Exames/h {slug}"},
+    "web.settings.grid.color_a11y": {"en": "Color {slug}", "pt": "Cor {slug}"},
+    "web.settings.grid.active_a11y": {"en": "Active {slug}", "pt": "Ativo {slug}"},
+    "web.settings.grid.delete_help": {
+        "en": "Deactivate {label}",
+        "pt": "Desativar {label}",
+    },
+    "web.settings.grid.confirm_deactivate": {
+        "en": "Deactivate **{label}**? Production history is preserved "
+              "(the modality becomes inactive and can be reactivated by "
+              "adding it again).",
+        "pt": "Desativar **{label}**? A produção histórica é preservada "
+              "(a modalidade fica inativa e pode ser reativada ao "
+              "adicioná-la de novo).",
+    },
+    "web.settings.grid.deactivate": {"en": "Deactivate", "pt": "Desativar"},
+    "web.settings.grid.cancel": {"en": "Cancel", "pt": "Cancelar"},
+    "web.settings.grid.save": {"en": "Save modalities", "pt": "Salvar modalidades"},
+    "web.settings.grid.no_changes": {
+        "en": "No pending changes.",
+        "pt": "Nenhuma alteração pendente.",
+    },
+    "web.settings.grid.add": {"en": "Add modality", "pt": "Adicionar modalidade"},
+    "web.settings.grid.new_name": {
+        "en": "New modality name",
+        "pt": "Nome da nova modalidade",
+    },
+    "web.settings.grid.new_name_ph": {
+        "en": "E.g. Brain CT",
+        "pt": "Ex: Tomografia de Crânio",
+    },
+    "web.settings.grid.slug": {"en": "Slug: {slug}", "pt": "Slug: {slug}"},
+    "web.settings.grid.added_toast": {
+        "en": "{label} added!",
+        "pt": "{label} adicionada!",
+    },
+    "web.settings.grid.slug_exists": {
+        "en": "Slug '{slug}' already exists. Choose another name.",
+        "pt": "Slug '{slug}' já existe. Escolha outro nome.",
+    },
+    "web.settings.grid.saved_toast": {
+        "en": "Modalities saved! Sidebar updated.",
+        "pt": "Modalidades salvas! Barra lateral atualizada.",
+    },
+    "web.settings.section.personal": {"en": "Personalization", "pt": "Personalização"},
+    "web.settings.personal.name": {"en": "Your name", "pt": "Seu nome"},
+    "web.settings.personal.goal": {
+        "en": "Monthly goal ($)",
+        "pt": "Meta mensal ($)",
+    },
+    "web.settings.section.ai": {
+        "en": "Artificial Intelligence",
+        "pt": "Inteligência Artificial",
+    },
+    "web.settings.ai.api_key": {
+        "en": "OpenRouter API key",
+        "pt": "Chave API OpenRouter",
+    },
+    "web.settings.ai.model": {
+        "en": "OpenRouter model (full slug)",
+        "pt": "Modelo OpenRouter (slug completo)",
+    },
+    "web.settings.ai.invalid_slug": {
+        "en": "Invalid slug: use the provider/model format "
+              "(e.g. openai/gpt-oss-120b:free).",
+        "pt": "Slug inválido: use o formato provedor/modelo "
+              "(ex: openai/gpt-oss-120b:free).",
+    },
+    "web.settings.ai.thinking": {
+        "en": "Enable thinking mode",
+        "pt": "Ativar thinking mode",
+    },
+    "web.settings.ai.thinking_help": {
+        "en": "Model generates internal reasoning before answering. "
+              "Higher analytical quality, higher token cost.",
+        "pt": "Modelo gera raciocínio interno antes da resposta. "
+              "Mais qualidade analítica, maior custo de tokens.",
+    },
+    "web.settings.ai.mode_effort": {
+        "en": "Thinking effort",
+        "pt": "Esforço de pensamento",
+    },
+    "web.settings.ai.mode_budget": {
+        "en": "Token budget",
+        "pt": "Orçamento de tokens",
+    },
+    "web.settings.ai.effort": {
+        "en": "Effort level",
+        "pt": "Nível de esforço",
+    },
+    "web.settings.ai.effort_help": {
+        "en": "Controls how many tokens the model spends thinking. "
+              "xhigh = deeper analysis. OpenRouter translates it to each "
+              "model's native format.",
+        "pt": "Controla quantos tokens o modelo gasta pensando. "
+              "xhigh = análise mais profunda. "
+              "O OpenRouter traduz para o formato nativo de cada modelo.",
+    },
+    "web.settings.ai.budget": {
+        "en": "Reasoning tokens",
+        "pt": "Tokens de reasoning",
+    },
+    "web.settings.ai.budget_help": {
+        "en": "Sets exactly how many tokens the model may spend reasoning. "
+              "OpenRouter translates it to each model's native format.",
+        "pt": "Define exatamente quantos tokens o modelo pode gastar "
+              "em raciocínio. O OpenRouter traduz para o formato "
+              "nativo de cada modelo.",
+    },
+    "web.settings.ai.temperature": {"en": "Temperature", "pt": "Temperatura"},
+    "web.settings.ai.temperature_help": {
+        "en": "Controls randomness (0 = deterministic, 2 = creative). "
+              "Some models ignore it when thinking is on. "
+              "Recommended: 0.3 for analysis.",
+        "pt": "Controla aleatoriedade (0 = determinístico, 2 = criativo). "
+              "Alguns modelos ignoram com thinking ligado. "
+              "Recomendado: 0.3 para análises.",
+    },
+    "web.settings.ai.prompt": {"en": "System prompt", "pt": "Prompt inicial"},
+    "web.settings.ai.prompt_hint": {
+        "en": "Use {user_name} as a placeholder for the user name.",
+        "pt": "Use {user_name} como placeholder para o nome do usuário.",
+    },
+    "web.settings.ai.save": {"en": "Save settings", "pt": "Salvar configurações"},
+    "web.settings.ai.err.name": {
+        "en": "User name is required.",
+        "pt": "Nome do usuário é obrigatório.",
+    },
+    "web.settings.ai.err.goal": {
+        "en": "Monthly goal must be greater than zero.",
+        "pt": "Meta mensal deve ser maior que zero.",
+    },
+    "web.settings.ai.err.api_key": {
+        "en": "OpenRouter API key is required.",
+        "pt": "Chave API OpenRouter é obrigatória.",
+    },
+    "web.settings.ai.err.prompt": {
+        "en": "System prompt is required.",
+        "pt": "Prompt inicial é obrigatório.",
+    },
+    "web.settings.ai.err.model": {
+        "en": "LLM model is required.",
+        "pt": "Modelo LLM é obrigatório.",
+    },
+    "web.settings.ai.err.model_slug": {
+        "en": "Invalid LLM model slug (format: provider/model).",
+        "pt": "Slug do modelo LLM inválido (formato: provedor/modelo).",
+    },
+    "web.settings.ai.saved_toast": {
+        "en": "Settings saved!",
+        "pt": "Configurações salvas!",
+    },
+    "web.settings.danger.title": {"en": "Danger zone", "pt": "Zona de perigo"},
+    "web.settings.danger.clear": {
+        "en": "Clear all data",
+        "pt": "Limpar todos os dados",
+    },
+    "web.settings.danger.confirm": {
+        "en": "Are you sure? **This action cannot be undone.** "
+              "All production data and settings will be removed.",
+        "pt": "Tem certeza? **Esta ação não pode ser desfeita.** "
+              "Todos os dados de produção e configurações serão removidos.",
+    },
+    "web.settings.danger.yes": {
+        "en": "Yes, clear everything",
+        "pt": "Sim, limpar tudo",
+    },
+    "web.settings.danger.cleared_toast": {
+        "en": "All data was removed.",
+        "pt": "Todos os dados foram removidos.",
+    },
+    "web.chat.need_api_key": {
+        "en": "Configure your **OpenRouter API key** in the "
+              ":material/settings: **Settings** tab to enable the AI chat.",
+        "pt": "Configure sua **chave API OpenRouter** na aba "
+              ":material/settings: **Configuração** para ativar "
+              "o chat com inteligência artificial.",
+    },
+    "web.chat.need_modalities": {
+        "en": "No active modalities. Configure them in the "
+              ":material/settings: **Settings** tab.",
+        "pt": "Nenhuma modalidade ativa. Configure na aba "
+              ":material/settings: **Configuração**.",
+    },
+    "web.chat.need_name": {
+        "en": "Configure your **name** in the "
+              ":material/settings: **Settings** tab.",
+        "pt": "Configure seu **nome** na aba "
+              ":material/settings: **Configuração**.",
+    },
+    "web.chat.need_goal": {
+        "en": "Configure the **monthly goal** in the "
+              ":material/settings: **Settings** tab.",
+        "pt": "Configure a **meta mensal** na aba "
+              ":material/settings: **Configuração**.",
+    },
+    "web.chat.need_prompt": {
+        "en": "Configure the **AI prompt** in the "
+              ":material/settings: **Settings** tab.",
+        "pt": "Configure o **prompt da IA** na aba "
+              ":material/settings: **Configuração**.",
+    },
+    "web.chat.get_key": {
+        "en": "[Get a free key from OpenRouter](https://openrouter.ai/keys)",
+        "pt": "[Obter chave gratuita no OpenRouter](https://openrouter.ai/keys)",
+    },
+    "web.chat.intro": {
+        "en": "The assistant analyzes your production data and answers "
+              "questions in English.",
+        "pt": "O assistente analisa seus dados de produção "
+              "e responde perguntas em português.",
+    },
+    "web.chat.start": {"en": "Start analysis", "pt": "Iniciar análise"},
+    "web.chat.input_ph": {
+        "en": "Ask something about your data...",
+        "pt": "Pergunte algo sobre seus dados...",
+    },
+    "web.chat.suggestions_label": {
+        "en": "Suggested questions:",
+        "pt": "Sugestões de perguntas:",
+    },
+    "web.chat.sugg.q1": {
+        "en": "What was the most productive day?",
+        "pt": "Qual dia foi mais produtivo?",
+    },
+    "web.chat.sugg.q2": {
+        "en": "Is my average consistent?",
+        "pt": "Minha média é consistente?",
+    },
+    "web.chat.sugg.q3": {
+        "en": "How is the modality mix looking?",
+        "pt": "Como está o mix de modalidades?",
+    },
+    "web.chat.sugg.q4": {
+        "en": "What is the projection to close the month?",
+        "pt": "Qual a projeção para fechar o mês?",
+    },
+    "web.chat.sugg.q5": {
+        "en": "Compare this week with the previous one",
+        "pt": "Compare esta semana com a anterior",
+    },
+    "web.chat.new": {"en": "New chat", "pt": "Novo chat"},
+    "web.chat.initial_report": {
+        "en": "Generate a complete report of my productivity.",
+        "pt": "Gere um relatório completo da minha produtividade.",
+    },
+    "web.chat.error.unavailable": {
+        "en": "Could not generate a response. "
+              "Check your connection or API key.",
+        "pt": "Não foi possível gerar a resposta. "
+              "Verifique sua conexão ou chave de API.",
+    },
+    "web.chat.error.unexpected": {
+        "en": "Unexpected error generating the response. Details: {detail}",
+        "pt": "Erro inesperado ao gerar a resposta. Detalhes: {detail}",
+    },
 }
 
 
