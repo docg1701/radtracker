@@ -18,7 +18,7 @@ deployment_mode: !vault |
           6236
 
 # Domain (only used in internet mode)
-domain: radtracker.duckdns.org
+domain: radtracker.drgalvanimd.com
 
 # GitHub private repository (SSH URL)
 github_repo: git@github.com:docg1701/radtracker.git
