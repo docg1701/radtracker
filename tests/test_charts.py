@@ -105,3 +105,38 @@ class TestChartsVigency:
         sum25 = sum(sum(t.y) for t in fig25.data)
         sum40 = sum(sum(t.y) for t in fig40.data)
         assert sum25 == sum40  # price change does not move the WoW bars
+
+
+class TestChartLanguage:
+    def test_sparkline_uses_dollar_symbol_and_en_by_default(self):
+        import pandas as pd
+
+        from src.charts import build_daily_sparkline
+
+        df = pd.DataFrame({"date": ["2026-08-10", "2026-08-11"],
+                           "earnings": [100.0, 200.0]})
+        fig = build_daily_sparkline(df)
+        assert fig.layout.yaxis.tickprefix == "$ "
+        assert "R$" not in fig.data[0].hovertemplate
+
+    def test_monthly_chart_pt_translates_legend_and_hover(self):
+        import pandas as pd
+
+        from src.charts import build_monthly_earnings_chart
+
+        df = pd.DataFrame({"date": ["2026-08-10"], "earnings": [100.0]})
+        fig = build_monthly_earnings_chart(df, 150.0, "2026-08", lang="pt")
+        assert fig.data[0].name == "Faturamento"
+        assert fig.data[1].name == "Alvo diário"
+        assert "Dia %{x}" in fig.data[0].hovertemplate
+
+    def test_monthly_chart_en_default_legend(self):
+        import pandas as pd
+
+        from src.charts import build_monthly_earnings_chart
+
+        df = pd.DataFrame({"date": ["2026-08-10"], "earnings": [100.0]})
+        fig = build_monthly_earnings_chart(df, 150.0, "2026-08")
+        assert fig.data[0].name == "Revenue"
+        assert fig.data[1].name == "Daily target"
+        assert "Day %{x}" in fig.data[0].hovertemplate

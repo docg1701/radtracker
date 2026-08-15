@@ -64,12 +64,12 @@ class TestLlmClientMissingKey:
     def test_llm_client_missing_key(self):
         with pytest.raises(LLMUnavailableError) as exc:
             LLMClient(None, "test/model")
-        assert "não configurada" in str(exc.value)
+        assert "not configured" in str(exc.value)
 
     def test_llm_client_empty_key(self):
         with pytest.raises(LLMUnavailableError) as exc:
             LLMClient("", "test/model")
-        assert "não configurada" in str(exc.value)
+        assert "not configured" in str(exc.value)
 
 
 class TestLlmClientErrors:
@@ -79,7 +79,7 @@ class TestLlmClientErrors:
         llm = LLMClient("sk-fake-key", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert "Timeout" in str(exc.value)
+        assert "timed out" in str(exc.value)
 
     @respx.mock
     def test_generate_stream_connect_error(self):
@@ -89,7 +89,7 @@ class TestLlmClientErrors:
         llm = LLMClient("sk-fake-key", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert "conexão" in str(exc.value)
+        assert "connection error" in str(exc.value)
 
     @respx.mock
     def test_generate_stream_http_500(self):
@@ -114,7 +114,7 @@ class TestEnrichStats:
         stats = _minimal_stats()
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
         detail = enriched["monthly_detail"]
-        assert "R$" in detail
+        assert "$" in detail
         assert "ABRIL" in detail.upper() or "2026-04" in detail
 
 
@@ -124,8 +124,8 @@ class TestEnrichStatsMultiMonth:
         enriched = _enrich_stats(stats, _ACTIVE_MODS)
         detail = enriched["monthly_detail"]
         # Each month gets its own block
-        assert "--- MARÇO ---" in detail.upper() or "--- 2026-03 ---" in detail
-        assert "--- ABRIL ---" in detail.upper() or "--- 2026-04 ---" in detail
+        assert "--- MARCH ---" in detail.upper() or "--- 2026-03 ---" in detail
+        assert "--- APRIL ---" in detail.upper() or "--- 2026-04 ---" in detail
 
     def test_full_daily_table_includes_all_days(self):
         stats = _multi_month_stats()
@@ -175,7 +175,7 @@ class TestGenerateStream:
         llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert "vazia" in str(exc.value)
+        assert "Empty response" in str(exc.value)
 
     @respx.mock
     def test_generate_stream_http_error(self):
@@ -193,7 +193,7 @@ class TestGenerateStream:
         llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert "conexão" in str(exc.value)
+        assert "connection error" in str(exc.value)
 
     @respx.mock
     def test_generate_stream_timeout(self):
@@ -201,7 +201,7 @@ class TestGenerateStream:
         llm = LLMClient("sk-test", "test/model")
         with pytest.raises(LLMUnavailableError) as exc:
             list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
-        assert "Timeout" in str(exc.value)
+        assert "timed out" in str(exc.value)
         assert "30s" in str(exc.value)
 
     @respx.mock
@@ -458,11 +458,11 @@ class TestBuildRagContext:
     def test_build_rag_context_includes_template_sections(self):
         stats = _minimal_stats()
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="Teste")
-        assert "=== DADOS ATUAIS PARA ANÁLISE ===" in ctx
-        assert "=== RESUMO DO ANO (YTD) ===" in ctx
-        assert "=== DETALHES POR MÊS ===" in ctx
-        assert "=== DADOS DIÁRIOS COMPLETOS (todas as modalidades, todos os dias) ===" in ctx
-        assert "R$ 3.915,00" in ctx  # MTD computed from df earnings
+        assert "=== CURRENT DATA FOR ANALYSIS ===" in ctx
+        assert "=== YEAR-TO-DATE (YTD) ===" in ctx
+        assert "=== MONTHLY DETAIL ===" in ctx
+        assert "=== COMPLETE DAILY DATA (all modalities, all days) ===" in ctx
+        assert "$3,915.00" in ctx  # MTD computed from df earnings
 
     def test_build_rag_context_respects_custom_prompt(self):
         stats = _minimal_stats()
@@ -471,10 +471,10 @@ class TestBuildRagContext:
         assert custom in ctx
 
     def test_build_rag_context_empty_string_prompt(self):
-        """String vazia resulta em system prompt vazio (sem fallback)."""
+        """Empty string yields an empty system prompt (no fallback)."""
         stats = _minimal_stats()
         ctx = build_rag_context(stats, _ACTIVE_MODS, system_prompt="")
-        assert ctx.startswith("\n\n=== DATA ATUAL")
+        assert ctx.startswith("\n\nAnswer in American English.\n\n=== CURRENT DATE")
 
 
 # ── Helpers ──
@@ -598,9 +598,9 @@ class TestEnrichStatsVigency:
         # "Raise" tc_geral to 40 — items_df.revenue stays 250, must NOT become 400.
         mods_40 = [dict(_ACTIVE_MODS[1], price=40.0)]
         detail_40 = _enrich_stats(base, mods_40)["monthly_detail"]
-        assert "R$ 250,00" in detail_25
-        assert "R$ 250,00" in detail_40
-        assert "R$ 400,00" not in detail_40
+        assert "$250.00" in detail_25
+        assert "$250.00" in detail_40
+        assert "$400.00" not in detail_40
         # ticket stays 25 (250/10), not 40
-        assert "R$ 25.00/exame" in detail_25
-        assert "R$ 25.00/exame" in detail_40
+        assert "ticket $ 25.00/exams" in detail_25
+        assert "ticket $ 25.00/exams" in detail_40

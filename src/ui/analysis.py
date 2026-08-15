@@ -38,6 +38,7 @@ def render_analysis_tab(conn: Any) -> None:
         )
         return
 
+    lang = st.session_state.get("lang", "en")
     stats = get_historical_stats(conn, year_month, goal, active_mods)
 
     df = stats.get("df")
@@ -51,7 +52,7 @@ def render_analysis_tab(conn: Any) -> None:
 
     # ── Insights por regras ──
     with st.expander(f":material/lightbulb: {t('web.analysis.insights')}", expanded=True):
-        rule_text = generate_rule_insights(stats)
+        rule_text = generate_rule_insights(stats, lang)
         _render_insight_body(rule_text)
 
     # ── Two-column: MA + WoW ──
@@ -63,27 +64,27 @@ def render_analysis_tab(conn: Any) -> None:
         if current_month_df.empty:
             st.info(t("web.analysis.no_current_month"))
         else:
-            ma_chart = build_moving_averages_chart(current_month_df, year_month)
+            ma_chart = build_moving_averages_chart(current_month_df, year_month, lang)
             st.plotly_chart(ma_chart, width="stretch")
 
     with col_right:
         st.subheader(f":material/analytics: {t('web.analysis.weekly')}")
         wow_items = stats["items_df"]
-        wow_chart = build_wow_comparison_chart(wow_items, active_mods)
+        wow_chart = build_wow_comparison_chart(wow_items, active_mods, lang)
         st.plotly_chart(wow_chart, width="stretch")
 
     # ── Modality Mix Evolution ──
     st.subheader(f":material/pie_chart: {t('web.analysis.mix')}")
     mix_history = stats.get("modality_mix_historical", {})
     if mix_history:
-        mix_chart = build_modality_mix_evolution(mix_history, active_mods)
+        mix_chart = build_modality_mix_evolution(mix_history, active_mods, lang)
         st.plotly_chart(mix_chart, width="stretch")
     else:
         st.info(t("web.analysis.mix_no_data"))
 
     # ── YTD Earnings ──
     st.subheader(f":material/bar_chart: {t('web.analysis.by_month')}")
-    ytd_chart = build_ytd_earnings_chart(df, year_month, goal)
+    ytd_chart = build_ytd_earnings_chart(df, year_month, goal, lang)
     st.plotly_chart(ytd_chart, width="stretch")
 
 

@@ -18,13 +18,14 @@ from src.chart_colors import (
     hex_to_rgba,
 )
 from src.formatting import month_abbr
+from src.i18n import translate
 
 # ---------------------------------------------------------------------------
 # Moving averages line chart (MA7 + MA30)
 # ---------------------------------------------------------------------------
 
 def build_moving_averages_chart(
-    df: pd.DataFrame, year_month: str
+    df: pd.DataFrame, year_month: str, lang: str = "en",
 ) -> go.Figure:
     """Line chart with MA7 and MA30 for one month."""
     year, month = int(year_month[:4]), int(year_month[5:7])
@@ -50,14 +51,14 @@ def build_moving_averages_chart(
         line=dict(color=CHART_COLORS["primary"], width=2),
         fill="tozeroy",
         fillcolor=hex_to_rgba(CHART_COLORS["primary"], 0.1),
-        hovertemplate="MA7 dia %{x}: R$ %{y:,.2f}<extra></extra>",
+        hovertemplate=translate("web.charts.ma7_hover", lang),
     ))
 
     fig.add_trace(go.Scatter(
         x=merged["day_number"], y=merged["ma30"],
         mode="lines", name="MA30",
         line=dict(color=CHART_COLORS["muted"], width=1.5, dash="dash"),
-        hovertemplate="MA30 dia %{x}: R$ %{y:,.2f}<extra></extra>",
+        hovertemplate=translate("web.charts.ma30_hover", lang),
     ))
 
     fig.update_layout(
@@ -73,7 +74,7 @@ def build_moving_averages_chart(
             showgrid=False, fixedrange=True,
         ),
         yaxis=dict(
-            title=None, tickprefix="R$ ",
+            title=None, tickprefix="$ ",
             showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
@@ -88,6 +89,7 @@ def build_moving_averages_chart(
 def build_wow_comparison_chart(
     items_df: pd.DataFrame,
     active_modalities: list[dict[str, Any]],
+    lang: str = "en",
 ) -> go.Figure:
     """
     Grouped bar chart: current partial week vs last complete week, per modality.
@@ -107,7 +109,7 @@ def build_wow_comparison_chart(
     prev_sunday = current_monday - pd.Timedelta(days=1)
 
     def _fmt(d: pd.Timestamp) -> str:
-        return d.strftime("%d/%m")
+        return d.strftime("%m/%d" if lang == "en" else "%d/%m")
 
     curr_label = f"{_fmt(curr_start)} – {_fmt(curr_end)}"
     prev_label = f"{_fmt(prev_monday)} – {_fmt(prev_sunday)}"
@@ -130,15 +132,21 @@ def build_wow_comparison_chart(
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=labels, y=prev_revs, name=f"Semana passada ({prev_label})",
+        x=labels, y=prev_revs,
+        name=translate("web.charts.wow_last_week", lang, label=prev_label),
         marker_color=[hex_to_rgba(c, 0.5) for c in mod_colors],
-        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Semana passada</extra>",
+        hovertemplate="%{x}: $ %{y:,.2f}<extra>"
+        + translate("web.charts.wow_extra_last", lang)
+        + "</extra>",
     ))
 
     fig.add_trace(go.Bar(
-        x=labels, y=curr_revs, name=f"Esta semana ({curr_label})",
+        x=labels, y=curr_revs,
+        name=translate("web.charts.wow_this_week", lang, label=curr_label),
         marker_color=mod_colors,
-        hovertemplate="%{x}: R$ %{y:,.2f}<extra>Esta semana</extra>",
+        hovertemplate="%{x}: $ %{y:,.2f}<extra>"
+        + translate("web.charts.wow_extra_this", lang)
+        + "</extra>",
     ))
 
     fig.update_layout(
@@ -151,7 +159,7 @@ def build_wow_comparison_chart(
         legend=dict(title=None), showlegend=False,
         xaxis=dict(title=None),
         yaxis=dict(
-            title=None, tickprefix="R$ ",
+            title=None, tickprefix="$ ",
             showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )
@@ -184,6 +192,7 @@ def _week_revenue(
 def build_modality_mix_evolution(
     mix_history: dict[str, dict[str, float]],
     active_modalities: list[dict[str, Any]],
+    lang: str = "en",
 ) -> go.Figure:
     """
     Stacked area chart showing modality revenue share evolution over months.
@@ -194,7 +203,7 @@ def build_modality_mix_evolution(
     """
     months_sorted = sorted(mix_history.keys())
 
-    month_labels = [month_abbr(ym) for ym in months_sorted]
+    month_labels = [month_abbr(ym, lang) for ym in months_sorted]
 
     fig = go.Figure()
 
@@ -246,7 +255,7 @@ def build_modality_mix_evolution(
 # ---------------------------------------------------------------------------
 
 def build_ytd_earnings_chart(
-    df: pd.DataFrame, year_month: str, goal: float
+    df: pd.DataFrame, year_month: str, goal: float, lang: str = "en",
 ) -> go.Figure:
     """Bar chart: earnings per month across the year to date."""
     if df.empty:
@@ -259,7 +268,7 @@ def build_ytd_earnings_chart(
     ).reset_index()
     monthly = monthly.sort_values("ym")
 
-    month_labels = [month_abbr(ym) for ym in monthly["ym"]]
+    month_labels = [month_abbr(ym, lang) for ym in monthly["ym"]]
 
     colors: list[str] = []
     for ym in monthly["ym"]:
@@ -270,11 +279,19 @@ def build_ytd_earnings_chart(
 
     fig = go.Figure()
 
+    bar_text = [f"$ {v:,.0f}" for v in monthly["total_earnings"]]
+    if lang == "pt":
+        bar_text = [s.replace(",", ".") for s in bar_text]
+
+    goal_text = translate("web.charts.ytd_goal", lang) + f"{goal:,.0f}"
+    if lang == "pt":
+        goal_text = goal_text.replace(",", ".")
+
     fig.add_trace(go.Bar(
         x=month_labels, y=monthly["total_earnings"],
         marker_color=colors,
-        hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
-        text=[f"R$ {v:,.0f}".replace(",", ".") for v in monthly["total_earnings"]],
+        hovertemplate="%{x}: $ %{y:,.2f}<extra></extra>",
+        text=bar_text,
         textposition="outside",
         textfont=dict(size=11),
     ))
@@ -283,7 +300,7 @@ def build_ytd_earnings_chart(
         y=goal, line_dash="dash", line_color=CHART_COLORS["neutral"],
         line_width=1.5,
         annotation=dict(
-            text=f"Meta: R$ {goal:,.0f}".replace(",", "."),
+            text=goal_text,
             font=dict(size=11, color=get_chart_text_color()),
         ),
     )
@@ -296,7 +313,7 @@ def build_ytd_earnings_chart(
         margin=dict(l=20, r=20, t=50, b=20),
         xaxis=dict(title=None, showgrid=False),
         yaxis=dict(
-            title=None, tickprefix="R$ ",
+            title=None, tickprefix="$ ",
             showgrid=True, gridcolor=CHART_COLORS["track"],
         ),
     )

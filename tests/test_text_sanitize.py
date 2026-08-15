@@ -13,8 +13,8 @@ class TestSanitizeToken:
         assert sanitize_token("valor\u00a0total") == "valor total"
 
     def test_strips_legacy_double_without_r_prefix(self) -> None:
-        # \\$ → $, no R before → unchanged (could be math)
-        assert sanitize_token(r"Valor: \\$ 100") == "Valor: $ 100"
+        # \\$ → $, then bare $ before digit is currency → \$
+        assert sanitize_token(r"Valor: \\$ 100") == r"Valor: \$ 100"
 
     def test_strips_legacy_with_r_prefix(self) -> None:
         # \\$ → $, then $ after R → \$
@@ -30,9 +30,9 @@ class TestSanitizeToken:
     def test_escapes_currency_no_space(self) -> None:
         assert sanitize_token("R$129") == r"R\$129"
 
-    def test_preserves_standalone_dollar_before_digit(self) -> None:
-        # $50 without R prefix — could be math like $25\times4$
-        assert sanitize_token("$50") == "$50"
+    def test_escapes_standalone_dollar_before_digit(self) -> None:
+        # Bare $ before a digit is currency now (no R prefix needed).
+        assert sanitize_token("$50") == r"\$50"
 
 
 class TestSanitizeText:
@@ -54,9 +54,15 @@ class TestSanitizeText:
     def test_escapes_currency_without_space(self) -> None:
         assert sanitize_text("R$129.513") == r"R\$129.513"
 
-    def test_preserves_standalone_dollar_before_digit(self) -> None:
-        # $50 without R — may be math, must not escape
-        assert sanitize_text("$50") == "$50"
+    def test_escapes_standalone_dollar_before_digit(self) -> None:
+        # Bare $ before a digit is currency; math pairs are protected separately.
+        assert sanitize_text("$50") == r"\$50"
+
+    def test_escapes_us_formatted_currency(self) -> None:
+        assert sanitize_text("$1,250.00") == r"\$1,250.00"
+
+    def test_escapes_multiple_currencies_in_one_line(self) -> None:
+        assert sanitize_text("$12.12 vs $8.14") == r"\$12.12 vs \$8.14"
 
     # math preservation
 
@@ -108,10 +114,10 @@ class TestSanitizeText:
         assert sanitize_text(r"Valor: R\\$ 100") == r"Valor: R\$ 100"
 
     def test_strips_legacy_without_r_prefix(self) -> None:
-        assert sanitize_text(r"Valor: \\$ 100") == "Valor: $ 100"
+        assert sanitize_text(r"Valor: \\$ 100") == r"Valor: \$ 100"
 
     def test_legacy_without_r_prefix_unchanged(self) -> None:
-        assert sanitize_text(r"Custa \\$50") == "Custa $50"
+        assert sanitize_text(r"Custa \\$50") == r"Custa \$50"
 
     def test_single_backslash_dollar_passes_through(self) -> None:
         result = sanitize_text(r"R\$ 100")
@@ -170,4 +176,8 @@ class TestSanitizeText:
         )
 
     def test_mixed_legacy_no_r_prefix(self) -> None:
-        assert sanitize_text(r"Total: \\$ 50 e \(z\)") == "Total: $ 50 e $z$"
+        assert sanitize_text(r"Total: \\$ 50 e \(z\)") == r"Total: \$ 50 e $z$"
+
+    def test_normalizes_escaped_opener_inside_math_pair(self) -> None:
+        # Token-level escape of a complete math pair is normalized back.
+        assert sanitize_text(r"\$25\times4 = 100$") == r"$25\times4 = 100$"

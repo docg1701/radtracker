@@ -22,7 +22,8 @@ import httpx
 import pandas as pd
 
 from src.calculations import daily_avg_for_month
-from src.formatting import MONTHS_PT, fmt_brl, month_name
+from src.formatting import MONTHS, fmt_money, month_name
+from src.i18n import translate
 
 
 class LLMUnavailableError(Exception):
@@ -31,7 +32,31 @@ class LLMUnavailableError(Exception):
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-_RAG_TEMPLATE = """\
+_RAG_TEMPLATES: dict[str, str] = {
+    "en": """\
+=== CURRENT DATE ===
+{today}
+
+=== CURRENT DATA FOR ANALYSIS ===
+The data below are facts. Use them to ground your strategies.
+
+=== MONTHLY GOAL AND STATUS ===
+Monthly goal: {goal} | Days remaining: {remaining_days}
+Current revenue (MTD): {mtd_earnings}
+Projection at current pace: {projection_month_end}
+Needed per remaining day to hit the goal: {daily_target_needed}
+
+=== YEAR-TO-DATE (YTD) ===
+Total revenue: {ytd_earnings} | Monthly average: {ytd_avg_monthly}
+Months with data: {ytd_months}
+
+=== MONTHLY DETAIL ===
+{monthly_detail}
+
+=== COMPLETE DAILY DATA (all modalities, all days) ===
+{full_daily_table}
+""",
+    "pt": """\
 === DATA ATUAL ===
 {today}
 
@@ -53,7 +78,53 @@ Meses com dados: {ytd_months}
 
 === DADOS DIÁRIOS COMPLETOS (todas as modalidades, todos os dias) ===
 {full_daily_table}
-"""
+""",
+}
+
+# RAG context builder output labels, per language.
+_WEEKDAYS: dict[str, list[str]] = {
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday",
+           "Friday", "Saturday", "Sunday"],
+    "pt": ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+           "Sexta-feira", "Sábado", "Domingo"],
+}
+
+_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "revenue": "Revenue",
+        "days_worked": "Days worked",
+        "daily_avg": "Daily average",
+        "ticket": "Avg ticket",
+        "hours": "Estimated hours",
+        "hours_day": "h/day",
+        "rev_hour": "Revenue/h",
+        "best_day": "Best day",
+        "total_exams": "Total exams",
+        "modalities": "Modalities",
+        "exams": "exams",
+        "exams_h": "e/h",
+        "no_monthly": "(no monthly data)",
+        "no_daily": "(no daily data)",
+        "date_col": "Date",
+    },
+    "pt": {
+        "revenue": "Faturamento",
+        "days_worked": "Dias trabalhados",
+        "daily_avg": "Média diária",
+        "ticket": "Ticket médio",
+        "hours": "Horas estimadas",
+        "hours_day": "h/dia",
+        "rev_hour": "Receita/h",
+        "best_day": "Melhor dia",
+        "total_exams": "Total exames",
+        "modalities": "Modalidades",
+        "exams": "exames",
+        "exams_h": "e/h",
+        "no_monthly": "(sem dados mensais)",
+        "no_daily": "(sem dados diários)",
+        "date_col": "Data",
+    },
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -65,11 +136,17 @@ def build_rag_context(
     stats: dict[str, Any],
     active_mods: list[dict[str, Any]],
     system_prompt: str,
+    lang: str = "en",
 ) -> str:
-    """Build the full system prompt with RAG context injected."""
-    enriched = _enrich_stats(stats, active_mods)
-    rag_block = _RAG_TEMPLATE.format(**enriched)
-    return f"{system_prompt}\n\n{rag_block}"
+    """Build the full system prompt with RAG context injected.
+
+    The answer-language instruction is always appended (EN or PT) so custom
+    prompts written in the other language still steer the model correctly.
+    """
+    enriched = _enrich_stats(stats, active_mods, lang)
+    rag_block = _RAG_TEMPLATES[lang].format(**enriched)
+    instruction = translate("web.llm.answer_instruction", lang)
+    return f"{system_prompt}\n\n{instruction}\n\n{rag_block}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -80,6 +157,7 @@ def build_rag_context(
 def _enrich_stats(
     stats: dict[str, Any],
     active_modalities: list[dict[str, Any]],
+    lang: str = "en",
 ) -> dict[str, Any]:
     """Build a rich per-month breakdown + YTD summary + full daily table.
 
@@ -93,8 +171,8 @@ def _enrich_stats(
     current_ym = stats.get("year_month") or ""
     current_stats = stats.get("current_month_stats", {})
 
-    SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
-              "Sexta-feira", "Sábado", "Domingo"]
+    labels = _LABELS[lang]
+    weekdays = _WEEKDAYS[lang]
 
     # ── YTD ──
     current_year = current_ym[:4] if len(current_ym) >= 4 else ""
@@ -104,7 +182,10 @@ def _enrich_stats(
         year_df = df[df["date"].str[:4] == current_year]
         ytd_earnings = float(year_df["earnings"].sum())
         ytd_month_count = year_df["date"].str[:7].nunique()
-    ytd_avg_monthly = fmt_brl(ytd_earnings / ytd_month_count) if ytd_month_count > 0 else "R$ 0,00"
+    ytd_avg_monthly = (
+        fmt_money(ytd_earnings / ytd_month_count, lang)
+        if ytd_month_count > 0 else fmt_money(0.0, lang)
+    )
 
     # ── Per-month detail ──
     months_list = sorted(df["date"].str[:7].unique()) if not df.empty else []
@@ -148,15 +229,18 @@ def _enrich_stats(
                 ticket_exame = slug_rev / count
                 rec_hora = ticket_exame * eph if eph > 0 else 0.0
                 mod_lines.append(
-                    f"  {m['label']}: {count} exames, "
-                    f"{fmt_brl(slug_rev)} ({pct:.0f}%), "
-                    f"ticket R$ {ticket_exame:.2f}/exame, "
-                    f"{eph:.1f}e/h ≈ R$ {rec_hora:.2f}/h"
+                    f"  {m['label']}: {count} {labels['exams']}, "
+                    f"{fmt_money(slug_rev, lang)} ({pct:.0f}%), "
+                    f"ticket $ {ticket_exame:.2f}/{labels['exams']}, "
+                    f"{eph:.1f}{labels['exams_h']} ≈ $ {rec_hora:.2f}/h"
                 )
 
         horas_dia = horas_mes / days_worked if days_worked > 0 else 0.0
         rec_hora_mes = mtd / horas_mes if horas_mes > 0 else 0.0
-        ticket = fmt_brl(mtd / total_exames_mes) if total_exames_mes > 0 else "R$ 0,00"
+        ticket = (
+            fmt_money(mtd / total_exames_mes, lang)
+            if total_exames_mes > 0 else fmt_money(0.0, lang)
+        )
 
         # Best day
         best_date = "—"
@@ -166,34 +250,34 @@ def _enrich_stats(
             if pd.notna(best_idx):
                 best_row = month_df.loc[best_idx]
                 best_date = str(best_row.get("date", "—"))
-                best_val = fmt_brl(float(best_row.get("earnings", 0.0)))
+                best_val = fmt_money(float(best_row.get("earnings", 0.0)), lang)
 
         block = (
-            f"--- {month_name(ym).upper()} ---\n"
-            f"Faturamento: {fmt_brl(mtd)} | "
-            f"Dias trabalhados: {days_worked} | "
-            f"Média diária: {fmt_brl(daily_avg)} | "
-            f"Ticket médio: {ticket}\n"
-            f"Horas estimadas: {horas_mes:.1f}h "
-            f"({horas_dia:.1f}h/dia) | "
-            f"Receita/h: {fmt_brl(rec_hora_mes)}\n"
-            f"Melhor dia: {best_date} ({best_val}) | "
-            f"Total exames: {total_exames_mes}\n"
+            f"--- {month_name(ym, lang).upper()} ---\n"
+            f"{labels['revenue']}: {fmt_money(mtd, lang)} | "
+            f"{labels['days_worked']}: {days_worked} | "
+            f"{labels['daily_avg']}: {fmt_money(daily_avg, lang)} | "
+            f"{labels['ticket']}: {ticket}\n"
+            f"{labels['hours']}: {horas_mes:.1f}h "
+            f"({horas_dia:.1f}{labels['hours_day']}) | "
+            f"{labels['rev_hour']}: {fmt_money(rec_hora_mes, lang)}\n"
+            f"{labels['best_day']}: {best_date} ({best_val}) | "
+            f"{labels['total_exams']}: {total_exames_mes}\n"
         )
         if mod_lines:
-            block += "Modalidades:\n" + "\n".join(mod_lines) + "\n"
+            block += f"{labels['modalities']}:\n" + "\n".join(mod_lines) + "\n"
         detail_blocks.append(block)
 
-    monthly_detail = "\n".join(detail_blocks) if detail_blocks else "(sem dados mensais)"
+    monthly_detail = "\n".join(detail_blocks) if detail_blocks else labels["no_monthly"]
 
     # ── Full daily table ──
-    full_daily_table = "(sem dados diários)"
+    full_daily_table = labels["no_daily"]
     if not df.empty:
         mod_slugs = [m["slug"] for m in active_modalities]
         available_cols = [c for c in mod_slugs if c in df.columns]
         if available_cols:
             daily_rows: list[str] = []
-            header_parts = ["Data"]
+            header_parts = [labels["date_col"]]
             for s in available_cols:
                 label = next((m["label"] for m in active_modalities if m["slug"] == s), s)
                 abbr = "".join(w[0] for w in label.split() if w[0].isupper()).upper() or label[:3]
@@ -211,15 +295,22 @@ def _enrich_stats(
 
     return {
         "today": (
-            f"{date.today().day} de {MONTHS_PT[date.today().month]}"
-            f" de {date.today().year} ({SEMANA[date.today().weekday()]})"
+            f"{MONTHS[lang][date.today().month]} {date.today().day}, "
+            f"{date.today().year} ({weekdays[date.today().weekday()]})"
+            if lang == "en" else
+            f"{date.today().day} de {MONTHS[lang][date.today().month]}"
+            f" de {date.today().year} ({weekdays[date.today().weekday()]})"
         ),
-        "goal": fmt_brl(float(current_stats.get("goal", 0))),
-        "mtd_earnings": fmt_brl(float(current_stats.get("mtd_earnings", 0))),
+        "goal": fmt_money(float(current_stats.get("goal", 0)), lang),
+        "mtd_earnings": fmt_money(float(current_stats.get("mtd_earnings", 0)), lang),
         "remaining_days": str(current_stats.get("remaining_days", 0)),
-        "daily_target_needed": fmt_brl(float(current_stats.get("daily_target_needed", 0))),
-        "projection_month_end": fmt_brl(float(current_stats.get("projection_month_end", 0))),
-        "ytd_earnings": fmt_brl(ytd_earnings),
+        "daily_target_needed": fmt_money(
+            float(current_stats.get("daily_target_needed", 0)), lang
+        ),
+        "projection_month_end": fmt_money(
+            float(current_stats.get("projection_month_end", 0)), lang
+        ),
+        "ytd_earnings": fmt_money(ytd_earnings, lang),
         "ytd_avg_monthly": ytd_avg_monthly,
         "ytd_months": str(ytd_month_count),
         "monthly_detail": monthly_detail,
@@ -236,9 +327,9 @@ class LLMClient:
         model: str,
     ) -> None:
         if not api_key:
-            raise LLMUnavailableError("API key não configurada")
+            raise LLMUnavailableError("OpenRouter API key not configured")
         if not model.strip():
-            raise LLMUnavailableError("Modelo LLM não configurado")
+            raise LLMUnavailableError("LLM model not configured")
         self._api_key = api_key
         self._model = model
         self._reasoning_buffer: list[str] = []
@@ -342,7 +433,7 @@ class LLMClient:
                             continue  # ignora linhas malformadas
         except httpx.TimeoutException:
             raise LLMUnavailableError(
-                "Timeout ao chamar OpenRouter (30s)",
+                "OpenRouter call timed out (30s)",
             ) from None
         except httpx.HTTPStatusError as exc:
             raise LLMUnavailableError(
@@ -351,13 +442,13 @@ class LLMClient:
         except httpx.HTTPError as exc:
             # Captura ConnectError, NetworkError, etc.
             raise LLMUnavailableError(
-                f"Erro de conexão com OpenRouter: {exc}",
+                f"OpenRouter connection error: {exc}",
             ) from exc
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from exc
 
         if not yielded_any:
-            raise LLMUnavailableError("Resposta vazia do modelo")
+            raise LLMUnavailableError("Empty response from the model")
 
     # ── Private helpers ──
 

@@ -60,8 +60,8 @@ class TestGenerateRuleInsights:
     def test_no_days_worked(self):
         stats = _make_stats(days_worked=0)
         result = generate_rule_insights(stats)
-        assert "Nenhum registro ainda" in result
-        assert "barra lateral" in result
+        assert "No records yet" in result
+        assert "sidebar" in result
 
     def test_current_total_and_gap(self):
         stats = _make_stats(
@@ -71,10 +71,10 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=1, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "Hoje o faturamento está em" in result
-        assert "R$ 1.500,00" in result
-        assert "3% da meta de R$ 50.000,00" in result
-        assert "Faltam R$ 48.500,00" in result
+        assert "Revenue is currently at" in result
+        assert "$1,500.00" in result
+        assert "3% of the $50,000.00 goal" in result
+        assert "$48,500.00 to go" in result
 
     def test_mom_same_point_comparison(self):
         stats = _make_stats(
@@ -85,7 +85,7 @@ class TestGenerateRuleInsights:
             mom_change_pct=8.0, prev_month_earnings=29600.0,
         )
         result = generate_rule_insights(stats)
-        assert "8,0% acima do mesmo ponto de junho (R$ 29.600,00)" in result
+        assert "8.0% above the same point of june ($29,600.00)" in result
 
     def test_mom_below(self):
         stats = _make_stats(
@@ -96,7 +96,7 @@ class TestGenerateRuleInsights:
             mom_change_pct=-12.0, prev_month_earnings=22727.0,
         )
         result = generate_rule_insights(stats)
-        assert "12,0% abaixo do mesmo ponto de junho" in result
+        assert "12.0% below the same point of june" in result
 
     def test_no_mom_when_no_prev_data(self):
         stats = _make_stats(
@@ -107,7 +107,7 @@ class TestGenerateRuleInsights:
             mom_change_pct=None, prev_month_earnings=None,
         )
         result = generate_rule_insights(stats)
-        assert "mesmo ponto" not in result
+        assert "same point" not in result
 
     def test_projection_and_path(self):
         stats = _make_stats(
@@ -117,10 +117,10 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=15, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "No ritmo atual, o mês fecha em ~R$ 45.000,00" in result
-        assert "R$ 5.000,00 abaixo da meta." in result
-        assert "Para bater a meta, faltam R$ 18.000,00 em 15 dias restantes" in result
-        assert "R$ 1.200,00/dia daqui ao fim." in result
+        assert "At the current pace, the month closes at ~$45,000.00" in result
+        assert "$5,000.00 below the goal" in result
+        assert "To hit the goal, $18,000.00 to go in 15 days remaining" in result
+        assert "$1,200.00/day from here to the end" in result
 
     def test_preliminary_note_when_few_days(self):
         stats = _make_stats(
@@ -130,7 +130,7 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=2, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "projeção preliminar, poucos dias" in result
+        assert "preliminary projection, few days" in result
 
     def test_no_preliminary_note_when_enough_days(self):
         stats = _make_stats(
@@ -140,7 +140,7 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=15, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "preliminar" not in result
+        assert "preliminary" not in result
 
     def test_goal_met_mid_month(self):
         stats = _make_stats(
@@ -150,10 +150,10 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=15, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "Meta batida" in result
-        assert "15 dias restantes pela frente" in result
-        # already reached → no "faltam .../dia" path shown
-        assert "Para bater a meta" not in result
+        assert "Goal reached" in result
+        assert "15 days remaining ahead" in result
+        # already reached → no "to go .../day" path shown
+        assert "To hit the goal" not in result
 
     def test_month_closed_below(self):
         stats = _make_stats(
@@ -163,9 +163,9 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=30, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "O mês fechou em R$ 47.000,00" in result
-        assert "abaixo" in result
-        assert "No ritmo atual" not in result
+        assert "The month closed at $47,000.00" in result
+        assert "below" in result
+        assert "At the current pace" not in result
 
     def test_singular_plural_remaining(self):
         stats = _make_stats(
@@ -175,8 +175,19 @@ class TestGenerateRuleInsights:
             goal=50000.0, elapsed_days=29, year_month="2026-07",
         )
         result = generate_rule_insights(stats)
-        assert "em 1 dia restante:" in result
-        assert "1 dias restantes" not in result
+        assert "in 1 day remaining:" in result
+        assert "1 days remaining" not in result
+
+    def test_pt_language_variant(self):
+        stats = _make_stats(
+            mtd_earnings=1500, pct_goal=3.0, days_worked=1,
+            remaining_days=30, total_calendar_days=31,
+            daily_target_needed=1618.63, projection_month_end=44671.0,
+            goal=50000.0, elapsed_days=1, year_month="2026-07",
+        )
+        result = generate_rule_insights(stats, "pt")
+        assert "Hoje o faturamento está em" in result
+        assert "$1.500,00" in result.replace("**", "")
 
     def test_no_tone_adjectives_or_suggestions(self):
         stats = _make_stats(
@@ -189,7 +200,7 @@ class TestGenerateRuleInsights:
         for banned in ("você", "bateu", "priorize", "sugestão", "ritmo adequado",
                        "atenção ao ritmo", "parabéns", "consolidar", "conservador",
                        "otimista"):
-            assert banned not in result, f"frase proibida presente: {banned}"
+            assert banned not in result, f"forbidden phrase present: {banned}"
 
     def test_integration_real_compute_monthly_stats(self, conn):
         """Pipe real compute_monthly_stats output into generate_rule_insights."""
@@ -207,13 +218,15 @@ class TestGenerateRuleInsights:
         }
         result = generate_rule_insights(stats)
         # Real MTD = 8*35*6 = 1680 must appear in the narrative.
-        assert "1.680,00" in result
-        assert "meta" in result.lower()
+        assert "1,680.00" in result
+        assert "goal" in result.lower()
 
 
 class TestPrevMonthLabel:
     def test_july_to_june(self):
-        assert _prev_month_label("2026-07") == "junho"
+        assert _prev_month_label("2026-07", "pt") == "junho"
+        assert _prev_month_label("2026-07", "en") == "june"
 
     def test_january_to_december(self):
-        assert _prev_month_label("2026-01") == "dezembro"
+        assert _prev_month_label("2026-01", "pt") == "dezembro"
+        assert _prev_month_label("2026-01", "en") == "december"

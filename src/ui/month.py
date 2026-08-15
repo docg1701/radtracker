@@ -22,7 +22,7 @@ from src.charts import (
     build_progress_gauge,
 )
 from src.db import load_month_items
-from src.formatting import fmt_brl, md_escape
+from src.formatting import fmt_money, md_escape
 from src.i18n import t
 from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
@@ -44,6 +44,7 @@ def render_month_tab(conn: Any) -> None:
         )
         return
 
+    lang = st.session_state.get("lang", "en")
     stats = compute_monthly_stats(conn, year_month, goal, active_mods)
     daily_target = compute_daily_target(goal, stats["total_calendar_days"])
 
@@ -56,11 +57,11 @@ def render_month_tab(conn: Any) -> None:
         return
 
     # ── KPI Row ──
-    _render_kpi_row(stats, goal, daily_target)
+    _render_kpi_row(stats, goal, daily_target, lang)
 
     # ── Progress Gauge ──
     pct_goal = stats["pct_goal"]
-    gauge = build_progress_gauge(pct_goal)
+    gauge = build_progress_gauge(pct_goal, lang)
     st.plotly_chart(gauge, width="stretch")
 
     # ── Star rating ──
@@ -82,7 +83,7 @@ def render_month_tab(conn: Any) -> None:
         st.subheader(f":material/trending_up: {t('web.month.chart.daily')}")
         if not earn_df.empty:
             line_chart = build_monthly_earnings_chart(
-                earn_df, daily_target, year_month
+                earn_df, daily_target, year_month, lang
             )
             st.plotly_chart(line_chart, width="stretch")
         else:
@@ -91,11 +92,11 @@ def render_month_tab(conn: Any) -> None:
     with col_right:
         st.subheader(f":material/pie_chart: {t('web.month.chart.by_modality')}")
         items_df = attach_revenue(conn, load_month_items(conn, year_month))
-        donut = build_monthly_modality_donut(items_df, active_mods)
+        donut = build_monthly_modality_donut(items_df, active_mods, lang)
         st.plotly_chart(donut, width="stretch")
 
     # ── Rhythm Alert ──
-    _render_rhythm_alert(stats, goal)
+    _render_rhythm_alert(stats, goal, lang)
 
     # ── Raw data toggle ──
     if not earn_df.empty:
@@ -121,7 +122,7 @@ def _build_earnings_dataframe(
 
 
 def _render_kpi_row(
-    stats: dict[str, Any], goal: float, daily_target: float,
+    stats: dict[str, Any], goal: float, daily_target: float, lang: str,
 ) -> None:
     """Render the 4 KPI metric cards."""
     k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
@@ -130,11 +131,11 @@ def _render_kpi_row(
         with st.container(border=True, height="stretch"):
             st.metric(
                 label=f":material/payments: {t('web.month.kpi.mtd')}",
-                value=fmt_brl(stats["mtd_earnings"]),
+                value=fmt_money(stats["mtd_earnings"], lang),
                 delta=md_escape(
                     t(
                         "web.month.kpi.projected",
-                        value=fmt_brl(stats["projection_month_end"]),
+                        value=fmt_money(stats["projection_month_end"], lang),
                     )
                 ),
                 delta_color="off",
@@ -146,7 +147,7 @@ def _render_kpi_row(
                 label=f":material/target: {t('web.month.kpi.goal_pct')}",
                 value=f"{stats['pct_goal']:.0f}%",
                 delta=md_escape(
-                    f"{fmt_brl(stats['mtd_earnings'])} / {fmt_brl(goal)}"
+                    f"{fmt_money(stats['mtd_earnings'], lang)} / {fmt_money(goal, lang)}"
                 ),
                 delta_color="off",
             )
@@ -171,10 +172,10 @@ def _render_kpi_row(
         with st.container(border=True, height="stretch"):
             st.metric(
                 label=f":material/trending_up: {t('web.month.kpi.daily_avg')}",
-                value=fmt_brl(stats["daily_avg"]),
+                value=fmt_money(stats["daily_avg"], lang),
                 delta=t(
                     "web.month.kpi.target",
-                    value=md_escape(fmt_brl(daily_target)),
+                    value=md_escape(fmt_money(daily_target, lang)),
                 ),
                 delta_color="off",
             )
@@ -200,7 +201,7 @@ def _should_show_rhythm_alert(stats: dict[str, Any], goal: float) -> bool:
     return stats["pct_goal"] < expected_pct
 
 
-def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
+def _render_rhythm_alert(stats: dict[str, Any], goal: float, lang: str) -> None:
     """Show a warning if behind pace."""
     if not _should_show_rhythm_alert(stats, goal):
         return
@@ -219,11 +220,11 @@ def _render_rhythm_alert(stats: dict[str, Any], goal: float) -> None:
         t(
             "web.month.rhythm_alert",
             name=st.session_state.get("user_name", ""),
-            goal=md_escape(fmt_brl(goal)),
-            missing=md_escape(fmt_brl(missing)),
+            goal=md_escape(fmt_money(goal, lang)),
+            missing=md_escape(fmt_money(missing, lang)),
             days=day_text,
-            needed=md_escape(fmt_brl(needed)),
-            avg=md_escape(fmt_brl(stats["daily_avg"])),
+            needed=md_escape(fmt_money(needed, lang)),
+            avg=md_escape(fmt_money(stats["daily_avg"], lang)),
         )
     )
 

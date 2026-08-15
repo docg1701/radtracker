@@ -120,7 +120,8 @@ def render_chat_tab(conn: Any) -> None:
                     key="chat_start",
                 ):
                     _trigger_initial_report(
-                        conn, year_month, goal, active_mods, llm_prompt
+                        conn, year_month, goal, active_mods, llm_prompt,
+                        st.session_state.get("lang", "en"),
                     )
                     st.rerun()
         return
@@ -173,10 +174,11 @@ def _trigger_initial_report(
     goal: float,
     active_mods: list[dict[str, Any]],
     llm_prompt: str,
+    lang: str,
 ) -> None:
     """Compute stats, build RAG context, queue initial report prompt."""
     stats = get_historical_stats(conn, year_month, goal, active_mods)
-    system_prompt = build_rag_context(stats, active_mods, llm_prompt)
+    system_prompt = build_rag_context(stats, active_mods, llm_prompt, lang)
     st.session_state.messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": t("web.chat.initial_report")},

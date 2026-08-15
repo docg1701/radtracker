@@ -17,7 +17,7 @@ from src.calculations import (
 )
 from src.charts import build_daily_sparkline, build_modality_bar
 from src.db import load_month_items
-from src.formatting import fmt_brl, md_escape
+from src.formatting import fmt_money, md_escape
 from src.i18n import t
 from src.ui.common import render_empty_state
 from src.ui.settings import ensure_settings
@@ -40,6 +40,7 @@ def render_today_tab(conn: Any) -> None:
         )
         return
 
+    lang = st.session_state.get("lang", "en")
     stats = compute_daily_stats(conn, today_str, active_mods)
 
     if not stats["has_data"]:
@@ -51,10 +52,10 @@ def render_today_tab(conn: Any) -> None:
         return
 
     # ── KPI Row ──
-    _render_kpi_row(stats, goal, conn, year_month, active_mods)
+    _render_kpi_row(stats, goal, conn, year_month, active_mods, lang)
 
     # ── Donut + Sparkline ──
-    spark = _build_sparkline_figure(conn, year_month, active_mods)
+    spark = _build_sparkline_figure(conn, year_month, active_mods, lang)
 
     st.subheader(f":material/dashboard: {t('web.today.overview')}")
     col_left, col_right = st.columns(2)
@@ -62,6 +63,7 @@ def render_today_tab(conn: Any) -> None:
         bar_chart = build_modality_bar(
             stats["modality_counts"], stats["modality_labels"],
             modalities=st.session_state.active_modalities,
+            lang=lang,
         )
         st.plotly_chart(bar_chart, width="stretch")
     with col_right:
@@ -73,7 +75,7 @@ def render_today_tab(conn: Any) -> None:
     for slug, count in stats["modality_counts"].items():
         label = stats["modality_labels"].get(slug, slug)
         raw_lines.append(f"{label}: {count}")
-    raw_lines.append(f"{t('web.today.raw.revenue')} {fmt_brl(stats['earnings_today'])}")
+    raw_lines.append(f"{t('web.today.raw.revenue')} {fmt_money(stats['earnings_today'], lang)}")
     raw_lines.append(f"{t('web.today.raw.hours')} {stats['estimated_hours']:.1f}h")
     with st.expander(t("web.common.view_raw_data")):
         st.text("\n".join(raw_lines))
@@ -90,6 +92,7 @@ def _render_kpi_row(
     conn: Any,
     year_month: str,
     active_mods: list[dict[str, Any]],
+    lang: str,
 ) -> None:
     """Render the 4 KPI metric cards."""
     k1, k2, k3, k4 = st.columns(4, vertical_alignment="center")
@@ -108,7 +111,7 @@ def _render_kpi_row(
 
             st.metric(
                 label=f":material/payments: {t('web.today.kpi.earnings')}",
-                value=fmt_brl(earnings),
+                value=fmt_money(earnings, lang),
                 delta=delta_str,
                 delta_color="normal" if stats["delta_pct"] is not None else "off",
             )
@@ -151,7 +154,7 @@ def _render_kpi_row(
             st.metric(
                 label=f":material/target: {t('web.today.kpi.goal')}",
                 value=f"{pct:.0f}%",
-                delta=md_escape(f"{fmt_brl(mtd)} / {fmt_brl(goal)}"),
+                delta=md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"),
                 delta_color="off",
             )
             st.badge(
@@ -162,7 +165,7 @@ def _render_kpi_row(
 
 
 def _build_sparkline_figure(
-    conn: Any, year_month: str, active_mods: list[dict[str, Any]],
+    conn: Any, year_month: str, active_mods: list[dict[str, Any]], lang: str,
 ):
     """Load recent 7 days of earnings and build sparkline."""
 
@@ -191,7 +194,7 @@ def _build_sparkline_figure(
     daily = daily.sort_values("date").tail(7)
 
     if len(daily) >= 1:
-        return build_daily_sparkline(daily)
+        return build_daily_sparkline(daily, lang)
     return None
 
 

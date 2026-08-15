@@ -440,6 +440,112 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Unexpected error generating the response. Details: {detail}",
         "pt": "Erro inesperado ao gerar a resposta. Detalhes: {detail}",
     },
+    "web.charts.modality_bar_title": {
+        "en": "Distribution by Modality",
+        "pt": "Distribuição por Modalidade",
+    },
+    "web.charts.modality_bar_hover": {
+        "en": "%{y}: %{x} exams<extra></extra>",
+        "pt": "%{y}: %{x} exames<extra></extra>",
+    },
+    "web.charts.sparkline_title": {
+        "en": "Revenue — Last 7 Days",
+        "pt": "Faturamento — Últimos 7 Dias",
+    },
+    "web.charts.gauge_title": {
+        "en": "Monthly Goal Progress",
+        "pt": "Progresso da Meta Mensal",
+    },
+    "web.charts.gauge_remaining": {"en": "remaining", "pt": "restante"},
+    "web.charts.monthly_revenue": {"en": "Revenue", "pt": "Faturamento"},
+    "web.charts.monthly_target": {"en": "Daily target", "pt": "Alvo diário"},
+    "web.charts.monthly_hover_day": {
+        "en": "Day %{x}: $ %{y:,.2f}<extra></extra>",
+        "pt": "Dia %{x}: $ %{y:,.2f}<extra></extra>",
+    },
+    "web.charts.monthly_hover_target": {
+        "en": "Target: $ %{y:,.2f}<extra></extra>",
+        "pt": "Alvo: $ %{y:,.2f}<extra></extra>",
+    },
+    "web.charts.today_annotation": {"en": "Today", "pt": "Hoje"},
+    "web.charts.donut_fallback": {"en": "Month", "pt": "Mês"},
+    "web.charts.ma7_hover": {
+        "en": "MA7 day %{x}: $ %{y:,.2f}<extra></extra>",
+        "pt": "MA7 dia %{x}: $ %{y:,.2f}<extra></extra>",
+    },
+    "web.charts.ma30_hover": {
+        "en": "MA30 day %{x}: $ %{y:,.2f}<extra></extra>",
+        "pt": "MA30 dia %{x}: $ %{y:,.2f}<extra></extra>",
+    },
+    "web.charts.wow_last_week": {
+        "en": "Last week ({label})",
+        "pt": "Semana passada ({label})",
+    },
+    "web.charts.wow_this_week": {
+        "en": "This week ({label})",
+        "pt": "Esta semana ({label})",
+    },
+    "web.charts.wow_extra_last": {"en": "Last week", "pt": "Semana passada"},
+    "web.charts.wow_extra_this": {"en": "This week", "pt": "Esta semana"},
+    "web.charts.ytd_goal": {"en": "Goal: $", "pt": "Meta: $"},
+    "web.insights.no_data": {
+        "en": "No records yet. Log your production in the **sidebar** "
+              "and come back once you have a few days of work.",
+        "pt": "Nenhum registro ainda. Registre sua produção na **barra lateral** "
+              "e volte quando tiver alguns dias de trabalho.",
+    },
+    "web.insights.above": {"en": "above", "pt": "acima"},
+    "web.insights.below": {"en": "below", "pt": "abaixo"},
+    "web.insights.day_one_remaining": {
+        "en": "1 day remaining",
+        "pt": "1 dia restante",
+    },
+    "web.insights.day_many_remaining": {
+        "en": "{count} days remaining",
+        "pt": "{count} dias restantes",
+    },
+    "web.insights.status_beat_closed": {
+        "en": "**Goal reached** — {mtd} of {goal} ({pct}%).",
+        "pt": "**Meta batida** — {mtd} de {goal} ({pct}%).",
+    },
+    "web.insights.status_closed_under": {
+        "en": "The month closed at {mtd} — {pct}% of the {goal} goal ({gap}).",
+        "pt": "O mês fechou em {mtd} — {pct}% da meta de {goal} ({gap}).",
+    },
+    "web.insights.status_beat_remaining": {
+        "en": "**Goal reached** — {mtd} of {goal} ({pct}%), with {days} ahead.",
+        "pt": "**Meta batida** — {mtd} de {goal} ({pct}%), com {days} pela frente.",
+    },
+    "web.insights.status_current": {
+        "en": "Revenue is currently at **{mtd}** — {pct}% of the {goal} goal. "
+              "{missing} to go.",
+        "pt": "Hoje o faturamento está em **{mtd}** — {pct}% da meta "
+              "de {goal}. Faltam {missing}.",
+    },
+    "web.insights.mom_compare": {
+        "en": "That is {pct}% {word} the same point of {month} ({value}).",
+        "pt": "Isso é {pct}% {word} do mesmo ponto de {month} ({value}).",
+    },
+    "web.insights.projection": {
+        "en": "At the current pace, the month closes at ~{proj}{note} — "
+              "{gap} the goal.",
+        "pt": "No ritmo atual, o mês fecha em ~{proj}{note} — "
+              "{gap} da meta.",
+    },
+    "web.insights.projection_note": {
+        "en": " (preliminary projection, few days)",
+        "pt": " (projeção preliminar, poucos dias)",
+    },
+    "web.insights.needed": {
+        "en": "To hit the goal, {missing} to go in {days}: "
+              "{needed}/day from here to the end.",
+        "pt": "Para bater a meta, faltam {missing} em {days}: "
+              "{needed}/dia daqui ao fim.",
+    },
+    "web.llm.answer_instruction": {
+        "en": "Answer in American English.",
+        "pt": "Responda em português brasileiro.",
+    },
 }
 
 
