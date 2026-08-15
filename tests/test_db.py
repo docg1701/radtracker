@@ -1,0 +1,637 @@
+"""Tests for src.db — v2 schema, modalities CRUD, daily_production_items CRUD."""
+
+from src.db import (
+    DEFAULT_GOAL,
+    _backfill_price_vigencies,
+    add_modality,
+    deactivate_modality,
+    init_db,
+    load_active_modalities,
+    load_all_modalities,
+    load_daily_items,
+    load_goal,
+    load_month_items,
+    load_price_vigencies,
+    load_prices_at,
+    load_setting,
+    save_goal,
+    save_modality,
+    save_price_vigency,
+    save_setting,
+    slugify,
+    upsert_daily_items,
+)
+
+
+class TestInitDb:
+    def test_init_db_creates_tables(self, conn):
+        init_db(conn)
+        df = conn.query(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        names = set(df["name"].tolist())
+        expected = {
+            "modalities",
+            "daily_production_items",
+            "modality_prices",
+            "monthly_goals",
+            "user_settings",
+        }
+        assert expected.issubset(names)
+
+    def test_init_db_idempotent(self, conn):
+        init_db(conn)
+        init_db(conn)  # must not raise
+
+    def test_init_db_seeds_modalities(self, conn):
+        init_db(conn)
+        mods = load_all_modalities(conn)
+        assert len(mods) == 5
+        slugs = {m["slug"] for m in mods}
+        assert "ressonancia_magnetica" in slugs
+        assert "tc_geral" in slugs
+        assert "radiografia" in slugs
+        assert "angiotomografia" in slugs
+        assert "tc_abdome_total" in slugs
+        # All 5 should be active with production values
+        assert all(m["active"] == 1 for m in mods)
+        assert all(m["price"] > 0 for m in mods)
+        assert all(m["exams_per_hour"] > 0 for m in mods)
+
+
+# ── v2: Modalities CRUD ──
+
+
+class TestLoadAllModalities:
+    def test_returns_5_ordered(self, conn):
+        init_db(conn)
+        mods = load_all_modalities(conn)
+        assert len(mods) == 5
+        # Verify alphabetical order by label (case-insensitive)
+        labels = [m["label"].lower() for m in mods]
+        assert labels == sorted(labels)
+
+
+class TestLoadActiveModalities:
+    def test_empty_when_none_active(self, conn):
+        init_db(conn)
+        # Seed now has 5 active modalities — deactivate all first
+        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
+        active = load_active_modalities(conn)
+        assert active == []
+
+    def test_returns_activated_modalities(self, conn):
+        init_db(conn)
+        # All 5 modalities are seeded active with production values
+        active = load_active_modalities(conn)
+        assert len(active) == 5
+        slugs = {m["slug"] for m in active}
+        assert slugs == {"angiotomografia", "radiografia", "ressonancia_magnetica",
+                         "tc_geral", "tc_abdome_total"}
+
+    def test_excludes_zero_price_or_eph(self, conn):
+        init_db(conn)
+        # Deactivate all first, then test exclusion logic
+        for slug in ["angiotomografia", "radiografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
+
+        # Active but price=0 → not returned
+        save_modality(conn, "radiografia", 0.0, 75.0, 1)
+        active = load_active_modalities(conn)
+        assert len(active) == 0
+
+        # Active but exams_per_hour=0 → not returned
+        save_modality(conn, "tc_geral", 25.0, 0.0, 1)
+        active = load_active_modalities(conn)
+        assert len(active) == 0
+
+
+class TestSaveModality:
+    def test_updates_price_and_eph_and_active(self, conn):
+        init_db(conn)
+        save_modality(conn, "tc_abdome_total", 30.0, 3.0, 1)
+        mods = load_all_modalities(conn)
+        m = next(m for m in mods if m["slug"] == "tc_abdome_total")
+        assert m["price"] == 30.0
+        assert m["exams_per_hour"] == 3.0
+        assert m["active"] == 1
+
+    def test_deactivate(self, conn):
+        init_db(conn)
+        # Deactivate others so only radiografia is active
+        for slug in ["angiotomografia", "ressonancia_magnetica",
+                      "tc_geral", "tc_abdome_total"]:
+            save_modality(conn, slug, 30.0, 10.0, 0)
+
+        active = load_active_modalities(conn)
+        assert len(active) == 1
+        assert active[0]["slug"] == "radiografia"
+
+        save_modality(conn, "radiografia", 4.0, 80.0, 0)
+        active = load_active_modalities(conn)
+        assert len(active) == 0
+
+
+# ── v2: Daily production items CRUD ──
+
+
+class TestUpsertDailyItems:
+    def test_insert_single_item(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 6})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {"tc_geral": 6}
+
+    def test_insert_multiple_items(self, conn):
+        init_db(conn)
+        upsert_daily_items(
+            conn, "2026-05-02",
+            {"ressonancia_magnetica": 8, "tc_geral": 6, "radiografia": 35},
+        )
+        items = load_daily_items(conn, "2026-05-02")
+        assert items["ressonancia_magnetica"] == 8
+        assert items["tc_geral"] == 6
+        assert items["radiografia"] == 35
+
+    def test_update_existing(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 6})
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 10})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items["tc_geral"] == 10
+
+    def test_empty_items_noop(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-02", {})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {}
+
+    def test_zero_count_deletes_row(self, conn):
+        """Setting count to 0 removes the row from the database."""
+        init_db(conn)
+        # Insert first
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 6})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {"tc_geral": 6}
+
+        # Set to zero — row should be deleted
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 0})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {}
+
+    def test_zero_count_on_nonexistent_noop(self, conn):
+        """DELETE on non-existent row is a no-op."""
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 0})
+        items = load_daily_items(conn, "2026-05-02")
+        assert items == {}
+
+
+class TestLoadDailyItems:
+    def test_returns_dict(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-02", {"tc_geral": 5})
+        items = load_daily_items(conn, "2026-05-02")
+        assert isinstance(items, dict)
+        assert items["tc_geral"] == 5
+
+    def test_nonexistent_date_empty_dict(self, conn):
+        init_db(conn)
+        items = load_daily_items(conn, "2099-01-01")
+        assert items == {}
+
+
+class TestLoadMonthItems:
+    def test_returns_correct_rows(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-04-10", {"tc_geral": 2, "radiografia": 10})
+        upsert_daily_items(conn, "2026-04-20", {"tc_geral": 3})
+        upsert_daily_items(conn, "2026-05-01", {"tc_geral": 1})
+
+        df = load_month_items(conn, "2026-04")
+        assert len(df) == 3  # 2 items on 04-10 + 1 item on 04-20
+        dates = set(df["date"].tolist())
+        assert "2026-04-10" in dates
+        assert "2026-04-20" in dates
+        assert "2026-05-01" not in dates
+
+    def test_empty_month(self, conn):
+        init_db(conn)
+        df = load_month_items(conn, "2026-06")
+        assert df.empty
+
+
+class TestGoal:
+    def test_load_goal_default(self, conn):
+        init_db(conn)
+        goal = load_goal(conn, "2026-04")
+        assert goal == DEFAULT_GOAL
+
+    def test_save_and_load_goal(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-04", 50000.0)
+        goal = load_goal(conn, "2026-04")
+        assert goal == 50000.0
+
+
+class TestGoalCarryForward:
+    """Regression: a month with no goal row carries forward the most recent
+    prior month's goal, instead of falling back to DEFAULT_GOAL.
+
+    Reproduces the report that the goal reverts to R$45.000 on every month
+    turnover even when the user always sets R$50.000.
+    """
+
+    def test_carry_forward_from_prior_month(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-05", 50000.0)
+        # June has no row → carry forward May's 50000, not DEFAULT_GOAL
+        assert load_goal(conn, "2026-06") == 50000.0
+
+    def test_carry_forward_picks_most_recent_prior(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-04", 45000.0)
+        save_goal(conn, "2026-05", 50000.0)
+        # July has no row → most recent prior is May (50000), not April (45000)
+        assert load_goal(conn, "2026-07") == 50000.0
+
+    def test_empty_table_returns_default(self, conn):
+        init_db(conn)
+        # No goals ever recorded → DEFAULT_GOAL
+        assert load_goal(conn, "2026-06") == DEFAULT_GOAL
+
+    def test_future_goal_not_borrowed(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-07", 60000.0)
+        # June has no row and no PRIOR month → default (must not borrow future July)
+        assert load_goal(conn, "2026-06") == DEFAULT_GOAL
+
+    def test_carry_forward_across_year_boundary(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-12", 50000.0)
+        # January 2027 has no row → carry forward December 2026 across the year
+        # boundary (string comparison of "YYYY-MM" must stay chronological).
+        assert load_goal(conn, "2027-01") == 50000.0
+
+    def test_exact_month_still_direct(self, conn):
+        init_db(conn)
+        save_goal(conn, "2026-05", 50000.0)
+        assert load_goal(conn, "2026-05") == 50000.0
+
+
+class TestSettings:
+    def test_save_and_load_setting(self, conn):
+        init_db(conn)
+        save_setting(conn, "llm_model", "anthropic/claude-sonnet-4")
+        val = load_setting(conn, "llm_model", "fallback-model")
+        assert val == "anthropic/claude-sonnet-4"
+
+    def test_load_setting_default(self, conn):
+        init_db(conn)
+        val = load_setting(conn, "nonexistent", "fallback")
+        assert val == "fallback"
+
+
+class TestModalityColor:
+    def test_save_modality_with_color(self, seeded_conn):
+        """Save custom color, load back, verify it persisted."""
+        save_modality(seeded_conn, "radiografia", 4.5, 75.0, 1, color="#FF0000")
+        mods = load_all_modalities(seeded_conn)
+        rx = next(m for m in mods if m["slug"] == "radiografia")
+        assert rx["color"] == "#FF0000"
+        # Other modalities should still have their default colors
+        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
+        assert rm["color"] == "#7C3AED"
+
+    def test_seed_modalities_has_color(self, conn):
+        """After seeding, every modality has a non-default color from the palette."""
+        from src.db import _add_color_column, _seed_modalities
+        _seed_modalities(conn)
+        _add_color_column(conn)
+        all_mods = load_all_modalities(conn)
+        assert len(all_mods) == 5
+        for m in all_mods:
+            assert "color" in m
+            # Each modality should have a real palette color (not the generic fallback)
+            assert m["color"] != "#64748B", f"{m['slug']} should not have fallback color"
+            assert m["color"].startswith("#")
+            assert len(m["color"]) == 7
+
+    def test_chart_colors_retains_seed_colors(self):
+        """MODALITY_COLORS covers the 5 seeded production slugs."""
+        from src.chart_colors import MODALITY_COLORS
+        assert len(MODALITY_COLORS) == 5
+        assert "ressonancia_magnetica" in MODALITY_COLORS
+        assert "tc_geral" in MODALITY_COLORS
+        assert "radiografia" in MODALITY_COLORS
+
+    def test_save_modality_without_color_does_not_overwrite(self, seeded_conn):
+        """Calling save_modality without color leaves existing color unchanged."""
+        # First set a custom color
+        save_modality(seeded_conn, "tc_geral", 25.0, 7.5, 1, color="#111111")
+        # Then update without color
+        save_modality(seeded_conn, "tc_geral", 30.0, 8.0, 1)
+        mods = load_all_modalities(seeded_conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["price"] == 30.0
+        assert tc["exams_per_hour"] == 8.0
+        # Color should survive unchanged
+        assert tc["color"] == "#111111"
+
+
+# ── v1.4: slugify ──
+
+
+class TestSlugify:
+    def test_slugify_basic(self):
+        assert slugify("Ressonância Magnética") == "ressonancia_magnetica"
+        assert slugify("TC Geral") == "tc_geral"
+        assert slugify("Hello World") == "hello_world"
+        assert slugify("  spaces  ") == "spaces"
+        assert slugify("Pontuação!!!") == "pontuacao"
+        assert slugify("São Paulo") == "sao_paulo"
+        assert slugify("Coração") == "coracao"
+
+    def test_slugify_edge_cases(self):
+        assert slugify("") == "modalidade"
+        assert slugify("!!!###") == "modalidade"
+        assert slugify("___") == "modalidade"
+
+
+# ── v1.4: add_modality ──
+
+
+class TestAddModality:
+    def test_add_modality_success(self, conn):
+        init_db(conn)
+        result = add_modality(conn, "tomografia_cranio", "Tomografia de Crânio",
+                              25.0, 5.0, 1)
+        assert result is True
+        mods = load_all_modalities(conn)
+        assert len(mods) == 6  # 5 seed + 1 new
+        new = next(m for m in mods if m["slug"] == "tomografia_cranio")
+        assert new["label"] == "Tomografia de Crânio"
+        assert new["price"] == 25.0
+        assert new["exams_per_hour"] == 5.0
+        assert new["active"] == 1
+        assert new["color"] == "#64748B"  # default color
+
+    def test_add_modality_duplicate_slug(self, conn):
+        init_db(conn)
+        add_modality(conn, "novo_exame", "Novo Exame", 10.0, 5.0, 1)
+        result = add_modality(conn, "novo_exame", "Outro Nome", 20.0, 10.0, 0)
+        assert result is False
+        # Only one modality with this slug
+        mods = load_all_modalities(conn)
+        matches = [m for m in mods if m["slug"] == "novo_exame"]
+        assert len(matches) == 1
+        assert matches[0]["label"] == "Novo Exame"
+
+    def test_add_modality_sort_order(self, conn):
+        init_db(conn)
+        # Seed has sort_order 1-5. New one should get 6.
+        add_modality(conn, "extra1", "Extra 1", 10.0, 5.0, 1)
+        mods = load_all_modalities(conn)
+        extra = next(m for m in mods if m["slug"] == "extra1")
+        assert extra["sort_order"] == 6
+
+        # Next one gets 7
+        add_modality(conn, "extra2", "Extra 2", 10.0, 5.0, 1)
+        mods = load_all_modalities(conn)
+        extra2 = next(m for m in mods if m["slug"] == "extra2")
+        assert extra2["sort_order"] == 7
+
+
+
+# ── v1.4: save_modality with label ──
+
+
+class TestSaveModalityWithLabel:
+    def test_save_modality_with_label(self, seeded_conn):
+        save_modality(seeded_conn, "tc_geral", 30.0, 10.0, 1,
+                       label="Tomografia Geral")
+        mods = load_all_modalities(seeded_conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["label"] == "Tomografia Geral"
+        assert tc["slug"] == "tc_geral"  # slug never changes
+
+    def test_rename_modality_label_slug_unchanged(self, seeded_conn):
+        # Rename label, verify slug stays
+        save_modality(seeded_conn, "ressonancia_magnetica", 35.0, 8.0, 1,
+                       label="MRI")
+        mods = load_all_modalities(seeded_conn)
+        rm = next(m for m in mods if m["slug"] == "ressonancia_magnetica")
+        assert rm["label"] == "MRI"
+        assert rm["slug"] == "ressonancia_magnetica"
+
+    def test_save_modality_without_label_does_not_overwrite(self, seeded_conn):
+        # Set a custom label first
+        save_modality(seeded_conn, "radiografia", 4.0, 80.0, 1,
+                       label="RX Digital")
+        # Then update price only (no label)
+        save_modality(seeded_conn, "radiografia", 5.0, 80.0, 1)
+        mods = load_all_modalities(seeded_conn)
+        rx = next(m for m in mods if m["slug"] == "radiografia")
+        assert rx["price"] == 5.0
+        # Label should survive
+        assert rx["label"] == "RX Digital"
+
+
+# ── v1.4: seed verification ──
+
+
+class TestSeed:
+    def test_seed_has_five_modalities(self, seeded_conn):
+        mods = load_all_modalities(seeded_conn)
+        assert len(mods) == 5
+        expected_slugs = {"angiotomografia", "radiografia", "ressonancia_magnetica",
+                          "tc_geral", "tc_abdome_total"}
+        slugs = {m["slug"] for m in mods}
+        assert slugs == expected_slugs
+
+    def test_seed_values_match_production(self, seeded_conn):
+        mods = load_all_modalities(seeded_conn)
+        values = {m["slug"]: (m["price"], m["exams_per_hour"], m["active"])
+                  for m in mods}
+        assert values["angiotomografia"] == (30.0, 4.0, 1)
+        assert values["radiografia"] == (4.0, 80.0, 1)
+        assert values["ressonancia_magnetica"] == (35.0, 8.0, 1)
+        assert values["tc_geral"] == (30.0, 10.0, 1)
+        assert values["tc_abdome_total"] == (60.0, 5.0, 1)
+
+
+class TestInitDbIdempotent:
+    def test_init_db_idempotent_on_existing_db(self, conn):
+        """Calling init_db on a DB with existing modalities should not add
+        duplicates or crash."""
+        init_db(conn)
+        mods_first = load_all_modalities(conn)
+        assert len(mods_first) == 5
+
+        init_db(conn)  # second call
+        mods_second = load_all_modalities(conn)
+        assert len(mods_second) == 5
+        # Same slugs, same labels
+        first_slugs = {(m["slug"], m["label"]) for m in mods_first}
+        second_slugs = {(m["slug"], m["label"]) for m in mods_second}
+        assert first_slugs == second_slugs
+
+
+# ── v1.8: soft-delete (deactivate) + reactivate + one-shot migration ──
+
+
+class TestDeactivateModality:
+    """Soft-delete: deactivating a modality preserves its row and production history."""
+
+    def test_deactivate_preserves_row_and_items(self, conn):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-05-01", {"tc_abdome_total": 10})
+        result = deactivate_modality(conn, "tc_abdome_total")
+        assert result is True
+        # Row survives, now inactive
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_abdome_total")
+        assert tc["active"] == 0
+        # Not in active list anymore
+        active = load_active_modalities(conn)
+        assert all(m["slug"] != "tc_abdome_total" for m in active)
+        # Production history preserved
+        assert load_daily_items(conn, "2026-05-01") == {"tc_abdome_total": 10}
+
+    def test_deactivate_nonexistent_returns_false(self, conn):
+        init_db(conn)
+        assert deactivate_modality(conn, "slug_inexistente") is False
+
+
+class TestAddModalityReactivate:
+    """Adding a modality whose slug already exists (inactive) reactivates it."""
+
+    def test_add_reactivates_inactive_slug(self, conn):
+        init_db(conn)
+        deactivate_modality(conn, "tc_geral")
+        # Re-add with same name -> reactivates with new values
+        result = add_modality(conn, "tc_geral", "TC Geral", 40.0, 12.0, 1)
+        assert result is True
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["active"] == 1
+        assert tc["price"] == 40.0
+        assert tc["exams_per_hour"] == 12.0
+
+    def test_add_active_slug_still_returns_false(self, conn):
+        # Existing behavior preserved: an already-active slug is not overwritten.
+        init_db(conn)
+        add_modality(conn, "novo_exame", "Novo Exame", 10.0, 5.0, 1)
+        result = add_modality(conn, "novo_exame", "Outro Nome", 20.0, 10.0, 0)
+        assert result is False
+
+
+class TestMigrationV14OneShot:
+    """A later deactivation+zero of a seed modality is not silently re-activated
+    on reboot."""
+
+    def test_migration_does_not_reactivate_deactivated_seed(self, conn):
+        init_db(conn)  # seeds + runs migration once (sets the one-shot flag)
+        # User deactivates AND zeroes a seed modality
+        save_modality(conn, "tc_geral", 0.0, 0.0, 0)
+        # Reboot: init_db again must not re-activate it
+        init_db(conn)
+        mods = load_all_modalities(conn)
+        tc = next(m for m in mods if m["slug"] == "tc_geral")
+        assert tc["active"] == 0
+        assert tc["price"] == 0.0
+
+
+# ── v2.1: price vigency (modality_prices) ──
+
+
+class TestPriceVigency:
+    """Price-by-date: editing a price today must not recompute the past."""
+
+    def test_table_created_by_init_db(self, conn):
+        init_db(conn)
+        df = conn.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='modality_prices'"
+        )
+        assert len(df) == 1
+
+    def test_save_and_load_prices_at(self, conn):
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-01-01")
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-07-01")
+        assert load_prices_at(conn, "2026-03-15")["tc_geral"] == 25.0
+        assert load_prices_at(conn, "2026-07-15")["tc_geral"] == 30.0
+        # exactly on effective_from boundary: the newer vigency wins
+        assert load_prices_at(conn, "2026-07-01")["tc_geral"] == 30.0
+
+    def test_load_prices_at_before_first_vigency_returns_oldest(self, conn):
+        save_price_vigency(conn, "ressonancia_magnetica", 35.0, "2026-03-01")
+        # date before the only vigency -> oldest (35) as fallback
+        assert load_prices_at(conn, "2026-01-01")["ressonancia_magnetica"] == 35.0
+
+    def test_load_prices_at_empty_table(self, conn):
+        assert load_prices_at(conn, "2026-03-15") == {}
+
+    def test_load_price_vigencies_ordered(self, conn):
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-01-01")
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-07-01")
+        vigs = load_price_vigencies(conn)
+        assert len(vigs) == 2
+        assert vigs[0]["effective_from"] == "2026-01-01"
+
+    def test_backfill_seeds_current_price_since_first_item(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        upsert_daily_items(conn, "2026-02-10", {"tc_geral": 5})
+        upsert_daily_items(conn, "2026-02-15", {"tc_geral": 3})
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        tc = [v for v in vigs if v["slug"] == "tc_geral"]
+        assert len(tc) == 1
+        assert tc[0]["price"] == 30.0
+        assert tc[0]["effective_from"] == "2026-02-10"
+
+    def test_backfill_idempotent(self, conn):
+        add_modality(conn, "extra", "Extra", 20.0, 5.0, 1)
+        upsert_daily_items(conn, "2026-04-01", {"extra": 2})
+        _backfill_price_vigencies(conn)
+        _backfill_price_vigencies(conn)  # second run must not duplicate
+        vigs = load_price_vigencies(conn)
+        extras = [v for v in vigs if v["slug"] == "extra"]
+        assert len(extras) == 1
+
+    def test_backfill_skips_zero_price_modality(self, conn):
+        add_modality(conn, "zero_mod", "Zero", 0.0, 0.0, 0)
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        assert not any(v["slug"] == "zero_mod" for v in vigs)
+
+    def test_backfill_without_items_uses_created_at(self, conn):
+        add_modality(conn, "noitems", "No Items", 15.0, 5.0, 1)
+        _backfill_price_vigencies(conn)
+        vigs = load_price_vigencies(conn)
+        ni = [v for v in vigs if v["slug"] == "noitems"]
+        assert len(ni) == 1
+        assert ni[0]["price"] == 15.0
+        # effective_from falls back to the modality created_at date (YYYY-MM-DD)
+        assert len(ni[0]["effective_from"]) == 10
+
+
+class TestSaveModalityVigency:
+    """save_modality records a new price vigency only on a real price change."""
+
+    def test_price_change_creates_new_vigency(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")  # historical
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)  # price change today
+        vigs = [v for v in load_price_vigencies(conn) if v["slug"] == "tc_geral"]
+        assert len(vigs) == 2
+        assert sorted(v["price"] for v in vigs) == [30.0, 40.0]
+
+    def test_same_price_does_not_create_new_vigency(self, conn):
+        add_modality(conn, "tc_geral", "TC Geral", 30.0, 10.0, 1)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        save_modality(conn, "tc_geral", 30.0, 10.0, 1)  # same price
+        vigs = [v for v in load_price_vigencies(conn) if v["slug"] == "tc_geral"]
+        assert len(vigs) == 1

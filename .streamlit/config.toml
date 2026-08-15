@@ -1,0 +1,59 @@
+# .streamlit/config.toml — radtracker theme configuration
+# Light theme is the default. Dark theme activates via Streamlit Settings menu.
+# DESIGN_SPEC §7.3 — token mapping for both themes.
+
+[theme]
+base = "light"
+primaryColor = "#111111"          # near-black CTA (Cal.com signature)
+backgroundColor = "#FFFFFF"       # white canvas
+secondaryBackgroundColor = "#F8F9FA"  # surface-soft
+textColor = "#0F172A"             # ink color
+linkColor = "#3B82F6"             # brand accent (sparing use)
+borderColor = "#E5E7EB"           # hairline
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"                # buttons, inputs (rounded.md)
+buttonRadius = "8px"
+
+# Semantic colors
+redColor = "#EF4444"
+greenColor = "#10B981"
+blueColor = "#3B82F6"
+orangeColor = "#F59E0B"
+violetColor = "#8B5CF6"
+grayColor = "#6B7280"
+
+# Chart categorical colors (modality colors)
+chartCategoricalColors = ["#2563EB", "#D97706", "#0891B2", "#0D9488", "#94A3B8", "#64748B", "#E2E8F0"]
+
+# Dataframe styling
+dataframeBorderColor = "#E5E7EB"
+dataframeHeaderBackgroundColor = "#F8F9FA"
+
+# Body: Inter (matches Cal.com's body type)
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+# Headings: Manrope (geometric, close to Cal Sans substitute)
+headingFont = "Manrope:https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+baseFontSize = 16
+baseFontWeight = 400
+headingFontSizes = ["32px", "25px", "21px", "18px", "16px", "14px"]
+headingFontWeights = [600, 600, 600, 500, 500, 500]
+linkUnderline = false
+
+[theme.dark]
+# Teal-700: dark enough for the white button text Streamlit always uses
+# on primaryColor (see theming docs — primary text is fixed white).
+primaryColor = "#0F766E"
+backgroundColor = "#101010"
+secondaryBackgroundColor = "#1A1A1A"
+textColor = "#E5E7EB"
+borderColor = "#2A2A2A"
+linkColor = "#60A5FA"
+baseRadius = "8px"
+buttonRadius = "8px"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true

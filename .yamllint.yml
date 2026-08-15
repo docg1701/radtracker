@@ -1,0 +1,23 @@
+---
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    # "on" é a chave obrigatória de GitHub Actions (`on: push`)
+    allowed-values: ["true", "false", "yes", "no", "on"]
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+
+ignore: |
+  ansible/templates/

@@ -1,0 +1,7 @@
+---
+# ansible-lint configuration for radtracker
+
+skip_list:
+  - run-once             # delegate_to: localhost + run_once para dirs temporários — estratégia linear, seguro
+  - ignore-errors        # cleanup.yml uses ignore_errors because Docker/fail2ban may already be stopped
+  - command-instead-of-module  # backup.yml: docker exec/cp, sqlite3, find — sem módulo Ansible equivalente

@@ -1,0 +1,63 @@
+---
+- name: Backup radtracker SQLite database
+  hosts: all
+  become: true
+
+  vars:
+    backup_timestamp: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+    backup_filename: "radtracker-{{ backup_timestamp }}.db"
+    backup_path: "{{ radtracker_backup_dir }}/{{ backup_filename }}"
+
+  tasks:
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: "{{ radtracker_backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create backup inside container
+      ansible.builtin.command:
+        cmd: >-
+          docker exec radtracker sqlite3 /app/data/telerrad.db
+          ".backup /tmp/{{ backup_filename }}"
+      changed_when: true
+
+    - name: Copy backup to host
+      ansible.builtin.command:
+        cmd: >-
+          docker cp radtracker:/tmp/{{ backup_filename }}
+          {{ backup_path }}
+      changed_when: true
+
+    - name: Clean up temp file inside container
+      ansible.builtin.command:
+        cmd: docker exec radtracker rm /tmp/{{ backup_filename }}
+      changed_when: false
+
+    - name: Verify backup integrity
+      ansible.builtin.command:
+        cmd: sqlite3 {{ backup_path }} "PRAGMA integrity_check;"
+      register: integrity
+      changed_when: false
+
+    - name: Assert backup is valid
+      ansible.builtin.assert:
+        that: "'ok' in integrity.stdout"
+        fail_msg: "Backup CORRUPTED: {{ backup_path }}"
+        success_msg: "Backup integrity OK: {{ backup_filename }}"
+
+    - name: Rotate old backups
+      ansible.builtin.shell:
+        cmd: find {{ radtracker_backup_dir }} -name "*.db" -mtime +{{ backup_retention_days }} -delete
+      changed_when: false
+
+    - name: Get backup size
+      ansible.builtin.stat:
+        path: "{{ backup_path }}"
+      register: backup_stat
+
+    - name: Backup complete
+      ansible.builtin.debug:
+        msg: >-
+          Backup saved to {{ backup_path }}
+          ({{ (backup_stat.stat.size / 1024) | round(1) | int }} KB)

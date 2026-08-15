@@ -1,0 +1,94 @@
+---
+- name: Update radtracker without data loss
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Update repository via deploy key
+      ansible.builtin.git:
+        repo: "{{ github_repo }}"
+        dest: "{{ radtracker_dir }}"
+        version: "{{ github_branch }}"
+        key_file: "{{ deploy_key_path }}"
+        accept_hostkey: true
+        force: true
+        update: true
+      become: false
+
+    - name: Create local temp directory for fetched templates
+      ansible.builtin.file:
+        path: "/tmp/radtracker_fetched_templates"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Fetch templates from VPS clone
+      ansible.builtin.fetch:
+        src: "{{ radtracker_dir }}/ansible/templates/{{ item }}"
+        dest: "/tmp/radtracker_fetched_templates/{{ item }}"
+        flat: true
+      loop:
+        - Caddyfile.j2
+        - .env.j2
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: Template Caddyfile from fetched copy
+      ansible.builtin.template:
+        src: "/tmp/radtracker_fetched_templates/Caddyfile.j2"
+        dest: "{{ radtracker_dir }}/Caddyfile"
+        mode: "0644"
+
+    - name: Template .env from fetched copy
+      ansible.builtin.template:
+        src: "/tmp/radtracker_fetched_templates/.env.j2"
+        dest: "{{ radtracker_dir }}/.env"
+        # No secrets here (DOMAIN/TZ/RADTRACKER_MODE) — world-readable so the
+        # non-root user can run `docker compose` (radtracker-auth wrapper) and
+        # `docker compose exec` without sudo.
+        mode: "0644"
+
+    - name: Clean up local temp files
+      ansible.builtin.file:
+        path: "/tmp/radtracker_fetched_templates"
+        state: absent
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Rebuild image and recreate containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ radtracker_dir }}"
+        state: present
+        build: always
+        pull: always
+        recreate: always
+        remove_orphans: true
+
+    - name: Wait for Streamlit to become healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8501/_stcore/health"
+        status_code: 200
+      register: health
+      until: health.status == 200
+      retries: 15
+      delay: 5
+
+    - name: Run DB migrations (init_db) in container
+      community.docker.docker_compose_v2_exec:
+        project_src: "{{ radtracker_dir }}"
+        service: streamlit
+        command: "python -m src.migrate"
+      register: db_migrate
+      changed_when: false
+
+    - name: Show DB migration result
+      ansible.builtin.debug:
+        msg: "{{ db_migrate.stdout | default('migration ran') }}"
+
+    - name: Update complete
+      ansible.builtin.debug:
+        msg: "radtracker updated successfully"

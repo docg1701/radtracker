@@ -1,0 +1,107 @@
+---
+- name: Full cleanup — reset VPS to fresh state
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Ensure python3-requests is available (needed for docker_prune)
+      ansible.builtin.apt:
+        name: python3-requests
+        state: present
+
+    - name: Stop and remove containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ radtracker_dir }}"
+        state: absent
+        remove_orphans: true
+      ignore_errors: true
+
+    - name: Prune Docker objects (images, volumes, networks, build cache)
+      community.docker.docker_prune:
+        containers: true
+        images: true
+        images_filters:
+          dangling: false
+        networks: true
+        volumes: true
+        builder_cache: true
+      ignore_errors: true
+
+    - name: Uninstall Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: absent
+        purge: true
+
+    - name: Remove Docker GPG key
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.asc
+        state: absent
+
+    - name: Remove Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}
+          {{ ansible_facts.distribution_release }} stable
+        state: absent
+
+    - name: Remove fail2ban sshd jail
+      ansible.builtin.file:
+        path: /etc/fail2ban/jail.d/sshd.conf
+        state: absent
+
+    - name: Remove radtracker-auth SSH wrapper
+      ansible.builtin.file:
+        path: /usr/local/bin/radtracker-auth
+        state: absent
+
+    - name: Uninstall fail2ban
+      ansible.builtin.apt:
+        name: fail2ban
+        state: absent
+        purge: true
+      ignore_errors: true
+
+    - name: Remove radtracker project directory
+      ansible.builtin.file:
+        path: "{{ radtracker_dir }}"
+        state: absent
+
+    - name: Remove deploy key files
+      ansible.builtin.file:
+        path: "{{ deploy_key_path }}"
+        state: absent
+      become: false
+
+    - name: Remove deploy key public file
+      ansible.builtin.file:
+        path: "{{ deploy_key_path }}.pub"
+        state: absent
+      become: false
+
+    - name: Remove bootstrap prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - git
+          - sqlite3
+          - python3-requests
+        state: absent
+        purge: true
+
+    - name: System cleanup
+      ansible.builtin.apt:
+        autoremove: true
+        autoclean: true
+
+    - name: Confirm state
+      ansible.builtin.debug:
+        msg: "VPS reset complete — radtracker, Docker, fail2ban, prerequisites removed."

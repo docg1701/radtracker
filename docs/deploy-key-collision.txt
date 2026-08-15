@@ -1,0 +1,19 @@
+Problema: deploy key com nome fixo quebra ao adicionar um novo VPS
+
+Quando o Ansible registra uma chave SSH como deploy key no GitHub usando um
+nome fixo (ex.: "borgstack-manager" ou "radtracker-vps"), a primeira execução
+funciona. Mas se um SEGUNDO VPS rodar o mesmo playbook, ele gera uma nova
+chave e tenta registrá-la com o mesmo nome. O GitHub rejeita com HTTP 422
+(nome já existe). O playbook trata 422 como OK e segue adiante, mas a chave
+privada do novo VPS não forma par com a chave pública já registrada — o
+clone via Git falha com erro de autenticação.
+
+Solução B: usar um título único por VPS, incluindo o nome do host no título
+da deploy key. Exemplo:
+
+  body:
+    title: "borgstack-manager-{{ inventory_hostname }}"
+
+Assim, cada VPS registra sua própria chave com um nome distinto (ex.:
+"borgstack-manager-vps1", "borgstack-manager-vps2"). Sem colisão, sem falha.
+Isso vale para qualquer projeto que use o mesmo padrão, incluindo o Radtracker.

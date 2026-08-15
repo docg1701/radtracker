@@ -1,0 +1,440 @@
+"""Tests for src.calculations — v2 dynamic modality functions."""
+
+from datetime import date
+
+import pytest
+
+from src.calculations import (
+    _empty_historical_stats,
+    _eph_lookup,
+    compute_daily_stats,
+    compute_daily_target,
+    compute_delta_pct,
+    compute_earnings,
+    compute_historical_stats,
+    compute_monthly_stats,
+    estimate_hours,
+)
+from src.db import init_db, save_modality, save_price_vigency, upsert_daily_items
+
+# ── Fixtures from conftest ──
+
+def test_eph_lookup(active_modalities):
+    """_eph_lookup returns slug→eph dict for all 5 active."""
+    eph = _eph_lookup(active_modalities)
+    assert eph == {
+        "angiotomografia": 4.0,
+        "radiografia": 80.0,
+        "ressonancia_magnetica": 8.0,
+        "tc_abdome_total": 5.0,
+        "tc_geral": 10.0,
+    }
+
+
+# ── Pure functions ──
+
+
+class TestComputeEarnings:
+    def test_typical(self):
+        counts = {"ressonancia_magnetica": 8, "tc_geral": 6, "radiografia": 35}
+        prices = {"ressonancia_magnetica": 35.0, "tc_geral": 25.0, "radiografia": 4.5}
+        result = compute_earnings(counts, prices)
+        assert result == 587.5  # 8*35 + 6*25 + 35*4.5
+
+    def test_all_zeros(self):
+        result = compute_earnings({}, {"tc_geral": 25.0})
+        assert result == 0.0
+
+    def test_unknown_slugs_ignored(self):
+        counts = {"desconhecido": 5}
+        prices = {"tc_geral": 25.0}
+        result = compute_earnings(counts, prices)
+        assert result == 0.0
+
+
+class TestEstimateHours:
+    def test_typical(self):
+        counts = {"ressonancia_magnetica": 15, "tc_geral": 15, "radiografia": 150}
+        eph = {"ressonancia_magnetica": 7.5, "tc_geral": 7.5, "radiografia": 75.0}
+        result = estimate_hours(counts, eph)
+        assert result == 6.0  # 2 + 2 + 2
+
+    def test_all_zeros(self):
+        result = estimate_hours({}, {"tc_geral": 7.5})
+        assert result == 0.0
+
+    def test_skips_zero_rate(self):
+        counts = {"tc_geral": 10}
+        eph = {"tc_geral": 0.0}
+        result = estimate_hours(counts, eph)
+        assert result == 0.0
+
+
+class TestComputeDeltaPct:
+    def test_positive(self):
+        assert compute_delta_pct(600.0, 500.0) == 20.0
+
+    def test_negative(self):
+        assert compute_delta_pct(400.0, 500.0) == -20.0
+
+    def test_none_yesterday(self):
+        assert compute_delta_pct(600.0, None) is None
+
+    def test_zero_yesterday(self):
+        assert compute_delta_pct(600.0, 0.0) is None
+
+
+class TestComputeDailyTarget:
+    def test_typical(self):
+        assert compute_daily_target(45000.0, 30) == pytest.approx(1500.0)
+
+    def test_zero_days(self):
+        assert compute_daily_target(45000.0, 0) == 0.0
+
+
+# ── DB-dependent: daily stats ──
+
+
+class TestComputeDailyStats:
+    def test_with_data(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-04-15", {
+            "ressonancia_magnetica": 8,
+            "tc_geral": 6,
+            "radiografia": 35,
+        })
+        upsert_daily_items(conn, "2026-04-14", {
+            "ressonancia_magnetica": 4,
+            "tc_geral": 3,
+            "radiografia": 20,
+        })
+
+        stats = compute_daily_stats(conn, "2026-04-15", active_modalities)
+        assert stats["has_data"] is True
+        # rm=8*35 + tc=6*30 + rx=35*4 = 280+180+140 = 600
+        assert stats["earnings_today"] == 600.0
+        assert stats["exam_count_today"] == 49
+        assert stats["modality_counts"]["ressonancia_magnetica"] == 8
+        assert stats["modality_counts"]["tc_geral"] == 6
+        assert stats["modality_counts"]["radiografia"] == 35
+        # 8/8 + 6/10 + 35/80 = 1.0+0.6+0.4375 = 2.0375
+        assert stats["estimated_hours"] == pytest.approx(2.04, abs=0.01)
+        # yesterday: rm=4*35 + tc=3*30 + rx=20*4 = 140+90+80 = 310
+        assert stats["yesterday_earnings"] == 310.0
+        assert stats["delta_pct"] is not None
+
+    def test_no_data(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_daily_stats(conn, "2026-04-15", active_modalities)
+        assert stats["has_data"] is False
+        assert stats["earnings_today"] == 0.0
+        assert stats["exam_count_today"] == 0
+        assert stats["estimated_hours"] == 0.0
+        assert stats["yesterday_earnings"] is None
+        assert stats["delta_pct"] is None
+
+    def test_no_yesterday(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-04-15", {"tc_geral": 6})
+        stats = compute_daily_stats(conn, "2026-04-15", active_modalities)
+        assert stats["has_data"] is True
+        # tc_geral=6 * 30.0 = 180.0
+        assert stats["earnings_today"] == 180.0
+        assert stats["yesterday_earnings"] is None
+        assert stats["delta_pct"] is None
+
+
+# ── DB-dependent: monthly stats ──
+
+
+class TestComputeMonthlyStats:
+    def test_empty_month(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_monthly_stats(conn, "2026-03", 45000.0, active_modalities)
+        assert stats["mtd_earnings"] == 0.0
+        assert stats["pct_goal"] == 0.0
+        assert stats["days_worked"] == 0
+        assert stats["remaining_days"] == 0
+
+    def test_with_data(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-03-10", {
+            "ressonancia_magnetica": 8,
+            "tc_geral": 6,
+            "radiografia": 35,
+        })
+        upsert_daily_items(conn, "2026-03-11", {
+            "ressonancia_magnetica": 2,
+        })
+        stats = compute_monthly_stats(conn, "2026-03", 45000.0, active_modalities)
+        # Day1: 8*35 + 6*30 + 35*4 = 280+180+140 = 600
+        # Day2: 2*35 = 70 → total = 670.0
+        assert stats["mtd_earnings"] == 670.0
+        assert stats["days_worked"] == 2
+
+    def test_pct_goal(self, conn, active_modalities):
+        init_db(conn)
+        # Insert enough to get ~50%
+        upsert_daily_items(conn, "2026-03-10", {"ressonancia_magnetica": 100})
+        upsert_daily_items(conn, "2026-03-11", {"ressonancia_magnetica": 542})
+        stats = compute_monthly_stats(conn, "2026-03", 45000.0, active_modalities)
+        pct = stats["pct_goal"]
+        assert 49.0 < pct < 51.0
+
+    def test_total_calendar_days(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_monthly_stats(conn, "2026-04", 45000.0, active_modalities)
+        assert stats["total_calendar_days"] == 30
+
+    def test_february_days(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_monthly_stats(conn, "2026-02", 45000.0, active_modalities)
+        assert stats["total_calendar_days"] == 28
+
+
+class TestMonthlyStatsDayCounting:
+    """Day counting in dias corridos: every day is work-eligible.
+
+    - today counts as ELAPSED (not remaining) when it already has production,
+      reproducing the 29/06 23:00 report where the app said "2 dias restantes"
+      instead of 1.
+    - daily_avg is mtd / elapsed_days (all days, gaps as zero-production),
+      NOT mtd / days_worked. days_worked stays a displayed statistic only.
+    """
+
+    def test_remaining_excludes_today_when_today_has_data(self, conn, active_modalities):
+        init_db(conn)
+        # June 2026 (30 days); today=29/06 with production on the 29th.
+        upsert_daily_items(conn, "2026-06-29", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 29)
+        )
+        assert stats["remaining_days"] == 1          # only the 30th
+        assert stats["elapsed_days"] == 29
+        assert stats["total_calendar_days"] == 30
+
+    def test_remaining_includes_today_when_today_has_no_data(self, conn, active_modalities):
+        init_db(conn)
+        # today=29/06, production only on the 28th (today not yet recorded)
+        upsert_daily_items(conn, "2026-06-28", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 29)
+        )
+        assert stats["remaining_days"] == 2          # 29th + 30th still workable
+        assert stats["elapsed_days"] == 28
+
+    def test_daily_avg_over_elapsed_days_not_worked(self, conn, active_modalities):
+        init_db(conn)
+        # 15 elapsed days, worked only 4 (gaps as zero-production days)
+        for d in (5, 8, 12, 15):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        # mtd = 8*35*4 = 1120; daily_avg = mtd / elapsed(15), not mtd / days_worked(4)
+        assert stats["daily_avg"] == pytest.approx(1120 / 15, rel=1e-4)
+        assert stats["days_worked"] == 4   # statistic only, not used in avg
+
+    def test_projection_uses_elapsed_daily_avg_times_remaining(self, conn, active_modalities):
+        init_db(conn)
+        for d in (5, 8, 12, 15):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        # projection = mtd + daily_avg * remaining = 1120 + (1120/15)*15 = 2240
+        assert stats["projection_month_end"] == pytest.approx(2240.0, rel=1e-4)
+
+    def test_past_month_elapsed_full_remaining_zero(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-03-10", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-03", 45000.0, active_modalities, today=date(2026, 6, 15)
+        )
+        assert stats["elapsed_days"] == 31  # March full month
+        assert stats["remaining_days"] == 0
+        assert stats["daily_avg"] == pytest.approx(280 / 31, rel=1e-4)
+
+    def test_first_of_month_no_data_full_remaining(self, conn, active_modalities):
+        init_db(conn)
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 1)
+        )
+        assert stats["elapsed_days"] == 0
+        assert stats["remaining_days"] == 30
+        assert stats["daily_avg"] == 0.0
+
+    def test_last_day_of_month_with_data_remaining_zero(self, conn, active_modalities):
+        init_db(conn)
+        # June 2026 (30 days); today=30/06 with production → nothing left.
+        upsert_daily_items(conn, "2026-06-30", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 30)
+        )
+        assert stats["elapsed_days"] == 30
+        assert stats["remaining_days"] == 0
+        assert stats["daily_target_needed"] == 0.0
+
+    def test_31_day_month_today_on_day_31_with_data(self, conn, active_modalities):
+        init_db(conn)
+        # July 2026 (31 days); today=31/07 with production.
+        upsert_daily_items(conn, "2026-07-31", {"ressonancia_magnetica": 8})
+        stats = compute_monthly_stats(
+            conn, "2026-07", 45000.0, active_modalities, today=date(2026, 7, 31)
+        )
+        assert stats["total_calendar_days"] == 31
+        assert stats["elapsed_days"] == 31
+        assert stats["remaining_days"] == 0
+
+
+# ── Historical stats ──
+
+
+class TestHistoricalStats:
+    def test_empty_db(self, conn, active_modalities):
+        init_db(conn)
+        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        assert "df" in result
+        assert result["mom_change_pct"] is None
+
+    def test_ma7_with_one_day(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-03-10", {"ressonancia_magnetica": 10})
+        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        df = result["df"]
+        assert len(df) == 1
+        assert df["earnings"].iloc[0] == 350.0  # 10*35
+        assert df["ma7"].iloc[0] == 350.0
+
+    def test_ma7_rolling(self, conn, active_modalities):
+        init_db(conn)
+        for d in range(10, 20):
+            upsert_daily_items(conn, f"2026-03-{d}", {"ressonancia_magnetica": 10})
+        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        df = result["df"]
+        assert len(df) == 10
+        assert df["ma7"].iloc[-1] == 350.0
+
+    def test_modality_mix_sum_to_100(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-03-10", {
+            "ressonancia_magnetica": 8,
+            "tc_geral": 6,
+            "radiografia": 35,
+        })
+        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        mix = result["modality_mix_historical"]["2026-03"]
+        total = sum(mix.values())
+        assert total == pytest.approx(100.0, abs=0.5)
+
+    def test_empty_historical_stats_columns(self, conn, active_modalities):
+        init_db(conn)
+        result = _empty_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        df = result["df"]
+        expected = {"date", "earnings", "ma7", "ma30"}
+        assert set(df.columns) == expected
+
+    def test_multiple_modalities_in_historical(self, conn, active_modalities):
+        init_db(conn)
+        # Use both RM and TC
+        upsert_daily_items(conn, "2026-03-10", {
+            "ressonancia_magnetica": 5,
+            "tc_geral": 10,
+        })
+        upsert_daily_items(conn, "2026-03-11", {
+            "ressonancia_magnetica": 3,
+            "tc_geral": 8,
+        })
+        result = compute_historical_stats(conn, "2026-03", 45000.0, active_modalities)
+        df = result["df"]
+        assert len(df) == 2
+        # 5*35 + 10*30 = 175+300 = 475
+        assert df["earnings"].iloc[0] == 475.0
+
+    def test_mom_same_point_not_full_month(self, conn, active_modalities):
+        # MoM must compare the current (partial) month against the previous
+        # month at the SAME point (same day-of-month), not the previous month
+        # in full — otherwise a partial month vs a full previous month gives
+        # an absurd figure (e.g. -97% on day 1).
+        init_db(conn)
+        # June: 10 tc_geral/day at 30 -> 300/day. Days 1-15 = 4500, days 16-30 = 4500.
+        for d in range(1, 31):
+            upsert_daily_items(conn, f"2026-06-{d:02d}", {"tc_geral": 10})
+        # July (current): 20 tc_geral/day at 30 -> 600/day. Days 1-15 = 9000.
+        for d in range(1, 16):
+            upsert_daily_items(conn, f"2026-07-{d:02d}", {"tc_geral": 20})
+        result = compute_historical_stats(
+            conn, "2026-07", 45000.0, active_modalities, today=date(2026, 7, 15)
+        )
+        # Same-point of June = days 1-15 = 4500 (NOT the full 9000).
+        assert result["prev_month_earnings"] == 4500.0
+        # Current MTD = July days 1-15 = 9000 -> MoM = +100%.
+        assert result["mom_change_pct"] == 100.0
+
+
+# ── v2.1: price vigency in calculations (Bug 3a regression) ──
+
+
+class TestPriceVigencyInCalculations:
+    """A price change today must not recompute past months' faturamento."""
+
+    def test_save_modality_price_change_does_not_recompute_past(self, conn, active_modalities):
+        init_db(conn)
+        # January production: 10 tc_geral at the seed price of 30 -> 300
+        upsert_daily_items(conn, "2026-01-10", {"tc_geral": 10})
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        before = compute_monthly_stats(
+            conn, "2026-01", 45000.0, active_modalities, today=date(2026, 1, 31)
+        )
+        assert before["mtd_earnings"] == 300.0
+        # Raise tc_geral to 40 in July (save_modality updates modalities.price
+        # AND opens a new vigency from today).
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)
+        # January must be UNCHANGED: still 300, NOT 400.
+        after = compute_monthly_stats(
+            conn, "2026-01", 45000.0, active_modalities, today=date(2026, 1, 31)
+        )
+        assert after["mtd_earnings"] == 300.0
+
+    def test_price_change_reflects_in_current_month_from_today(self, conn, active_modalities):
+        init_db(conn)
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        upsert_daily_items(conn, "2026-06-10", {"tc_geral": 10})  # 10*30 = 300
+        # Raise to 40 from 2026-06-15; items on/after 15 use 40, before use 30.
+        save_price_vigency(conn, "tc_geral", 40.0, "2026-06-15")
+        upsert_daily_items(conn, "2026-06-20", {"tc_geral": 10})  # 10*40 = 400
+        stats = compute_monthly_stats(
+            conn, "2026-06", 45000.0, active_modalities, today=date(2026, 6, 30)
+        )
+        # 300 (before 15th) + 400 (after 15th) = 700
+        assert stats["mtd_earnings"] == 700.0
+
+
+class TestPriceVigencyHistoricalAndDaily:
+    """Faturamento histórico e diário usam preço vigente por data, nunca o atual."""
+
+    def test_price_change_does_not_inflate_historical(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-01-10", {"tc_geral": 10})  # 10 * 30 = 300
+        save_price_vigency(conn, "tc_geral", 30.0, "2026-01-01")
+        before = compute_historical_stats(conn, "2026-01", 45000.0, active_modalities)
+        jan_df = before["df"][before["df"]["date"].str[:7] == "2026-01"]
+        jan_before = float(jan_df["earnings"].sum())
+        assert jan_before == 300.0
+        # Raise tc_geral to 40 today
+        save_modality(conn, "tc_geral", 40.0, 10.0, 1)
+        after = compute_historical_stats(conn, "2026-01", 45000.0, active_modalities)
+        jan_df_after = after["df"][after["df"]["date"].str[:7] == "2026-01"]
+        jan_after = float(jan_df_after["earnings"].sum())
+        assert jan_after == 300.0  # unchanged, not 400
+
+    def test_yesterday_earnings_use_vigent_price(self, conn, active_modalities):
+        init_db(conn)
+        upsert_daily_items(conn, "2026-06-10", {"tc_geral": 10})  # yesterday
+        upsert_daily_items(conn, "2026-06-11", {"tc_geral": 10})  # today
+        save_price_vigency(conn, "tc_geral", 25.0, "2026-06-01")
+        save_price_vigency(conn, "tc_geral", 40.0, "2026-06-11")  # raise from today
+        stats = compute_daily_stats(conn, "2026-06-11", active_modalities)
+        # today (11/06) uses 40 -> 400; yesterday (10/06) uses 25 -> 250
+        assert stats["earnings_today"] == 400.0
+        assert stats["yesterday_earnings"] == 250.0
