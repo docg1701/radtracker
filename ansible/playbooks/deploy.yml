@@ -53,6 +53,12 @@
         state: started
         enabled: true
 
+    - name: Add SSH user to docker group (radtracker-auth without sudo)
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
     - name: Generate deploy key for GitHub access
       community.crypto.openssh_keypair:
         path: "{{ deploy_key_path }}"
