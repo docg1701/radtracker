@@ -80,7 +80,7 @@ def render_logout_button() -> None:
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
+    if st.button("Sair", icon=":material/logout:", key="auth_logout"):
         st.session_state.auth_authenticated = False
         st.session_state.pop("auth_username", None)
         delete_session_token(

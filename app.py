@@ -77,8 +77,7 @@ if "active_tab_idx" not in st.session_state:
     if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
         st.session_state.active_tab_idx = 0
 
-tab_col, logout_col = st.columns([7, 1.2], vertical_alignment="center")
-with tab_col:
+with st.container(horizontal=True, vertical_alignment="center"):
     active = st.radio(
         "Navegação",
         TAB_LABELS,
@@ -87,7 +86,7 @@ with tab_col:
         label_visibility="collapsed",
         key="main_tabs",
     )
-with logout_col:
+    st.space("stretch")
     render_logout_button()
 
 selected_idx = TAB_LABELS.index(active)
