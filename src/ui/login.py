@@ -24,25 +24,33 @@ from src.cookies import (
     render_cookie_writer,
     set_session_token,
 )
-from src.db import get_connection, save_setting
+from src.db import get_connection, init_db, load_setting, save_setting
 from src.i18n import t
 
 _LANG_NAMES: dict[str, str] = {"en": "English", "pt": "Português"}
 
 
 def render_language_selector() -> None:
-    """Sidebar EN/PT selector; persists to user_settings when authenticated.
+    """Sidebar EN/PT selector; persists to user_settings.
 
     Rendered in exactly one of two mutually exclusive spots per run:
-    pre-gate (app.py, unauthenticated — login screen) or inside
+    pre-gate (unauthenticated — login screen) or inside
     render_sidebar_footer (authenticated). Same visual position in both:
     the sidebar footer zone.
+
+    st.session_state dies on browser reload (new WebSocket), so the
+    persisted preference is loaded here on the first render of a server
+    session — the login screen must honor it too.
     """
+    if "lang" not in st.session_state:
+        conn = get_connection()
+        init_db(conn)  # first boot: user_settings must exist before the read
+        st.session_state.lang = load_setting(conn, "language", "en")
     st.sidebar.segmented_control(
         f":material/translate: {t('web.lang.label')}",
         options=["en", "pt"],
         format_func=lambda code: _LANG_NAMES[code],
-        default=st.session_state.get("lang", "en"),
+        default=st.session_state.lang,
         key="lang_selector",
         on_change=_on_language_change,
     )
@@ -51,8 +59,7 @@ def render_language_selector() -> None:
 def _on_language_change() -> None:
     lang = st.session_state.lang_selector
     st.session_state.lang = lang
-    if st.session_state.get("auth_authenticated"):
-        save_setting(get_connection(), "language", lang)
+    save_setting(get_connection(), "language", lang)
 
 
 def render_login_gate(auth: dict) -> None:
