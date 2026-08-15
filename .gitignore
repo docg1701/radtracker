@@ -44,3 +44,6 @@ ansible/.vault_pass
 # Auth credentials (password hash + TOTP/session secrets)
 data/auth.json
 data/.auth_creds
+
+# Local agent notes (secrets) — never commit
+docs/local-notes.md
