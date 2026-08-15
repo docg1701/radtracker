@@ -15,7 +15,12 @@ from src.cookies import get_last_tab_index, set_last_tab_index
 from src.db import get_connection, init_db
 from src.ui.analysis import render_analysis_tab
 from src.ui.chat import render_chat_tab
-from src.ui.login import render_login_gate, render_sidebar_footer, render_sidebar_header
+from src.ui.login import (
+    render_login_gate,
+    render_logout_button,
+    render_sidebar_footer,
+    render_sidebar_header,
+)
 from src.ui.month import render_month_tab
 from src.ui.settings import render_settings_tab
 from src.ui.sidebar import render_sidebar
@@ -64,14 +69,18 @@ if "active_tab_idx" not in st.session_state:
     if not 0 <= st.session_state.active_tab_idx < len(TAB_LABELS):
         st.session_state.active_tab_idx = 0
 
-active = st.radio(
-    "Navegação",
-    TAB_LABELS,
-    index=st.session_state.active_tab_idx,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="main_tabs",
-)
+tab_col, logout_col = st.columns([7, 1.2], vertical_alignment="center")
+with tab_col:
+    active = st.radio(
+        "Navegação",
+        TAB_LABELS,
+        index=st.session_state.active_tab_idx,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="main_tabs",
+    )
+with logout_col:
+    render_logout_button()
 
 selected_idx = TAB_LABELS.index(active)
 if selected_idx != st.session_state.active_tab_idx:

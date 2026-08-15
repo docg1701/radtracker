@@ -67,25 +67,26 @@ def render_sidebar_footer(auth: dict) -> None:
 
 
 def render_sidebar_header() -> None:
-    """Sidebar top row: 'Radtracker' h1 left + Sair button right.
+    """Sidebar title: 'Radtracker' h1, left aligned."""
+    st.sidebar.markdown("# Radtracker")
 
-    The button is stretched inside its column; the sidebar has a fixed
-    desktop width, so the resulting button width is stable regardless of
-    window size (no letter stacking).
+
+def render_logout_button() -> None:
+    """Main-area logout button, rendered in the tab row (right aligned).
+
+    Only rendered while authenticated — a stale button must never survive
+    into the login screen (the gate stops the script before app.py reaches
+    this call, but the guard keeps the invariant explicit).
     """
     if not st.session_state.get("auth_authenticated"):
         return
-    title_col, logout_col = st.sidebar.columns([4, 2.5], vertical_alignment="center")
-    with title_col:
-        st.markdown("# Radtracker")
-    with logout_col:
-        if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
-            st.session_state.auth_authenticated = False
-            st.session_state.pop("auth_username", None)
-            delete_session_token(
-                secure=bool(st.session_state.get("_auth_cookie_secure", True))
-            )
-            st.rerun()
+    if st.button("Sair", icon=":material/logout:", key="auth_logout", width="stretch"):
+        st.session_state.auth_authenticated = False
+        st.session_state.pop("auth_username", None)
+        delete_session_token(
+            secure=bool(st.session_state.get("_auth_cookie_secure", True))
+        )
+        st.rerun()
 
 
 def _restore_session(auth: dict) -> None:
