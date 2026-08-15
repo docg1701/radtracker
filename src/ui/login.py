@@ -84,7 +84,7 @@ def _render_login_form(auth: dict, mgr: CookieManager | None) -> None:
                 username = st.text_input("Usuário", key="auth_login_username")
                 password = st.text_input("Senha", type="password", key="auth_login_password")
                 submitted = st.form_submit_button(
-                    "Entrar", type="primary", icon=":material/login:"
+                    "Entrar", icon=":material/login:"
                 )
         if not submitted:
             return
@@ -111,7 +111,7 @@ def _render_totp_form(auth: dict, mgr: CookieManager | None) -> None:
                     key="auth_totp_code",
                 )
                 submitted = st.form_submit_button(
-                    "Verificar", type="primary", icon=":material/key:"
+                    "Verificar", icon=":material/key:"
                 )
         if not submitted:
             return
