@@ -76,18 +76,15 @@ def _render_login_form(auth: dict, mgr: CookieManager | None) -> None:
     if st.session_state.get("auth_awaiting_totp"):
         _render_totp_form(auth, mgr)
         return
-    st.container(height=140)
     left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
     with card:
-        with st.container(border=True, height=340, vertical_alignment="center"):
+        with st.container(border=True, vertical_alignment="center"):
             st.markdown("## :material/lock: **radtracker**")
             with st.form("auth_login"):
-                username = st.text_input(
-                    "Usuário", key="auth_login_username", placeholder="seu usuário"
-                )
+                username = st.text_input("Usuário", key="auth_login_username")
                 password = st.text_input("Senha", type="password", key="auth_login_password")
                 submitted = st.form_submit_button(
-                    "Entrar", type="primary", icon=":material/login:", width="stretch"
+                    "Entrar", type="primary", icon=":material/login:"
                 )
         if not submitted:
             return
@@ -102,10 +99,9 @@ def _render_login_form(auth: dict, mgr: CookieManager | None) -> None:
 
 
 def _render_totp_form(auth: dict, mgr: CookieManager | None) -> None:
-    st.container(height=140)
     left, card, right = st.columns([1, 1.4, 1], vertical_alignment="center")
     with card:
-        with st.container(border=True, height=340, vertical_alignment="center"):
+        with st.container(border=True, vertical_alignment="center"):
             st.markdown("## :material/verified_user: **Verificação em duas etapas**")
             with st.form("auth_totp"):
                 code = st.text_input(
@@ -115,7 +111,7 @@ def _render_totp_form(auth: dict, mgr: CookieManager | None) -> None:
                     key="auth_totp_code",
                 )
                 submitted = st.form_submit_button(
-                    "Verificar", type="primary", icon=":material/key:", width="stretch"
+                    "Verificar", type="primary", icon=":material/key:"
                 )
         if not submitted:
             return
