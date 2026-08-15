@@ -386,9 +386,10 @@ def _render_ai_section(conn: Any) -> None:
             label_visibility="collapsed",
         )
 
-        col_effort, col_budget, col_temp = st.columns(3)
-        with col_effort:
-            thinking_effort = st.selectbox(
+    col_effort, col_budget, col_temp = st.columns(3)
+    with col_effort:
+        thinking_effort = (
+            st.selectbox(
                 t("web.settings.ai.effort"),
                 options=["low", "medium", "high", "xhigh"],
                 index=["low", "medium", "high", "xhigh"].index(
@@ -396,24 +397,20 @@ def _render_ai_section(conn: Any) -> None:
                 ) if st.session_state.thinking_effort in ("low", "medium", "high", "xhigh") else 2,
                 help=t("web.settings.ai.effort_help"),
             )
-        with col_budget:
-            thinking_budget = st.number_input(
+            if thinking_enabled else None
+        )
+    with col_budget:
+        thinking_budget = (
+            st.number_input(
                 t("web.settings.ai.budget"),
                 min_value=_MIN_REASONING_BUDGET, max_value=_MAX_REASONING_BUDGET, step=1024,
                 value=st.session_state.thinking_budget or _MAX_REASONING_BUDGET,
                 help=t("web.settings.ai.budget_help"),
                 key="cfg_budget",
             )
-        with col_temp:
-            temperature = st.slider(
-                t("web.settings.ai.temperature"),
-                min_value=0.0, max_value=2.0, step=0.1,
-                value=st.session_state.get("temperature", 0.3),
-                help=t("web.settings.ai.temperature_help"),
-            )
-    else:
-        thinking_effort = None
-        thinking_budget = None
+            if thinking_enabled else None
+        )
+    with col_temp:
         temperature = st.slider(
             t("web.settings.ai.temperature"),
             min_value=0.0, max_value=2.0, step=0.1,

@@ -34,7 +34,7 @@ def render_analysis_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/bar_chart:",
-            t("web.tabs.no_modalities_bold"),
+            t("web.tabs.no_modalities"),
         )
         return
 

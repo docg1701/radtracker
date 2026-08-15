@@ -11,6 +11,7 @@ from typing import Any
 import pandas as pd
 import plotly.graph_objects as go
 
+from src.calculations import revenue_by_slug
 from src.chart_colors import (
     CHART_COLORS,
     color_for_modality,
@@ -114,6 +115,17 @@ def build_wow_comparison_chart(
     curr_label = f"{_fmt(curr_start)} – {_fmt(curr_end)}"
     prev_label = f"{_fmt(prev_monday)} – {_fmt(prev_sunday)}"
 
+    prev_by_slug = revenue_by_slug(
+        items_df,
+        start=prev_monday.strftime("%Y-%m-%d"),
+        end=prev_sunday.strftime("%Y-%m-%d"),
+    )
+    curr_by_slug = revenue_by_slug(
+        items_df,
+        start=curr_start.strftime("%Y-%m-%d"),
+        end=curr_end.strftime("%Y-%m-%d"),
+    )
+
     labels: list[str] = []
     prev_revs: list[float] = []
     curr_revs: list[float] = []
@@ -123,11 +135,8 @@ def build_wow_comparison_chart(
         slug = m["slug"]
         labels.append(m["label"])
         mod_colors.append(color_for_modality(slug, active_modalities))
-
-        prev_rev = _week_revenue(items_df, slug, prev_monday, prev_sunday)
-        curr_rev = _week_revenue(items_df, slug, curr_start, curr_end)
-        prev_revs.append(prev_rev)
-        curr_revs.append(curr_rev)
+        prev_revs.append(prev_by_slug.get(slug, 0.0))
+        curr_revs.append(curr_by_slug.get(slug, 0.0))
 
     fig = go.Figure()
 
@@ -156,7 +165,7 @@ def build_wow_comparison_chart(
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=50, b=20),
         barmode="group",
-        legend=dict(title=None), showlegend=False,
+        showlegend=False,
         xaxis=dict(title=None),
         yaxis=dict(
             title=None, tickprefix="$ ",
@@ -166,23 +175,6 @@ def build_wow_comparison_chart(
 
     return fig
 
-
-def _week_revenue(
-    items_df: pd.DataFrame, slug: str,
-    week_start: pd.Timestamp, week_end: pd.Timestamp,
-) -> float:
-    """Sum price-vigent revenue for a modality in a given date range."""
-    if items_df.empty or "revenue" not in items_df.columns:
-        return 0.0
-
-    start_str = week_start.strftime("%Y-%m-%d")
-    end_str = week_end.strftime("%Y-%m-%d")
-    week_df = items_df[
-        (items_df["modality_slug"] == slug)
-        & (items_df["date"] >= start_str)
-        & (items_df["date"] <= end_str)
-    ]
-    return float(week_df["revenue"].sum()) if not week_df.empty else 0.0
 
 
 # ---------------------------------------------------------------------------

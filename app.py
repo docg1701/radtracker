@@ -88,7 +88,8 @@ TAB_LABELS = [
 # afterwards key="main_tabs" owns the selection (see docs/meta-prompt.md).
 try:
     cookie_idx = int(get_last_tab_index())
-except Exception:
+except ValueError:
+    # corrupt/malformed cookie value → fall back to the first tab
     cookie_idx = 0
 
 with st.container(horizontal=True, vertical_alignment="center"):

@@ -63,13 +63,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "pt": "Analisando dados históricos...",
     },
     "web.common.view_raw_data": {"en": "View raw data", "pt": "Ver dados brutos"},
-    "web.tabs.no_modalities_bold": {
+    "web.tabs.no_modalities": {
         "en": "No active modalities. Configure them in the **Settings** tab.",
         "pt": "Nenhuma modalidade ativa. Configure na aba **Configuração**.",
-    },
-    "web.tabs.no_modalities_plain": {
-        "en": "No active modalities. Configure them in the Settings tab.",
-        "pt": "Nenhuma modalidade ativa. Configure na aba Configuração.",
     },
     "web.today.start_hint": {
         "en": "Start by logging today's production in the **sidebar**.",

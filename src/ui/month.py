@@ -40,7 +40,7 @@ def render_month_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/calendar_month:",
-            t("web.tabs.no_modalities_bold"),
+            t("web.tabs.no_modalities"),
         )
         return
 

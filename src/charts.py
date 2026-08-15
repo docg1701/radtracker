@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 import plotly.graph_objects as go
 
+from src.calculations import revenue_by_slug
 from src.chart_colors import (
     CHART_COLORS,
     color_for_modality,
@@ -99,7 +100,7 @@ def build_modality_bar(
 
 
 # ---------------------------------------------------------------------------
-# Daily earnings sparkline (unchanged — works on earnings column)
+# Daily earnings sparkline
 # ---------------------------------------------------------------------------
 
 def build_daily_sparkline(df: pd.DataFrame, lang: str = "en") -> go.Figure:
@@ -157,7 +158,7 @@ def build_daily_sparkline(df: pd.DataFrame, lang: str = "en") -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# Progress gauge (unchanged)
+# Progress gauge
 # ---------------------------------------------------------------------------
 
 def build_progress_gauge(pct_goal: float, lang: str = "en") -> go.Figure:
@@ -227,7 +228,7 @@ def build_progress_gauge(pct_goal: float, lang: str = "en") -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# Monthly earnings line chart (unchanged)
+# Monthly earnings line chart
 # ---------------------------------------------------------------------------
 
 def build_monthly_earnings_chart(
@@ -331,11 +332,7 @@ def build_monthly_modality_donut(
     # Revenue per modality MUST come from the price-vigent 'revenue' column;
     # never recompute with the current modalities.price (that would rewrite
     # history when a price changes).
-    rev: dict[str, float] = {}
-    if not df.empty and "revenue" in df.columns:
-        for _, row in df.iterrows():
-            slug = str(row["modality_slug"])
-            rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
+    rev = revenue_by_slug(df)
 
     values: list[float] = []
     display_labels: list[str] = []

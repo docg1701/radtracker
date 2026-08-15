@@ -2,6 +2,7 @@
 
 from datetime import date
 
+import pandas as pd
 import pytest
 
 from src.calculations import (
@@ -14,10 +15,27 @@ from src.calculations import (
     compute_historical_stats,
     compute_monthly_stats,
     estimate_hours,
+    revenue_by_slug,
 )
 from src.db import init_db, save_modality, save_price_vigency, upsert_daily_items
 
 # ── Fixtures from conftest ──
+
+def test_revenue_by_slug_filters_and_sums_vigent_revenue():
+    """revenue_by_slug aggregates the 'revenue' column per slug with filters."""
+    df = pd.DataFrame({
+        "date": ["2026-01-01", "2026-01-02", "2026-02-01"],
+        "modality_slug": ["tc_geral", "tc_geral", "radiografia"],
+        "count": [10, 5, 20],
+        "revenue": [250.0, 125.0, 80.0],
+    })
+    assert revenue_by_slug(df, year_month="2026-01") == {"tc_geral": 375.0}
+    assert revenue_by_slug(df, start="2026-01-02") == {
+        "tc_geral": 125.0, "radiografia": 80.0,
+    }
+    assert revenue_by_slug(df, end="2026-01-01") == {"tc_geral": 250.0}
+    assert revenue_by_slug(pd.DataFrame()) == {}
+
 
 def test_eph_lookup(active_modalities):
     """_eph_lookup returns slug→eph dict for all 5 active."""

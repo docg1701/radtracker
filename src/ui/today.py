@@ -36,7 +36,7 @@ def render_today_tab(conn: Any) -> None:
     if not active_mods:
         render_empty_state(
             ":material/content_paste:",
-            t("web.tabs.no_modalities_plain"),
+            t("web.tabs.no_modalities"),
         )
         return
 

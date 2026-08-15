@@ -102,6 +102,7 @@ def compute_daily_stats(
     eph = _eph_lookup(active_modalities)
     counts = load_daily_items(conn, date_str)
     has_data = bool(counts)
+    modality_labels = {m["slug"]: m["label"] for m in active_modalities}
 
     if not has_data:
         return {
@@ -109,7 +110,7 @@ def compute_daily_stats(
             "exam_count_today": 0,
             "estimated_hours": 0.0,
             "modality_counts": {},
-            "modality_labels": {m["slug"]: m["label"] for m in active_modalities},
+            "modality_labels": modality_labels,
             "yesterday_earnings": None,
             "delta_pct": None,
             "has_data": False,
@@ -137,7 +138,7 @@ def compute_daily_stats(
         "exam_count_today": exam_count_today,
         "estimated_hours": hours,
         "modality_counts": counts,
-        "modality_labels": {m["slug"]: m["label"] for m in active_modalities},
+        "modality_labels": modality_labels,
         "yesterday_earnings": yesterday_earnings,
         "delta_pct": delta_pct,
         "has_data": True,
@@ -192,6 +193,35 @@ def daily_avg_for_month(
     """
     elapsed, _ = _month_time_window(year_month, today, has_today_data)
     return mtd_earnings / elapsed if elapsed > 0 else 0.0
+
+
+def revenue_by_slug(
+    items_df: pd.DataFrame,
+    *,
+    year_month: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> dict[str, float]:
+    """Sum price-vigent revenue per modality slug, optionally filtered.
+
+    ``items_df`` must carry a 'revenue' column (attach_revenue output).
+    Returns {} when empty or the column is missing.
+
+    Example:
+        >>> revenue_by_slug(df, year_month="2026-01")
+        {'tc_geral': 250.0}
+    """
+    if items_df.empty or "revenue" not in items_df.columns:
+        return {}
+    df = items_df
+    if year_month:
+        df = df[df["date"].str[:7] == year_month]
+    if start:
+        df = df[df["date"] >= start]
+    if end:
+        df = df[df["date"] <= end]
+    sums = df.groupby("modality_slug")["revenue"].sum()
+    return {str(slug): float(val) for slug, val in sums.items()}
 
 
 def attach_revenue(conn: Any, items_df: pd.DataFrame) -> pd.DataFrame:
@@ -265,7 +295,7 @@ def compute_monthly_stats(
     total_calendar_days = elapsed_days + remaining_days
 
     # Productivity per dia corrido (gaps count as zero-production days)
-    daily_avg = mtd_earnings / elapsed_days if elapsed_days > 0 else 0.0
+    daily_avg = daily_avg_for_month(mtd_earnings, year_month, today, has_today_data)
 
     remaining_needed = max(0.0, goal - mtd_earnings)
     daily_target_needed = (
@@ -386,13 +416,7 @@ def compute_historical_stats(
 
     # Modality mix from v2 items
     def _modality_mix(ym: str) -> dict[str, float]:
-        ym_items = items_df[items_df["date"].str[:7] == ym]
-        if ym_items.empty:
-            return {m["slug"]: 0.0 for m in active_modalities}
-        rev: dict[str, float] = {}
-        for _, row in ym_items.iterrows():
-            slug = str(row["modality_slug"])
-            rev[slug] = rev.get(slug, 0.0) + float(row.get("revenue", 0.0))
+        rev = revenue_by_slug(items_df, year_month=ym)
         total = sum(rev.values())
         if total == 0.0:
             return {m["slug"]: 0.0 for m in active_modalities}

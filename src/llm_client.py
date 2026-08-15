@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import pandas as pd
 
-from src.calculations import daily_avg_for_month
+from src.calculations import daily_avg_for_month, revenue_by_slug
 from src.formatting import MONTHS, fmt_money, month_name
 from src.i18n import translate
 
@@ -208,6 +208,7 @@ def _enrich_stats(
         # Total exames + per modality
         total_exames_mes = 0
         horas_mes = 0.0
+        rev_by_slug = revenue_by_slug(items_df, year_month=ym)
         mod_lines: list[str] = []
         for m in active_modalities:
             slug = m["slug"]
@@ -217,10 +218,7 @@ def _enrich_stats(
                 & (items_df["modality_slug"] == slug)
             ] if not items_df.empty else pd.DataFrame()
             count = int(mi["count"].sum()) if not mi.empty else 0
-            slug_rev = (
-                float(mi["revenue"].sum())
-                if (not mi.empty and "revenue" in mi.columns) else 0.0
-            )
+            slug_rev = rev_by_slug.get(slug, 0.0)
             total_exames_mes += count
             if eph > 0 and count > 0:
                 horas_mes += count / eph
