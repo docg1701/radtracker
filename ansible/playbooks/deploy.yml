@@ -136,7 +136,10 @@
       ansible.builtin.template:
         src: "/tmp/radtracker_fetched_templates/.env.j2"
         dest: "{{ radtracker_dir }}/.env"
-        mode: "0600"
+        # No secrets here (DOMAIN/TZ/RADTRACKER_MODE) — world-readable so the
+        # non-root user can run `docker compose` (radtracker-auth wrapper) and
+        # `docker compose exec` without sudo.
+        mode: "0644"
 
     - name: Clean up local temp files
       ansible.builtin.file:

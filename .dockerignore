@@ -39,7 +39,6 @@ Caddyfile
 .env.example
 .streamlit/secrets.toml
 ansible/
-scripts/
 
 # OS/IDE
 .DS_Store
