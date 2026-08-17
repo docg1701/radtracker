@@ -22,7 +22,12 @@ def render_sidebar(conn: Any) -> None:
     On save:
       - Calls db.upsert_daily_items() with current form values.
       - Shows a toast notification.
-      - Triggers st.rerun() to refresh the dashboard.
+
+    No st.rerun(): the button click already triggers a full script run and
+    the upsert happens before the tabs render, so the dashboard refreshes
+    in the same run. A st.rerun() here would abort the run BEFORE the tab
+    radio renders — Streamlit deletes the state of any widget not rendered
+    in a run, so the active tab would reset to the cookie fallback.
     """
     ensure_settings(conn)
     active_mods = st.session_state.active_modalities
@@ -90,4 +95,3 @@ def render_sidebar(conn: Any) -> None:
                 t("web.sidebar.saved_toast", date=formatted),
                 icon=":material/check_circle:",
             )
-            st.rerun()
