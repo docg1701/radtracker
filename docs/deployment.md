@@ -118,26 +118,10 @@ deployment_mode: !vault | ...  # encrypted value = "internet"
 And edit `all.yml`:
 
 ```yaml
-domain: radtracker.duckdns.org
+domain: radtracker.drgalvanimd.com
 ```
 
-### 1.4.1 DuckDNS (free domain)
-
-If you don't own a domain, use [DuckDNS](https://duckdns.org):
-
-1. Log in with GitHub and create the `radtracker` subdomain
-2. Point it to the instance IP:
-
-   ```bash
-   curl "https://www.duckdns.org/update?domains=radtracker&token=YOUR_TOKEN&ip=129.151.4.89"
-   ```
-
-3. Set up automatic renewal via cron (Oracle Free Tier IPs are static, but
-   DuckDNS requires periodic updates):
-
-   ```cron
-   0 */12 * * * curl -s "https://www.duckdns.org/update?domains=radtracker&token=YOUR_TOKEN" > /dev/null
-   ```
+DNS/Cloudflare setup for the production domain is covered in §8.
 
 ### 1.5 Environment
 
@@ -211,13 +195,13 @@ Checks:
 **Oracle Cloud Free Tier (production):**
 
 ```text
-https://radtracker.duckdns.org
+https://radtracker.drgalvanimd.com
 ```
 
-(Let's Encrypt — signed certificate, no security warning)
+(Let's Encrypt certificate at the origin; Cloudflare proxy in front — see §8)
 
 Shape: VM.Standard.E2.1.Micro — 1 AMD OCPU, 1 GB RAM, 50 GB boot
-Domain: free DuckDNS (radtracker.duckdns.org → 129.151.4.89)
+Domain: radtracker.drgalvanimd.com → 129.151.4.89 (Cloudflare-proxied)
 
 **Local VPS (LAN):**
 
