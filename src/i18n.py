@@ -475,14 +475,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "MA30 day %{x}: $ %{y:,.2f}<extra></extra>",
         "pt": "MA30 dia %{x}: $ %{y:,.2f}<extra></extra>",
     },
-    "web.charts.wow_last_week": {
-        "en": "Last week ({label})",
-        "pt": "Semana passada ({label})",
-    },
-    "web.charts.wow_this_week": {
-        "en": "This week ({label})",
-        "pt": "Esta semana ({label})",
-    },
     "web.charts.wow_extra_last": {"en": "Last week", "pt": "Semana passada"},
     "web.charts.wow_extra_this": {"en": "This week", "pt": "Esta semana"},
     "web.charts.ytd_goal": {"en": "Goal: $", "pt": "Meta: $"},

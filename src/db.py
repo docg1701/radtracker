@@ -522,6 +522,39 @@ def save_price_vigency(conn: Any, slug: str, price: float, effective_from: str) 
         db_conn.commit()
 
 
+def load_price_vigencies_map(conn: Any) -> dict[str, list[tuple[str, float]]]:
+    """Return slug→[(effective_from, price)] sorted by effective_from.
+
+    Single read of modality_prices shared by load_prices_at and
+    attach_revenue — each caller resolves vigencies in Python instead of
+    re-querying the whole table per date.
+    """
+    df = conn.query(
+        "SELECT slug, effective_from, price FROM modality_prices",
+        ttl=0,
+    )
+    if df.empty:
+        return {}
+    result: dict[str, list[tuple[str, float]]] = {}
+    for slug, eff, price in zip(df["slug"], df["effective_from"], df["price"]):
+        result.setdefault(str(slug), []).append((str(eff), float(price)))
+    for vigencies in result.values():
+        vigencies.sort()
+    return result
+
+
+def price_at(vigencies: dict[str, list[tuple[str, float]]], slug: str, date_str: str) -> float:
+    """Price vigent for slug on date_str: latest vigency <= date, else the
+    oldest one (fallback), else 0.0 when the slug has no vigency at all."""
+    entries = vigencies.get(slug)
+    if not entries:
+        return 0.0
+    for effective_from, price in reversed(entries):
+        if effective_from <= date_str:
+            return price
+    return entries[0][1]
+
+
 def load_prices_at(conn: Any, date_str: str) -> dict[str, float]:
     """Return slug->price valid at `date_str` (most recent vigency <= date).
 
@@ -532,21 +565,8 @@ def load_prices_at(conn: Any, date_str: str) -> dict[str, float]:
         >>> load_prices_at(conn, "2026-03-15")
         {'tc_geral': 25.0, 'ressonancia_magnetica': 35.0}
     """
-    df = conn.query(
-        "SELECT slug, effective_from, price FROM modality_prices",
-        ttl=0,
-    )
-    if df.empty:
-        return {}
-    result: dict[str, float] = {}
-    for slug, grp in df.groupby("slug"):
-        prior = grp[grp["effective_from"] <= date_str]
-        if not prior.empty:
-            best = prior.loc[prior["effective_from"].idxmax()]
-        else:
-            best = grp.loc[grp["effective_from"].idxmin()]
-        result[str(slug)] = float(best["price"])
-    return result
+    vigencies = load_price_vigencies_map(conn)
+    return {slug: price_at(vigencies, slug, date_str) for slug in vigencies}
 
 
 def load_price_vigencies(conn: Any) -> list[dict[str, Any]]:

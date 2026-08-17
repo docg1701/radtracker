@@ -13,7 +13,6 @@ import streamlit as st
 from src.calculations import (
     _compute_daily_earnings_from_items,
     compute_daily_stats,
-    compute_monthly_stats,
 )
 from src.charts import build_daily_sparkline, build_modality_bar
 from src.db import load_month_items
@@ -51,11 +50,17 @@ def render_today_tab(conn: Any) -> None:
         )
         return
 
+    # Month items loaded once — shared by the MTD KPI and the sparkline
+    month_daily = _compute_daily_earnings_from_items(
+        conn, load_month_items(conn, year_month)
+    )
+    mtd = float(month_daily["earnings"].sum()) if not month_daily.empty else 0.0
+
     # ── KPI Row ──
-    _render_kpi_row(stats, goal, conn, year_month, active_mods, lang)
+    _render_kpi_row(stats, goal, mtd, lang)
 
     # ── Donut + Sparkline ──
-    spark = _build_sparkline_figure(conn, year_month, active_mods, lang)
+    spark = _build_sparkline_figure(conn, year_month, month_daily, lang)
 
     st.subheader(f":material/dashboard: {t('web.today.overview')}")
     col_left, col_right = st.columns(2)
@@ -89,9 +94,7 @@ def render_today_tab(conn: Any) -> None:
 def _render_kpi_row(
     stats: dict[str, Any],
     goal: float,
-    conn: Any,
-    year_month: str,
-    active_mods: list[dict[str, Any]],
+    mtd_earnings: float,
     lang: str,
 ) -> None:
     """Render the 4 KPI metric cards."""
@@ -149,31 +152,21 @@ def _render_kpi_row(
     # ── Card 4: Meta Mensal ──
     with k4:
         with st.container(border=True):
-            month_stats = compute_monthly_stats(conn, year_month, goal, active_mods)
-            mtd = month_stats["mtd_earnings"]
-            pct = (mtd / goal * 100) if goal > 0 else 0.0
+            pct = (mtd_earnings / goal * 100) if goal > 0 else 0.0
             st.metric(
                 label=f":material/target: {t('web.today.kpi.goal')}",
                 value=f"{pct:.0f}%",
-                delta=md_escape(f"{fmt_money(mtd, lang)} / {fmt_money(goal, lang)}"),
+                delta=md_escape(f"{fmt_money(mtd_earnings, lang)} / {fmt_money(goal, lang)}"),
                 delta_color="off",
             )
 
 
 def _build_sparkline_figure(
-    conn: Any, year_month: str, active_mods: list[dict[str, Any]], lang: str,
+    conn: Any, year_month: str, month_daily: pd.DataFrame, lang: str,
 ):
-    """Load recent 7 days of earnings and build sparkline."""
-
-    current_items = load_month_items(conn, year_month)
-
-    # Compute daily earnings from items
-    if current_items.empty:
-        return None
-
-    daily = _compute_daily_earnings_from_items(conn, current_items)
-    if daily.empty:
-        return None
+    """Build the 7-day sparkline from the current-month daily earnings,
+    pulling the previous month in when the current month has <7 days."""
+    daily = month_daily
 
     # If <7 days in current month, pull from previous month
     if len(daily) < 7:

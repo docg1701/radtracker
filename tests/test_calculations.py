@@ -9,7 +9,6 @@ from src.calculations import (
     _empty_historical_stats,
     _eph_lookup,
     compute_daily_stats,
-    compute_daily_target,
     compute_delta_pct,
     compute_earnings,
     compute_historical_stats,
@@ -100,14 +99,6 @@ class TestComputeDeltaPct:
 
     def test_zero_yesterday(self):
         assert compute_delta_pct(600.0, 0.0) is None
-
-
-class TestComputeDailyTarget:
-    def test_typical(self):
-        assert compute_daily_target(45000.0, 30) == pytest.approx(1500.0)
-
-    def test_zero_days(self):
-        assert compute_daily_target(45000.0, 0) == 0.0
 
 
 # ── DB-dependent: daily stats ──

@@ -294,7 +294,6 @@ class TestGenerateStream:
         reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
         assert content_tokens == ["Resposta"]
         assert reasoning_tokens == ["Pensando..."]
-        assert llm.reasoning == "Pensando..."
         assert route.called
 
     @respx.mock
@@ -313,7 +312,6 @@ class TestGenerateStream:
         reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
         assert content_tokens == ["Answer"]
         assert reasoning_tokens == ["Thinking..."]
-        assert llm.reasoning == "Thinking..."
         assert route.called
 
     @respx.mock
@@ -331,7 +329,6 @@ class TestGenerateStream:
         reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
         assert content_tokens == ["Out"]
         assert reasoning_tokens == ["Think"]
-        assert llm.reasoning == "Think"
         assert route.called
 
     @respx.mock
@@ -349,31 +346,7 @@ class TestGenerateStream:
         reasoning_tokens = [t for t_type, t in tokens if t_type == "reasoning"]
         assert content_tokens == ["Plain"]
         assert reasoning_tokens == []
-        assert llm.reasoning is None
         assert route.called
-
-    @respx.mock
-    def test_generate_stream_reasoning_buffer_resets(self):
-        """Each generate_stream() call gets a fresh reasoning buffer."""
-        route = respx.post(_OPENROUTER_URL).mock(
-            return_value=_sse_chunks(
-                'data: {"choices":[{"delta":{"reasoning_content":"First"}}]}',
-                'data: {"choices":[{"delta":{"content":"A"}}]}',
-                "data: [DONE]",
-            )
-        )
-        llm = LLMClient("sk-test", "test/model")
-        list(llm.generate_stream([{"role": "user", "content": "Q1"}]))
-        assert llm.reasoning == "First"
-
-        route.return_value = _sse_chunks(
-            'data: {"choices":[{"delta":{"content":"B"}}]}',
-            "data: [DONE]",
-        )
-        second_tokens = list(llm.generate_stream([{"role": "user", "content": "Q2"}]))
-        assert llm.reasoning is None  # second call has no reasoning
-        content_tokens = [t for t_type, t in second_tokens if t_type == "content"]
-        assert content_tokens == ["B"]
 
     @respx.mock
     def test_generate_stream_yields_reasoning_and_content_tuples(self):
@@ -391,7 +364,6 @@ class TestGenerateStream:
             ("reasoning", "Pensando..."),
             ("content", "Ok"),
         ]
-        assert llm.reasoning == "Pensando..."
         assert route.called
 
     @respx.mock
@@ -406,7 +378,6 @@ class TestGenerateStream:
         llm = LLMClient("sk-test", "test/model")
         tokens = list(llm.generate_stream([{"role": "user", "content": "Oi"}]))
         assert all(t_type == "content" for t_type, _ in tokens)
-        assert llm.reasoning is None
         assert route.called
 
 

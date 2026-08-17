@@ -159,8 +159,14 @@ def render_chat_tab(conn: Any) -> None:
     if len(st.session_state.messages) >= 2:
         _render_suggestion_chips()
 
-    # Action buttons
-    _render_action_buttons()
+    if st.button(
+        f":material/refresh: {t('web.chat.new')}",
+        type="secondary",
+        key="chat_new",
+    ):
+        st.session_state.messages = []
+        st.cache_data.clear()
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -257,11 +263,9 @@ def _stream_response(api_key: str, llm_model: str) -> None:
             st.error(response)
         # Apply full-string sanitization before storing (handles token-boundary issues)
         clean_response = sanitize_text(str(response))
-        msg: dict[str, Any] = {"role": "assistant", "content": clean_response}
-        reasoning = llm.reasoning
-        if reasoning:
-            msg["reasoning"] = reasoning
-        st.session_state.messages.append(msg)
+        st.session_state.messages.append(
+            {"role": "assistant", "content": clean_response}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -282,23 +286,6 @@ def _render_suggestion_chips() -> None:
             {"role": "user", "content": selected}
         )
         st.session_state.pop("chat_suggestions", None)
-        st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Action buttons
-# ---------------------------------------------------------------------------
-
-
-def _render_action_buttons() -> None:
-    """Render Novo chat button."""
-    if st.button(
-        f":material/refresh: {t('web.chat.new')}",
-        type="secondary",
-        key="chat_new",
-    ):
-        st.session_state.messages = []
-        st.cache_data.clear()
         st.rerun()
 
 

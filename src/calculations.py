@@ -11,7 +11,13 @@ from typing import Any
 
 import pandas as pd
 
-from src.db import load_daily_items, load_month_items, load_prices_at
+from src.db import (
+    load_daily_items,
+    load_month_items,
+    load_price_vigencies_map,
+    load_prices_at,
+    price_at,
+)
 
 # ---------------------------------------------------------------------------
 # Helper: slug→exams_per_hour lookup
@@ -71,13 +77,6 @@ def compute_delta_pct(today: float, yesterday: float | None) -> float | None:
     if yesterday is None or yesterday == 0.0:
         return None
     return round(((today - yesterday) / yesterday) * 100, 1)
-
-
-def compute_daily_target(monthly_goal: float, total_calendar_days: int) -> float:
-    """Daily earnings target to meet monthly goal."""
-    if total_calendar_days <= 0:
-        return 0.0
-    return monthly_goal / total_calendar_days
 
 
 # ---------------------------------------------------------------------------
@@ -242,11 +241,9 @@ def attach_revenue(conn: Any, items_df: pd.DataFrame) -> pd.DataFrame:
     if "revenue" in items_df.columns:
         return items_df
     df = items_df.copy()
-    prices_cache: dict[str, dict[str, float]] = {}
-    for d in df["date"].astype(str).unique():
-        prices_cache[d] = load_prices_at(conn, d)
+    vigencies = load_price_vigencies_map(conn)
     revenues = [
-        int(row["count"]) * prices_cache[str(row["date"])].get(str(row["modality_slug"]), 0.0)
+        int(row["count"]) * price_at(vigencies, str(row["modality_slug"]), str(row["date"]))
         for _, row in df.iterrows()
     ]
     df["revenue"] = revenues

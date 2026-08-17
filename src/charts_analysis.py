@@ -109,12 +109,6 @@ def build_wow_comparison_chart(
     prev_monday = current_monday - pd.Timedelta(weeks=1)
     prev_sunday = current_monday - pd.Timedelta(days=1)
 
-    def _fmt(d: pd.Timestamp) -> str:
-        return d.strftime("%m/%d" if lang == "en" else "%d/%m")
-
-    curr_label = f"{_fmt(curr_start)} – {_fmt(curr_end)}"
-    prev_label = f"{_fmt(prev_monday)} – {_fmt(prev_sunday)}"
-
     prev_by_slug = revenue_by_slug(
         items_df,
         start=prev_monday.strftime("%Y-%m-%d"),
@@ -142,7 +136,6 @@ def build_wow_comparison_chart(
 
     fig.add_trace(go.Bar(
         x=labels, y=prev_revs,
-        name=translate("web.charts.wow_last_week", lang, label=prev_label),
         marker_color=[hex_to_rgba(c, 0.5) for c in mod_colors],
         hovertemplate="%{x}: $ %{y:,.2f}<extra>"
         + translate("web.charts.wow_extra_last", lang)
@@ -151,7 +144,6 @@ def build_wow_comparison_chart(
 
     fig.add_trace(go.Bar(
         x=labels, y=curr_revs,
-        name=translate("web.charts.wow_this_week", lang, label=curr_label),
         marker_color=mod_colors,
         hovertemplate="%{x}: $ %{y:,.2f}<extra>"
         + translate("web.charts.wow_extra_this", lang)

@@ -69,9 +69,6 @@ def fmt_money(value: float, lang: str = "en") -> str:
     if value < 0:
         return f"\u2212{fmt_money(-value, lang)}"
     d = _quantize_half_up(value)
-    integer_part = int(d)
-    decimal_part = int((d - integer_part) * 100)
-    int_str = f"{integer_part:,}"
     if lang == "pt":
-        return f"${int_str.replace(',', '.')},{decimal_part:02d}"
-    return f"${int_str}.{decimal_part:02d}"
+        return "$" + f"{d:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+    return f"${d:,.2f}"

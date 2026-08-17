@@ -13,10 +13,6 @@ class TestHexToRgba:
         result = hex_to_rgba("#ff0000", 0.5)
         assert result == "rgba(255, 0, 0, 0.5)"
 
-    def test_hex_to_rgba_short(self):
-        result = hex_to_rgba("#0D9", 1.0)
-        assert result == "rgba(0, 221, 153, 1.0)"
-
     def test_hex_to_rgba_black(self):
         result = hex_to_rgba("#000000", 0.0)
         assert result == "rgba(0, 0, 0, 0.0)"

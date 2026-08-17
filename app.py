@@ -42,7 +42,7 @@ st.set_page_config(
 #    16px. Streamlit has no per-component font-size API — aligns the tabs
 #    with the sidebar text.
 # 2. The main block container defaults to padding-top 6rem (96px) — a huge
-#    blank band above the tab row. 1.5rem keeps breathing room without the
+#    blank band above the tab row. 4.5rem keeps breathing room without the
 #    gap, per owner's request.
 st.markdown(
     "<style>"

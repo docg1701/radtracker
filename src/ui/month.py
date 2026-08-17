@@ -7,13 +7,11 @@ v2: dynamic modalities.
 from datetime import date
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
 from src.calculations import (
     _compute_daily_earnings_from_items,
     attach_revenue,
-    compute_daily_target,
     compute_monthly_stats,
 )
 from src.charts import (
@@ -46,7 +44,8 @@ def render_month_tab(conn: Any) -> None:
 
     lang = st.session_state.get("lang", "en")
     stats = compute_monthly_stats(conn, year_month, goal, active_mods)
-    daily_target = compute_daily_target(goal, stats["total_calendar_days"])
+    total_days = stats["total_calendar_days"]
+    daily_target = goal / total_days if total_days > 0 else 0.0
 
     if stats["days_worked"] == 0:
         render_empty_state(
@@ -73,8 +72,11 @@ def render_month_tab(conn: Any) -> None:
     # ── Celebration rain ──
     _maybe_celebrate(pct_goal, year_month)
 
-    # ── Build daily earnings dataframe from items ──
-    earn_df = _build_earnings_dataframe(conn, year_month)
+    # ── Build daily earnings dataframe from items (loaded once, shared with
+    # the donut) ──
+    items_df = attach_revenue(conn, load_month_items(conn, year_month))
+    daily = _compute_daily_earnings_from_items(conn, items_df)
+    earn_df = daily[["date", "earnings"]] if not daily.empty else daily
 
     # ── Charts ──
     col_left, col_right = st.columns(2)
@@ -91,7 +93,6 @@ def render_month_tab(conn: Any) -> None:
 
     with col_right:
         st.subheader(f":material/pie_chart: {t('web.month.chart.by_modality')}")
-        items_df = attach_revenue(conn, load_month_items(conn, year_month))
         donut = build_monthly_modality_donut(items_df, active_mods, lang)
         st.plotly_chart(donut, width="stretch")
 
@@ -107,18 +108,6 @@ def render_month_tab(conn: Any) -> None:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _build_earnings_dataframe(
-    conn: Any, year_month: str,
-) -> pd.DataFrame:
-    """Build a daily earnings DataFrame (price-vigent revenue) from items."""
-    items_df = load_month_items(conn, year_month)
-    if items_df.empty:
-        return pd.DataFrame()
-
-    daily = _compute_daily_earnings_from_items(conn, items_df)
-    return daily[["date", "earnings"]]
 
 
 def _render_kpi_row(

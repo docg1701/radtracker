@@ -5,16 +5,12 @@ Every chart module imports from here — no inline hex values anywhere else.
 Colors are colorblind-safe and semantically named.
 """
 
+from plotly.colors import hex_to_rgb
+
 
 def hex_to_rgba(hex_color: str, alpha: float) -> str:
-    """Convert a 3- or 6-digit hex color to an rgba string."""
-    hex_color = hex_color.lstrip("#")
-    if len(hex_color) == 3:
-        hex_color = "".join(c * 2 for c in hex_color)
-    r = int(hex_color[0:2], 16)
-    g = int(hex_color[2:4], 16)
-    b = int(hex_color[4:6], 16)
-    return f"rgba({r}, {g}, {b}, {alpha})"
+    """Convert a 6-digit hex color to an rgba string."""
+    return f"rgba{(*hex_to_rgb(hex_color), alpha)}"
 
 
 # Modality → fixed color (5 seed modalities; the rest come from the DB color column)

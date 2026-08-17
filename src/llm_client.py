@@ -330,15 +330,8 @@ class LLMClient:
             raise LLMUnavailableError("LLM model not configured")
         self._api_key = api_key
         self._model = model
-        self._reasoning_buffer: list[str] = []
 
     # ── Public API ──
-
-    @property
-    def reasoning(self) -> str | None:
-        """Full reasoning text accumulated in the last generate_stream()."""
-        joined = "".join(self._reasoning_buffer)
-        return joined if joined else None
 
     def generate_stream(
         self,
@@ -377,7 +370,6 @@ class LLMClient:
             ...     if kind == "content":
             ...         print(token, end="")
         """
-        self._reasoning_buffer = []
         payload = self._build_payload(
             messages,
             thinking_enabled=thinking_enabled,
@@ -415,7 +407,6 @@ class LLMClient:
                                 or delta.get("reasoning", "")
                             )
                             if reasoning_token:
-                                self._reasoning_buffer.append(reasoning_token)
                                 yield ("reasoning", reasoning_token)
                             content = delta.get("content")
                             if content:
