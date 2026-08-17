@@ -6,8 +6,13 @@ rendered in a run, so the radio fell back to index=0 (Hoje). The button click
 itself already triggers a full rerun, so the explicit st.rerun() is redundant.
 
 Runs the real app.py under AppTest in a temp cwd with a scratch DB + auth.
-CCv2 cookie components cannot mount under AppTest, so they are stubbed — the
-reader returns no snapshot, the cold-cookie scenario from the bug report.
+Two Streamlit internals cannot work under AppTest and are stubbed:
+- CCv2 cookie components (no component server) — reader returns no snapshot,
+  the cold-cookie scenario from the bug report.
+- st.connection is replaced by the project's SqliteConn: SQLConnection.query
+  leaks pooled connections (never closes after pd.read_sql), and on Python
+  3.13 the gate's st.stop() pins the run frames via its traceback, so the
+  pool exhausts and the next run deadlocks. SqliteConn closes every time.
 """
 
 import shutil
@@ -15,6 +20,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import src.cookies as cookies
@@ -28,6 +34,11 @@ class _StubReaderResult:
     snapshot_json = None
 
 
+def _fake_st_connection(tmp_path: Path):
+    db_path = str(tmp_path / "data" / "telerrad.db")
+    return lambda *args, **kwargs: SqliteConn(db_path)
+
+
 @pytest.fixture
 def app_test(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AppTest:
     monkeypatch.chdir(tmp_path)
@@ -37,6 +48,7 @@ def app_test(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AppTest:
     create_bootstrap_auth("dev", "dev-password-123", "data/auth.json", cookie_secure=False)
     monkeypatch.setattr(cookies, "_COOKIE_READER", lambda **kwargs: _StubReaderResult())
     monkeypatch.setattr(cookies, "_COOKIE_WRITER", lambda **kwargs: None)
+    monkeypatch.setattr(st, "connection", _fake_st_connection(tmp_path))
     return AppTest.from_file(str(PROJECT_ROOT / "app.py"), default_timeout=30)
 
 
